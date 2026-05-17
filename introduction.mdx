@@ -1,0 +1,67 @@
+---
+title: 'Introduction'
+description: 'Build iMessage-first sales workflows with the iBubbl API.'
+---
+
+iBubbl is an iMessage-first sales platform. The API lets you:
+
+- **Send messages** programmatically from your iBubbl line.
+- **Manage contacts** — create, look up, and respect opt-outs.
+- **Receive events** via webhooks — inbound replies, send results, reactions, and opt-outs delivered to your server in real time.
+
+The API is HTTPS-only, JSON-everywhere, and authenticated with a single Bearer API key. There's no SDK to install — your existing HTTP client is enough.
+
+## Quickstart
+
+<Steps>
+  <Step title="Sign up">
+    Create an account at [app.ibubbl.com](https://app.ibubbl.com/signup) and connect your iMessage line.
+  </Step>
+  <Step title="Generate an API key">
+    In the dashboard, open **Settings → API Access** and click **Create key**. Copy the key (format: `ib_pk_<32 hex chars>`). This is the only time the full secret is shown.
+  </Step>
+  <Step title="Send your first message">
+    ```bash
+    curl -X POST https://api.ibubbl.com/v1/messages \
+      -H "Authorization: Bearer ib_pk_a3f2c8d9e0f1b4d52c8a1f4e23b9d4f7c" \
+      -H "Content-Type: application/json" \
+      -d '{
+        "to": "+14155551234",
+        "body": "Hey Sam — quick check-in about your order.",
+        "idempotency_key": "a3f2c8d9-e0f1-4b4d-9c5a-7b8e2d1f0c4a"
+      }'
+    ```
+
+    The response returns `202 Accepted` with the message's lifecycle state. See [POST /v1/messages](/api-reference/messages/send) for the full reference.
+  </Step>
+  <Step title="Subscribe to webhooks (optional)">
+    Register an HTTPS endpoint to receive events as they happen — inbound replies, delivery state changes, opt-outs. See [Webhooks Overview](/webhooks/overview).
+  </Step>
+</Steps>
+
+## What to read next
+
+<CardGroup cols={2}>
+  <Card title="Authentication" icon="key" href="/authentication">
+    API key format, headers, rotation, and security practices.
+  </Card>
+  <Card title="Idempotency" icon="arrow-rotate-right" href="/idempotency">
+    Required on every send. How to retry safely.
+  </Card>
+  <Card title="Webhooks" icon="webhook" href="/webhooks/overview">
+    Push events to your server instead of polling.
+  </Card>
+  <Card title="API Reference" icon="code" href="/api-reference/messages/send">
+    Every endpoint, request/response schemas, try-it console.
+  </Card>
+</CardGroup>
+
+## Base URL
+
+All API requests go to:
+
+```
+https://api.ibubbl.com
+```
+
+There is no staging endpoint at this time. Your dashboard account is your only environment; use a dedicated API key for each integration so you can rotate independently.

@@ -1,0 +1,78 @@
+---
+title: 'Authentication'
+description: 'Authenticate every request with a Bearer API key.'
+---
+
+Every iBubbl API request must include a Bearer API key in the `Authorization` header. Requests without a valid key return `401 unauthorized`.
+
+## Header format
+
+```http
+Authorization: Bearer ib_pk_<32 hex chars>
+```
+
+Example:
+
+```http
+Authorization: Bearer ib_pk_a3f2c8d9e0f1b4d52c8a1f4e23b9d4f7c
+```
+
+The token always starts with the literal prefix `ib_pk_` followed by 32 hexadecimal characters. The full token is 38 characters.
+
+## Generating a key
+
+1. Open your dashboard at [app.ibubbl.com](https://app.ibubbl.com).
+2. Navigate to **Settings → API Access**.
+3. Click **Create key** and give it a descriptive name (e.g., "production-backend", "zapier-integration").
+4. Copy the key from the modal that appears. **This is the only time the full secret is shown.** If you lose it, revoke the key and create a new one.
+
+The dashboard displays the key's prefix (first 14 characters, e.g. `ib_pk_a3f2c8d9`) on the list view so you can identify which key is which without revealing the full secret.
+
+## Revocation and rotation
+
+To revoke a key, click **Revoke** next to it in the dashboard. Revocation is immediate — subsequent requests with that key return `401 unauthorized`.
+
+**Recommended rotation cadence:**
+
+- Rotate any key whose holder has changed (employee offboarding, vendor change).
+- Rotate at least annually for long-lived integrations.
+- Rotate immediately if a key may have been exposed (committed to a repo, posted in chat, etc.).
+
+To rotate without downtime:
+
+1. Create a new key.
+2. Deploy the new key to your integration.
+3. Verify traffic is flowing using the new key (check the dashboard's "last used" timestamp on each key).
+4. Revoke the old key.
+
+## Security best practices
+
+<Warning>
+**Never commit API keys to source control.** Use environment variables, a secrets manager, or your platform's secret-injection system. iBubbl scans GitHub for leaked keys; we'll email you and revoke automatically if one is detected publicly.
+</Warning>
+
+- **Server-side only.** Never embed an iBubbl API key in a mobile app, browser bundle, or any client-controlled environment. The key has full account access.
+- **One key per integration.** Issue a separate key per service or environment so you can revoke one without breaking the others.
+- **Least-privilege isn't a thing yet.** API keys carry full account access; scoped keys are on the roadmap.
+
+## Authentication errors
+
+A `401 unauthorized` response means one of:
+
+- Missing `Authorization` header.
+- Header doesn't start with `Bearer ` (note the space).
+- Token doesn't start with `ib_pk_`.
+- Token has been revoked, or never existed.
+
+Response shape:
+
+```json
+{
+  "detail": {
+    "error": "unauthorized",
+    "message": "API key required (use Authorization: Bearer ib_pk_…)"
+  }
+}
+```
+
+See the [Error Reference](/errors) for the full code catalog.

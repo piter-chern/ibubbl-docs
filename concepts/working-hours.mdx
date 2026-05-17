@@ -1,0 +1,88 @@
+---
+title: 'Working Hours & Scheduling'
+description: 'How iBubbl respects working hours for outbound sends.'
+---
+
+iBubbl never sends an iMessage outside of the recipient's working hours. This protects your sender reputation and respects contact preferences — late-night blasts are the fastest way to get a phone number flagged.
+
+## How it works
+
+Every send through `POST /v1/messages` runs through a working-hours check:
+
+- If the **recipient's local time** falls inside the configured working window, the message dispatches immediately and returns `status: "pending"`.
+- If outside the window, the message is **automatically scheduled** for the next opening. The API still returns `202 Accepted` immediately, but with `status: "queued"`. A [`message.queued`](/webhooks/events) webhook fires with `queued_reason: "outside_working_hours"`.
+
+You don't need to do anything to opt in. The behavior is on by default for every account.
+
+## Configuring working hours
+
+Working hours are set in the dashboard at **Settings → Working Hours**. Defaults:
+
+| Field | Default |
+| ----- | ------- |
+| Days | Monday – Friday |
+| Start | 09:00 |
+| End | 18:00 |
+| Timezone | (your account's default) |
+
+You can configure different windows per day of the week, or close specific days entirely. The dashboard is the only way to manage these settings — there's no API surface for them today.
+
+## Per-contact timezone
+
+The local time check uses the **contact's timezone**, not your account's. iBubbl determines a contact's timezone in this order:
+
+1. **Explicit override** — if you set the `timezone` field on the contact (via [`POST /v1/contacts`](/api-reference/contacts/upsert) or the dashboard).
+2. **Area-code inference** — for North American numbers, iBubbl infers a default timezone from the area code (e.g., `+1415...` → `America/Los_Angeles`).
+3. **Account default** — falls back to your account's working-hours timezone.
+
+To override the inferred timezone, pass it on contact upsert:
+
+```bash
+curl -X POST https://api.ibubbl.com/v1/contacts \
+  -H "Authorization: Bearer $IB_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "phone": "+14155551234",
+    "timezone": "America/New_York"
+  }'
+```
+
+The override is sticky — once set, automation re-upserts will not overwrite it.
+
+## Detecting a queued send
+
+When a send is queued, the API response and the webhook both indicate this:
+
+**API response:**
+```json
+{
+  "id": "msg_4a5b6c7d-...",
+  "status": "queued",
+  "to": "+14155551234",
+  "body": "...",
+  "sent_at": null
+}
+```
+
+**Webhook** ([`message.queued`](/webhooks/events)):
+```json
+{
+  "type": "message.queued",
+  "data": {
+    "message_id": "msg_4a5b6c7d-...",
+    "queued_reason": "outside_working_hours"
+  }
+}
+```
+
+A `message.sent` webhook follows when the queued message dispatches.
+
+## Other queue reasons
+
+`queued_reason: "outside_working_hours"` is the most common, but messages can also queue for capacity-related reasons:
+
+- `hourly_cap_hit` — your line hit its hourly send cap; will retry next hour
+- `throughput_limited` — global throughput protection engaged
+- `line_offline` — your sending line is temporarily disconnected
+
+In all cases, the queued message stays in flight automatically. You don't need to retry.

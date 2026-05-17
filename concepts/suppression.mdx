@@ -1,0 +1,72 @@
+---
+title: 'Suppression & Opt-Outs'
+description: 'How iBubbl handles opt-outs to keep you TCPA-compliant.'
+---
+
+iBubbl enforces opt-outs at every send. Once a contact is opted out, any subsequent send attempt — through any API endpoint, dashboard action, or automation — fails immediately with `422 contact_opted_out`. There's no way to bypass this server-side.
+
+This isn't just hygiene — it's how you stay TCPA-compliant for US recipients. Opt-out enforcement is non-negotiable.
+
+## What triggers an opt-out
+
+### Inbound STOP-pattern keyword
+
+The most common path. When an inbound message body matches one of the recognized keywords (case-insensitive, exact-match after stripping whitespace), iBubbl auto-marks the contact opted out and fires a [`contact.opted_out`](/webhooks/events) webhook with `source: "auto_keyword"`.
+
+Recognized keywords:
+
+- `stop`
+- `unsubscribe`
+- `cancel`
+- `end`
+- `quit`
+- `stopall`
+
+The match is intentionally strict: the body must equal one of these keywords after `.strip().lower()`. Common false-positive patterns like `"STOP! that's hilarious"` or `"please stop sending"` do **not** match — they don't equal the keyword exactly.
+
+If you need broader pattern handling, post-process inbound webhooks yourself and have your rep mark the contact opted out from the dashboard. Programmatic opt-out is on the roadmap for v1.
+
+### Manual dashboard opt-out
+
+A rep can mark a contact opted out from the dashboard's contact detail view. A [`contact.opted_out`](/webhooks/events) webhook fires with `source: "manual"`.
+
+<Note>
+**Programmatic manual opt-out is not yet on the v1 API.** If your integration needs to push opt-outs from an external CRM, contact support — we're scoping this for a near-term release. In the meantime, STOP-keyword detection on inbound messages is the only automatic path.
+</Note>
+
+## What happens after opt-out
+
+- All `POST /v1/messages` to the contact return `422 contact_opted_out`.
+- Active sequence subscriptions for the contact are auto-paused.
+- The contact remains visible in your dashboard with an opted-out badge.
+
+## Re-opting in
+
+There is **no API to re-opt-in a contact**. This is intentional — accidental or automated re-opt-ins are a compliance risk. To re-opt-in a contact, a rep must manually do so from the dashboard's contact detail view. This action is logged with the rep's identity for audit purposes.
+
+## Detecting opt-outs in your integration
+
+The cleanest path is the [`contact.opted_out`](/webhooks/events) webhook — you'll see it the moment the opt-out happens, with the source.
+
+If you can't run webhooks, check `opted_out` on each contact response:
+
+```bash
+curl https://api.ibubbl.com/v1/contacts/c8a1f4e2-... \
+  -H "Authorization: Bearer $IB_API_KEY"
+```
+
+```json
+{
+  "id": "c8a1f4e2-...",
+  "phone": "+14155551234",
+  "opted_out": true,
+  "opted_out_at": "2026-05-17T14:28:00.000Z",
+  ...
+}
+```
+
+## Compliance posture
+
+iBubbl's suppression is built for TCPA compliance for US recipients of iMessage. The defaults — strict STOP matching, mandatory enforcement, no programmatic re-opt-in, audit logging — reflect that posture. If your use case has different jurisdictional requirements, talk to support before launching.
+
+You remain the responsible party for your account's send patterns and content. iBubbl's enforcement reduces risk; it doesn't eliminate it.

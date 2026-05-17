@@ -1,0 +1,118 @@
+---
+title: 'Idempotency'
+description: 'Make sends retry-safe with idempotency keys.'
+---
+
+Sending the same message twice — because of a network retry, a request timeout, or a deploy mid-request — is a real risk in any production integration. iBubbl handles this with **required** idempotency keys on every send.
+
+## How it works
+
+`POST /v1/messages` requires an `idempotency_key` field on every request. iBubbl stores the key alongside a hash of the request payload for 24 hours.
+
+When you retry with the same key:
+
+- **Same key + same payload** → iBubbl returns the cached response (HTTP `202` with the original message ID). No duplicate send.
+- **Same key + different payload** → iBubbl returns `409 idempotency_conflict`. This usually means a bug in your retry logic generated the same key for two genuinely-different messages.
+- **New key** → treated as a fresh request.
+
+After 24 hours, the key is forgotten and can be reused.
+
+## Generating keys
+
+Use a UUIDv4 per logical send. Generate it **before** the request, and reuse the same value across retries of that single logical operation.
+
+<CodeGroup>
+
+```python Python
+import uuid
+import requests
+
+idempotency_key = str(uuid.uuid4())
+
+def send_with_retry(to: str, body: str, max_attempts: int = 3) -> dict:
+    for attempt in range(max_attempts):
+        try:
+            response = requests.post(
+                "https://api.ibubbl.com/v1/messages",
+                headers={"Authorization": f"Bearer {API_KEY}"},
+                json={
+                    "to": to,
+                    "body": body,
+                    "idempotency_key": idempotency_key,  # SAME key on every retry
+                },
+                timeout=10,
+            )
+            if response.status_code < 500:
+                return response.json()
+        except requests.RequestException:
+            if attempt == max_attempts - 1:
+                raise
+    raise RuntimeError("all retries failed")
+```
+
+```javascript Node
+import crypto from 'node:crypto';
+
+const idempotencyKey = crypto.randomUUID();
+
+async function sendWithRetry(to, body, maxAttempts = 3) {
+  for (let attempt = 0; attempt < maxAttempts; attempt++) {
+    try {
+      const res = await fetch('https://api.ibubbl.com/v1/messages', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${API_KEY}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          to,
+          body,
+          idempotency_key: idempotencyKey, // SAME key on every retry
+        }),
+      });
+      if (res.status < 500) return await res.json();
+    } catch (err) {
+      if (attempt === maxAttempts - 1) throw err;
+    }
+  }
+  throw new Error('all retries failed');
+}
+```
+
+```bash curl
+# Generate once, reuse on retry:
+IDEMPOTENCY_KEY=$(uuidgen)
+
+curl -X POST https://api.ibubbl.com/v1/messages \
+  -H "Authorization: Bearer $IB_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d "{
+    \"to\": \"+14155551234\",
+    \"body\": \"Hey Sam — quick check-in.\",
+    \"idempotency_key\": \"$IDEMPOTENCY_KEY\"
+  }"
+```
+
+</CodeGroup>
+
+## Scoping
+
+Idempotency keys are scoped **per customer account**. Two different iBubbl accounts can use the same key without collision — but within a single account, the namespace is shared across all API keys for that account. (If you have multiple API keys for the same account, they share the idempotency-key space.)
+
+## Common pitfalls
+
+<AccordionGroup>
+  <Accordion title="Regenerating the key on retry">
+    The most common mistake. If you generate the key inside your retry loop, each retry gets a fresh key and the deduplication never fires. Generate **once**, outside the loop, and reuse it.
+  </Accordion>
+  <Accordion title="Reusing a key across different sends">
+    The key represents *one logical send*. If your code sends to multiple contacts in a campaign, each one needs its own key.
+  </Accordion>
+  <Accordion title='Getting 409 when you think the payload matches'>
+    iBubbl hashes the destination (`to` or resolved phone from `contact_id`) and the `body`. Any difference — including whitespace — triggers a conflict. Inspect your retry's payload character-by-character against the original.
+  </Accordion>
+</AccordionGroup>
+
+## TTL and cleanup
+
+Cached idempotency records expire 24 hours after the original request. After that window, the key is reusable. You don't need to clean anything up — iBubbl handles it.

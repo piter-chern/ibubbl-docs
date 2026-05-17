@@ -1,0 +1,58 @@
+---
+title: 'Versioning'
+description: 'How iBubbl evolves the API without breaking integrations.'
+---
+
+The iBubbl API is versioned in the URL path. The current version is **`v1`**.
+
+```
+https://api.ibubbl.com/v1/messages
+                       ^^
+```
+
+## Stability guarantees
+
+Within `/v1/`, iBubbl will **never**:
+
+- Remove an endpoint.
+- Remove a field from a response.
+- Change a field's type or stop accepting it as input.
+- Rename an enum value (e.g., `status: "queued"`).
+- Change the semantics of an error code.
+- Change the HMAC signature algorithm for webhooks.
+
+iBubbl **may**:
+
+- Add new endpoints.
+- Add new optional request fields (existing requests keep working).
+- Add new response fields (treat unknown fields defensively in your parser).
+- Add new event types to the webhook catalog (filter by `event_types` if you only want a subset).
+- Add new error codes for new failure modes.
+- Tighten validation in ways that previously-accepted requests still pass.
+
+Treat unknown fields as forward-compat. Your code should not error on an extra response field it doesn't recognize.
+
+## Breaking changes
+
+Breaking changes ship behind a new version prefix — `/v2/` will exist alongside `/v1/`, not replace it.
+
+When a major version ships, iBubbl will:
+
+1. Email the contact on each account at least **12 months** before `/v1/` is sunset.
+2. Show a dashboard banner with the migration timeline.
+3. Publish a `/v2/` migration guide enumerating every change.
+4. Keep `/v1/` fully operational for the deprecation window.
+
+## Deprecation policy
+
+A field, endpoint, or behavior is "deprecated" when iBubbl announces it will be removed in a future major version. Deprecated items continue to work in their original version. They're marked in the docs with a deprecation notice and (where it makes sense) emit a `Deprecation` HTTP response header pointing at the migration path.
+
+## Today
+
+The current state of `v1`:
+
+- Single stable version.
+- No deprecated endpoints or fields.
+- No announced sunset date.
+
+Build against `/v1/` with confidence. The contract you ship today is the contract you'll have a year from now.

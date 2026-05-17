@@ -1,0 +1,261 @@
+---
+title: 'Webhook Events'
+description: 'Catalog of webhook event types with example payloads.'
+---
+
+Every webhook POST iBubbl sends to your URL has the same envelope shape. The `type` field tells you which event it is; the `data` field has the event-specific payload.
+
+## Envelope
+
+```json
+{
+  "id": "evt_8b3a4e72-1c2d-4e5f-9a0b-2c3d4e5f6a7b",
+  "type": "message.inbound",
+  "created_at": "2026-05-17T14:23:45.123Z",
+  "data": {
+    "...": "event-specific fields"
+  }
+}
+```
+
+| Field | Type | Description |
+| ----- | ---- | ----------- |
+| `id` | string | Unique event ID (`evt_<uuid>`). Use this for deduplication. |
+| `type` | string | One of the event types below. |
+| `created_at` | string (ISO 8601 UTC) | When the event was generated. |
+| `data` | object | Event-specific payload. |
+
+<Note>
+Webhook payloads identify the contact and line by **phone number** (`from_number`, `to_number`, `contact_phone`), not by iBubbl's internal contact ID. If you need the contact ID, look it up via [`POST /v1/contacts`](/api-reference/contacts/upsert) — the upsert is idempotent and returns the ID.
+</Note>
+
+## Event types
+
+<AccordionGroup>
+
+<Accordion title="message.queued" icon="hourglass-start">
+Fired when a message is accepted but not yet dispatched to the device. This happens when the send falls outside the contact's working hours, or when account/line capacity is exhausted.
+
+```json
+{
+  "id": "evt_8b3a4e72-1c2d-4e5f-9a0b-2c3d4e5f6a7b",
+  "type": "message.queued",
+  "created_at": "2026-05-17T22:30:00.000Z",
+  "data": {
+    "message_id": "msg_4a5b6c7d-8e9f-0a1b-2c3d-4e5f6a7b8c9d",
+    "status": "queued",
+    "to_number": "+14155551234",
+    "body": "Hey Sam — quick check-in about your order.",
+    "classification": "cold",
+    "line_id": "ln_2c3d4e5f-6a7b-8c9d-0e1f-2a3b4c5d6e7f",
+    "failed_reason": "hourly_cap_hit"
+  }
+}
+```
+
+The `failed_reason` field names the routing-time condition that caused the queue — e.g. `hourly_cap_hit`, `throughput_limited`, `line_offline`. (Despite the name, this isn't a final failure — queued messages auto-retry.)
+
+A `message.sent` event follows when the queued message dispatches.
+</Accordion>
+
+<Accordion title="message.sent" icon="paper-plane">
+Fired when the iMessage has been handed to the device and the device has confirmed send.
+
+```json
+{
+  "id": "evt_8b3a4e72-1c2d-4e5f-9a0b-2c3d4e5f6a7b",
+  "type": "message.sent",
+  "created_at": "2026-05-17T14:23:45.123Z",
+  "data": {
+    "message_id": "msg_4a5b6c7d-8e9f-0a1b-2c3d-4e5f6a7b8c9d",
+    "from_number": "+14155550100",
+    "to_number": "+14155551234",
+    "body": "Hey Sam — quick check-in about your order.",
+    "status": "sent",
+    "occurred_at": "2026-05-17T14:23:45.123Z",
+    "reply_to_message_id": null
+  }
+}
+```
+
+`from_number` is the iBubbl line that sent the message; `to_number` is the contact.
+
+`reply_to_message_id` is non-null when this message was sent as a reply (quote) to a previous inbound; otherwise null.
+</Accordion>
+
+<Accordion title="message.failed" icon="circle-xmark">
+Fired when a send fails terminally. `failed_reason` carries the iBubbl error code (same catalog as the [Error Reference](/errors)); `error_message` is a human-readable description.
+
+```json
+{
+  "id": "evt_8b3a4e72-1c2d-4e5f-9a0b-2c3d4e5f6a7b",
+  "type": "message.failed",
+  "created_at": "2026-05-17T14:23:45.123Z",
+  "data": {
+    "message_id": "msg_4a5b6c7d-8e9f-0a1b-2c3d-4e5f6a7b8c9d",
+    "from_number": "+14155550100",
+    "to_number": "+14155551234",
+    "body": "Hey Sam — quick check-in about your order.",
+    "status": "failed",
+    "occurred_at": "2026-05-17T14:23:45.123Z",
+    "reply_to_message_id": null,
+    "failed_reason": "mac_send_failed",
+    "error_message": "Device rejected: not registered for iMessage"
+  }
+}
+```
+
+Common `failed_reason` values:
+
+- `mac_send_failed` — the device rejected the send (e.g., contact's iMessage account changed)
+- `bluebubbles_unreachable` — the device's relay was offline at send time
+- `agent_offline` — the device hadn't checked in for over an hour (swept)
+- `contact_opted_out` — the contact opted out between queue and send
+
+See the [Error Reference](/errors) for the full catalog.
+</Accordion>
+
+<Accordion title="message.inbound" icon="envelope">
+Fired when a contact replies to you. This is the event most integrations care about.
+
+```json
+{
+  "id": "evt_8b3a4e72-1c2d-4e5f-9a0b-2c3d4e5f6a7b",
+  "type": "message.inbound",
+  "created_at": "2026-05-17T14:24:12.456Z",
+  "data": {
+    "message_id": "msg_5b6c7d8e-9f0a-1b2c-3d4e-5f6a7b8c9d0e",
+    "from_number": "+14155551234",
+    "to_number": "+14155550100",
+    "body": "yeah sounds good, what time?",
+    "received_at": "2026-05-17T14:24:12.456Z",
+    "attachments": [],
+    "reply_to_message_id": null
+  }
+}
+```
+
+`from_number` is the contact (the sender); `to_number` is your iBubbl line (the recipient).
+
+If the inbound message contained attachments (images, videos, audio), the `attachments` array is populated with signed download URLs and metadata. iBubbl waits until all attachments have been fetched before firing the event, so you receive one `message.inbound` per message rather than separate text + attachment events.
+
+`reply_to_message_id` is non-null when the contact is quoting one of your previous messages.
+
+<Note>
+If the inbound body matches a STOP-pattern keyword (see [Suppression & Opt-Outs](/concepts/suppression)), iBubbl auto-marks the contact opted-out and fires a separate `contact.opted_out` event. You'll receive **both** events for the same incoming text.
+</Note>
+</Accordion>
+
+<Accordion title="message.edited" icon="pen-to-square">
+Fired when a contact edits a message they previously sent you. iMessage supports edit-after-send for ~15 minutes.
+
+```json
+{
+  "id": "evt_8b3a4e72-1c2d-4e5f-9a0b-2c3d4e5f6a7b",
+  "type": "message.edited",
+  "created_at": "2026-05-17T14:25:00.000Z",
+  "data": {
+    "message_id": "msg_5b6c7d8e-9f0a-1b2c-3d4e-5f6a7b8c9d0e",
+    "new_body": "yeah sounds good, what time were you thinking?",
+    "edited_at": "2026-05-17T14:25:00.000Z",
+    "direction": "inbound"
+  }
+}
+```
+
+The `message_id` matches the original `message.inbound` event — your store can update the existing record. `direction` is `inbound` for edits the contact made to a message they sent, or `outbound` for edits to a message you sent.
+</Accordion>
+
+<Accordion title="message.reaction.added" icon="heart">
+Fired when a tapback reaction is added to a message. Most commonly this is a contact reacting to one of your messages (`direction: "inbound"`); reactions you send from the dashboard fire as `direction: "outbound"`.
+
+```json
+{
+  "id": "evt_8b3a4e72-1c2d-4e5f-9a0b-2c3d4e5f6a7b",
+  "type": "message.reaction.added",
+  "created_at": "2026-05-17T14:26:00.000Z",
+  "data": {
+    "reaction_id": "rxn_7a8b9c0d-1e2f-3a4b-5c6d-7e8f9a0b1c2d",
+    "target_message_id": "msg_4a5b6c7d-8e9f-0a1b-2c3d-4e5f6a7b8c9d",
+    "from_number": "+14155551234",
+    "reaction_type": "love",
+    "emoji": "❤️",
+    "direction": "inbound"
+  }
+}
+```
+
+`reaction_type` values: `love`, `like`, `dislike`, `laugh`, `emphasize`, `question`.
+
+`emoji` carries the rendered Unicode character — useful if you're displaying reactions in your own UI without maintaining a tapback-to-emoji mapping.
+
+`from_number` is the contact who reacted (inbound) or the iBubbl line that reacted (outbound). `target_message_id` is the message being reacted to.
+</Accordion>
+
+<Accordion title="message.reaction.removed" icon="heart-crack">
+Fired when a previously-added reaction is removed (the reactor un-tapped it). Same payload shape as `message.reaction.added`.
+
+```json
+{
+  "id": "evt_8b3a4e72-1c2d-4e5f-9a0b-2c3d4e5f6a7b",
+  "type": "message.reaction.removed",
+  "created_at": "2026-05-17T14:27:00.000Z",
+  "data": {
+    "reaction_id": "rxn_7a8b9c0d-1e2f-3a4b-5c6d-7e8f9a0b1c2d",
+    "target_message_id": "msg_4a5b6c7d-8e9f-0a1b-2c3d-4e5f6a7b8c9d",
+    "from_number": "+14155551234",
+    "reaction_type": "love",
+    "emoji": "❤️",
+    "direction": "inbound"
+  }
+}
+```
+
+The `reaction_id` matches the original `.added` event so you can update or delete the reaction in your own store.
+</Accordion>
+
+<Accordion title="contact.opted_out" icon="ban">
+Fired when a contact opts out — via STOP-keyword reply, or marked opted out by a rep from the dashboard.
+
+```json
+{
+  "id": "evt_8b3a4e72-1c2d-4e5f-9a0b-2c3d4e5f6a7b",
+  "type": "contact.opted_out",
+  "created_at": "2026-05-17T14:28:00.000Z",
+  "data": {
+    "contact_phone": "+14155551234",
+    "source": "auto_keyword",
+    "triggered_by_message_id": "msg_5b6c7d8e-9f0a-1b2c-3d4e-5f6a7b8c9d0e",
+    "opted_out_at": "2026-05-17T14:28:00.000Z"
+  }
+}
+```
+
+`source` values:
+
+- `auto_keyword` — auto-detected from a STOP-pattern inbound reply
+- `manual` — opt-out marked by a rep from the dashboard
+- `api` — opt-out via an internal automation (not yet exposed on the public `/v1/` API)
+
+`triggered_by_message_id` is the inbound message ID that triggered the keyword detection (for `auto_keyword`), or null for manual paths.
+
+After this event, all [`POST /v1/messages`](/api-reference/messages/send) to this contact return `422 contact_opted_out`.
+</Accordion>
+
+</AccordionGroup>
+
+## Filtering subscriptions
+
+When creating a subscription, pass `event_types` to receive only a subset:
+
+```bash
+curl -X POST https://api.ibubbl.com/v1/webhooks \
+  -H "Authorization: Bearer $IB_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "url": "https://api.example.com/replies-only",
+    "event_types": ["message.inbound", "message.edited"]
+  }'
+```
+
+Filtering is exact-match on the `type` field. Unknown event types in the filter list are silently ignored (so subscriptions don't break when new event types ship).

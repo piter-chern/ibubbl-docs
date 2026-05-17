@@ -1,0 +1,169 @@
+---
+title: 'Signature Verification'
+description: 'Verify incoming webhooks with HMAC-SHA256.'
+---
+
+Every webhook iBubbl POSTs to your URL carries a signature in the `X-iBubbl-Signature` header. You should verify this signature before processing the event — it confirms the request actually came from iBubbl and wasn't forged or replayed by a third party.
+
+## Header format
+
+```http
+X-iBubbl-Signature: sha256=<64 hex chars>
+```
+
+Example:
+
+```http
+X-iBubbl-Signature: sha256=3b8f2a9c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a0b1c2d3e4f5a6b7c8d9e0f1a
+```
+
+## Algorithm
+
+- Function: **HMAC-SHA256**
+- Key: the **literal UTF-8 bytes** of your subscription secret (the `whsec_<hex>` string). Do **not** hex-decode the secret before using it as the key.
+- Message: the **raw request body bytes** as received. Do **not** re-serialize the JSON before signing — whitespace, key ordering, and number formatting can all change between serializers, and any change breaks the signature.
+- Output: lowercase hex digest, prefixed with `sha256=`.
+
+## Reference verifiers
+
+<CodeGroup>
+
+```python Python
+import hmac
+import hashlib
+
+def verify_signature(body_bytes: bytes, signature_header: str, secret: str) -> bool:
+    """
+    body_bytes: the raw HTTP request body as received.
+    signature_header: the value of the X-iBubbl-Signature header.
+    secret: your subscription's whsec_<hex> secret.
+    """
+    expected = hmac.new(
+        secret.encode("utf-8"),
+        body_bytes,
+        hashlib.sha256,
+    ).hexdigest()
+    received = signature_header.removeprefix("sha256=")
+    return hmac.compare_digest(expected, received)
+```
+
+```javascript Node
+const crypto = require('crypto');
+
+function verifySignature(bodyBytes, signatureHeader, secret) {
+  // bodyBytes: Buffer (the raw request body as received)
+  // signatureHeader: the value of the X-iBubbl-Signature header
+  // secret: your subscription's whsec_<hex> secret
+  const expected = crypto
+    .createHmac('sha256', secret)
+    .update(bodyBytes)
+    .digest('hex');
+  const received = signatureHeader.replace(/^sha256=/, '');
+  return crypto.timingSafeEqual(
+    Buffer.from(expected, 'hex'),
+    Buffer.from(received, 'hex'),
+  );
+}
+```
+
+</CodeGroup>
+
+## Framework integration
+
+<AccordionGroup>
+
+<Accordion title="Express.js — preserve raw body bytes" icon="node-js">
+
+Express's default `express.json()` middleware **destroys** the raw bytes by parsing and re-serializing. You must use `express.raw()` for the webhook route specifically so the signature still matches.
+
+```javascript
+const express = require('express');
+const crypto = require('crypto');
+
+const app = express();
+
+app.post(
+  '/ibubbl-webhooks',
+  express.raw({ type: 'application/json' }),
+  (req, res) => {
+    const signature = req.header('X-iBubbl-Signature');
+    if (!verifySignature(req.body, signature, process.env.IBUBBL_WEBHOOK_SECRET)) {
+      return res.status(401).send('invalid signature');
+    }
+
+    const event = JSON.parse(req.body.toString('utf-8'));
+    // process event...
+
+    res.status(200).send('ok');
+  },
+);
+```
+
+If you have other routes that need `express.json()`, mount it on a sub-router or use route-specific middleware so it doesn't interfere with the webhook route.
+
+</Accordion>
+
+<Accordion title="FastAPI / Starlette — read body before parsing" icon="python">
+
+FastAPI's body parsing is lazy, so you can read raw bytes via `request.body()` before any model validation runs.
+
+```python
+from fastapi import FastAPI, HTTPException, Request
+
+app = FastAPI()
+
+@app.post("/ibubbl-webhooks")
+async def receive_webhook(request: Request):
+    body_bytes = await request.body()
+    signature = request.headers.get("X-iBubbl-Signature", "")
+
+    if not verify_signature(body_bytes, signature, IBUBBL_WEBHOOK_SECRET):
+        raise HTTPException(status_code=401, detail="invalid signature")
+
+    event = json.loads(body_bytes)
+    # process event...
+    return {"status": "ok"}
+```
+
+</Accordion>
+
+<Accordion title="Next.js (App Router) — read raw bytes" icon="react">
+
+In a route handler, use `request.text()` to get the raw body string, then encode to bytes for signing.
+
+```javascript
+import { NextResponse } from 'next/server';
+import crypto from 'node:crypto';
+
+export async function POST(request) {
+  const bodyText = await request.text();
+  const signature = request.headers.get('X-iBubbl-Signature');
+
+  const bodyBytes = Buffer.from(bodyText, 'utf-8');
+  if (!verifySignature(bodyBytes, signature, process.env.IBUBBL_WEBHOOK_SECRET)) {
+    return new NextResponse('invalid signature', { status: 401 });
+  }
+
+  const event = JSON.parse(bodyText);
+  // process event...
+  return NextResponse.json({ status: 'ok' });
+}
+```
+
+</Accordion>
+
+</AccordionGroup>
+
+## Common pitfalls
+
+<Warning>
+**Don't re-serialize the body before verifying.** Any JSON middleware that parses and re-stringifies the body will produce different bytes, and the signature will not match. The raw bytes as received over the wire are the only ones that work.
+</Warning>
+
+<Warning>
+**Don't hex-decode the secret.** The HMAC key is the **literal string** `whsec_a3f2c8d9...` encoded as UTF-8 — not the hex-decoded bytes of the suffix. This trips up integrators who assume `whsec_` is a prefix tag separated from a hex-encoded key. It isn't.
+</Warning>
+
+- **Use constant-time comparison.** `hmac.compare_digest` (Python) and `crypto.timingSafeEqual` (Node) prevent timing-attack leaks. Don't use `==` on signatures.
+- **Don't skip verification "for testing."** A common shortcut becomes a production hole. The reference verifier is short; copy it.
+- **Reject on signature mismatch immediately.** Return `401` and don't process the body. iBubbl won't retry signature failures any differently than other 4xx — your endpoint just won't see the event.

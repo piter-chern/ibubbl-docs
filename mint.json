@@ -1,0 +1,92 @@
+{
+  "$schema": "https://mintlify.com/schema.json",
+  "name": "iBubbl",
+  "logo": {
+    "light": "/logo/light.svg",
+    "dark": "/logo/dark.svg"
+  },
+  "favicon": "/favicon.svg",
+  "colors": {
+    "primary": "#3B82F6",
+    "light": "#60A5FA",
+    "dark": "#2563EB"
+  },
+  "topbarLinks": [
+    {
+      "name": "Dashboard",
+      "url": "https://app.ibubbl.com"
+    }
+  ],
+  "topbarCtaButton": {
+    "name": "Sign up",
+    "url": "https://app.ibubbl.com/signup"
+  },
+  "anchors": [
+    {
+      "name": "API Reference",
+      "icon": "code",
+      "url": "api-reference"
+    },
+    {
+      "name": "Webhooks",
+      "icon": "webhook",
+      "url": "webhooks"
+    }
+  ],
+  "navigation": [
+    {
+      "group": "Getting Started",
+      "pages": [
+        "introduction",
+        "authentication",
+        "idempotency",
+        "errors",
+        "versioning"
+      ]
+    },
+    {
+      "group": "Concepts",
+      "pages": [
+        "concepts/working-hours",
+        "concepts/suppression"
+      ]
+    },
+    {
+      "group": "Webhooks",
+      "pages": [
+        "webhooks/overview",
+        "webhooks/events",
+        "webhooks/signatures"
+      ]
+    },
+    {
+      "group": "API Reference",
+      "pages": [
+        {
+          "group": "Messages",
+          "pages": [
+            "api-reference/messages/send",
+            "api-reference/messages/retrieve"
+          ]
+        },
+        {
+          "group": "Contacts",
+          "pages": [
+            "api-reference/contacts/upsert",
+            "api-reference/contacts/retrieve"
+          ]
+        },
+        {
+          "group": "Webhooks",
+          "pages": [
+            "api-reference/webhooks/create",
+            "api-reference/webhooks/list",
+            "api-reference/webhooks/retrieve",
+            "api-reference/webhooks/revoke"
+          ]
+        }
+      ]
+    }
+  ],
+  "openapi": "/openapi/public.json"
+}

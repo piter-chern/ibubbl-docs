@@ -1,0 +1,86 @@
+---
+title: 'Webhooks Overview'
+description: 'Receive events on your server in real time instead of polling.'
+---
+
+Webhooks let iBubbl push events to your backend the moment they happen — inbound replies from your contacts, delivery state changes, reactions, opt-outs. You avoid the latency and rate-limit cost of polling.
+
+## Subscription model
+
+You register an HTTPS URL via [`POST /v1/webhooks`](/api-reference/webhooks/create). iBubbl returns a subscription with a signing secret. You can register **multiple subscriptions** per account — one per environment, one per service, or one filtered to a subset of event types.
+
+```bash
+curl -X POST https://api.ibubbl.com/v1/webhooks \
+  -H "Authorization: Bearer $IB_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "url": "https://api.example.com/ibubbl-webhooks",
+    "event_types": ["message.inbound", "contact.opted_out"]
+  }'
+```
+
+If you omit `event_types`, the subscription receives **all** events. See the [Webhook Events catalog](/webhooks/events) for the full list.
+
+## The signing secret
+
+The create response includes a `secret` field (format: `whsec_<64 hex chars>`). **This is the only time the full secret is returned.** Store it immediately in your secrets manager.
+
+You use the secret to verify the `X-iBubbl-Signature` header on every incoming webhook POST, ensuring the request actually came from iBubbl and wasn't forged. See [Signature Verification](/webhooks/signatures) for the algorithm and reference verifiers in Python + Node.
+
+If you lose the secret, revoke the subscription and create a new one — iBubbl cannot recover or re-display it.
+
+## Delivery semantics
+
+iBubbl delivers events **at least once**. Your endpoint must be idempotent — duplicates can arrive if your server's response is delayed, returns a 5xx, or times out.
+
+The event envelope includes a unique `id` (format: `evt_<uuid>`). The recommended pattern is:
+
+1. On receipt, look up the event `id` in your store.
+2. If it's already been processed, return `200 OK` immediately.
+3. Otherwise process it, then record the `id` to your store.
+
+This pattern is the same whether duplicates come from network retries, iBubbl's redelivery on 5xx, or two subscriptions covering the same event types.
+
+## Retry schedule
+
+If your endpoint doesn't return `2xx` within 10 seconds, iBubbl retries on this schedule:
+
+| Attempt | Delay from previous |
+| ------- | ------------------- |
+| 1 (first try) | — |
+| 2 | 30 seconds |
+| 3 | 1 minute |
+| 4 | 5 minutes |
+| 5 | 30 minutes |
+
+After the 5th failed attempt, the event is marked **dead** and no further retries occur. You can see dead events in the dashboard's webhook log view.
+
+iBubbl considers any non-`2xx` HTTP status a failure. If your endpoint is doing async work, return `2xx` immediately and queue the work — don't hold the response open while processing.
+
+## Best practices
+
+<AccordionGroup>
+  <Accordion title="Return 2xx fast">
+    Process asynchronously. iBubbl's 10s timeout is firm; slow endpoints look like failures and trigger unnecessary retries.
+  </Accordion>
+  <Accordion title="Use the event ID for deduplication">
+    Don't try to deduplicate by content hash — different events can have identical payloads (two `message.sent` events on a campaign, for instance). The event `id` is the only safe key.
+  </Accordion>
+  <Accordion title="Verify signatures on every request">
+    Don't make exceptions for "internal" testing or "trusted" networks. Signature verification is cheap and catches forged requests + misrouted traffic. See [Signature Verification](/webhooks/signatures).
+  </Accordion>
+  <Accordion title="Watch the dashboard webhook log">
+    The dashboard shows recent deliveries, their HTTP status, response time, and retry state. Use it to spot endpoints that are silently failing.
+  </Accordion>
+</AccordionGroup>
+
+## What's next
+
+<CardGroup cols={2}>
+  <Card title="Webhook Events" icon="list" href="/webhooks/events">
+    The catalog of event types and their payload shapes.
+  </Card>
+  <Card title="Signature Verification" icon="shield-check" href="/webhooks/signatures">
+    HMAC-SHA256 verification with reference code in Python + Node.
+  </Card>
+</CardGroup>

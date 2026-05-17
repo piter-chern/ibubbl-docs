@@ -1,0 +1,1187 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "iBubbl API",
+    "version": "v1",
+    "description": "The iBubbl REST API. Send iMessages, manage contacts, and subscribe to webhook events from your backend.\n\nAuthenticate every request with a Bearer API key (`ib_pk_<hex>`) \u2014 generate one from your dashboard's API Access settings. See the [Authentication](/authentication) guide."
+  },
+  "paths": {
+    "/v1/messages": {
+      "post": {
+        "tags": [
+          "Messages"
+        ],
+        "summary": "Send a message",
+        "description": "Send an iMessage to a contact, identified by either `contact_id` (an existing contact in your account) or `to` (an E.164 phone number \u2014 the contact is created on first use).\n\nThe response returns immediately with `status: \"queued\"` or `\"pending\"`. Final delivery state arrives via the [`message.delivered`](/webhooks/events) webhook.\n\n**Idempotency is required.** Provide a unique `idempotency_key` per logical send (UUIDv4 recommended); a retry with the same key and payload replays the original response, while a reused key with a different payload returns `409 idempotency_conflict`. See the [Idempotency](/idempotency) guide.\n\nSuppression is enforced server-side: messaging an opted-out contact returns `422 contact_opted_out`.",
+        "operationId": "v1_send_message_v1_messages_post",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MessageCreate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "202": {
+            "description": "Message accepted for delivery.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Message"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid API key.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Contact not found.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Idempotency key reused with a different payload.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation failure \u2014 missing required field, opted-out contact, or capacity exhausted. See `detail.error`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "No active line available to send from.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/messages/{message_id}": {
+      "get": {
+        "tags": [
+          "Messages"
+        ],
+        "summary": "Retrieve a message",
+        "description": "Fetch a single message by its ID. Useful for polling the current delivery state when you can't subscribe to webhooks.\n\nReturns `404 not_found` for both missing messages and messages owned by a different customer \u2014 existence is not leaked across tenants.",
+        "operationId": "v1_get_message_v1_messages__message_id__get",
+        "parameters": [
+          {
+            "name": "message_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Message Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The message.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Message"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid API key.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Message not found.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/contacts": {
+      "post": {
+        "tags": [
+          "Contacts"
+        ],
+        "summary": "Create or update a contact",
+        "description": "Upsert a contact by phone number. Returns `201 Created` on a new contact, `200 OK` on an existing match.\n\nOptional fields (`first_name`, `last_name`, `timezone`) apply only when the existing record's value is null \u2014 values set previously by a rep or by a prior API call are preserved. This protects human-edited data from being clobbered by automation.\n\nIf `timezone` is provided, it must be one of the supported IANA timezones; invalid values return `422 invalid_timezone`.",
+        "operationId": "v1_upsert_contact_v1_contacts_post",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ContactUpsert"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Existing contact updated.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Contact"
+                }
+              }
+            }
+          },
+          "201": {
+            "description": "New contact created.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Contact"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid API key.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation failure \u2014 `phone` not in E.164 format, or `timezone` not in the supported allowlist.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/contacts/{contact_id}": {
+      "get": {
+        "tags": [
+          "Contacts"
+        ],
+        "summary": "Retrieve a contact",
+        "description": "Fetch a single contact by ID. Returns `404 not_found` for both missing contacts and contacts owned by a different customer \u2014 existence is not leaked across tenants.",
+        "operationId": "v1_get_contact_v1_contacts__contact_id__get",
+        "parameters": [
+          {
+            "name": "contact_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Contact Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The contact.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Contact"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid API key.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Contact not found.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/webhooks": {
+      "post": {
+        "tags": [
+          "Webhooks"
+        ],
+        "summary": "Create a webhook subscription",
+        "description": "Register an HTTPS endpoint to receive events. The response includes the signing secret **once** \u2014 store it immediately; it cannot be retrieved again. Use the secret to verify incoming webhook signatures (see [Signature Verification](/webhooks/signatures)).\n\nIf `event_types` is omitted, the subscription receives all event types. You can register multiple subscriptions per account (e.g., one for production, one for staging).\n\nDelivery is at-least-once with exponential backoff. Customer endpoints should be idempotent based on the event `id`.",
+        "operationId": "v1_create_webhook_v1_webhooks_post",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WebhookSubscriptionCreate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Subscription created. Secret returned ONCE.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WebhookSubscriptionCreated"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid API key.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "URL is not HTTPS.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "get": {
+        "tags": [
+          "Webhooks"
+        ],
+        "summary": "List webhook subscriptions",
+        "description": "Returns all currently active webhook subscriptions for the authenticated customer. Revoked subscriptions are omitted \u2014 query them by ID directly (`GET /v1/webhooks/{id}`) if you need their history.",
+        "operationId": "v1_list_webhooks_v1_webhooks_get",
+        "responses": {
+          "200": {
+            "description": "Array of active subscriptions.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/WebhookSubscription"
+                  },
+                  "title": "Response V1 List Webhooks V1 Webhooks Get"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid API key.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/webhooks/{subscription_id}": {
+      "get": {
+        "tags": [
+          "Webhooks"
+        ],
+        "summary": "Retrieve a webhook subscription",
+        "description": "Fetch a single subscription by ID. Returns the subscription regardless of revoked status (so you can inspect history). `404 not_found` is returned for both missing subscriptions and those owned by a different customer.",
+        "operationId": "v1_get_webhook_v1_webhooks__subscription_id__get",
+        "parameters": [
+          {
+            "name": "subscription_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Subscription Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The subscription.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WebhookSubscription"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid API key.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Subscription not found.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "Webhooks"
+        ],
+        "summary": "Revoke a webhook subscription",
+        "description": "Soft-revoke a subscription. After revocation, no further events are delivered to its URL. The row is retained for audit purposes; you can still fetch it with `GET /v1/webhooks/{id}` and see its `revoked_at` timestamp.\n\nRevoking an already-revoked subscription is a no-op that returns `{\"status\": \"already_revoked\"}`.",
+        "operationId": "v1_revoke_webhook_v1_webhooks__subscription_id__delete",
+        "parameters": [
+          {
+            "name": "subscription_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Subscription Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Revocation result.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WebhookRevokeResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid API key.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Subscription not found.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "ApiError": {
+        "properties": {
+          "detail": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/ApiErrorDetail"
+              }
+            ],
+            "description": "Error envelope. The outer `detail` key is FastAPI's convention for error responses; the inner `error` + `message` are the iBubbl API's stable shape."
+          }
+        },
+        "type": "object",
+        "required": [
+          "detail"
+        ],
+        "title": "ApiError",
+        "example": {
+          "detail": {
+            "error": "validation_error",
+            "message": "Either 'contact_id' or 'to' (E.164 phone) is required"
+          }
+        }
+      },
+      "ApiErrorDetail": {
+        "properties": {
+          "error": {
+            "type": "string",
+            "title": "Error",
+            "description": "Stable machine-readable error code. Use this for branching logic in your integration; the human-readable `message` is subject to change. See the Error Reference for the catalog.",
+            "examples": [
+              "validation_error"
+            ]
+          },
+          "message": {
+            "type": "string",
+            "title": "Message",
+            "description": "Human-readable description of what went wrong.",
+            "examples": [
+              "Either 'contact_id' or 'to' (E.164 phone) is required"
+            ]
+          }
+        },
+        "type": "object",
+        "required": [
+          "error",
+          "message"
+        ],
+        "title": "ApiErrorDetail"
+      },
+      "Contact": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id",
+            "description": "Unique contact identifier (UUID)."
+          },
+          "phone": {
+            "type": "string",
+            "title": "Phone",
+            "description": "Contact's phone number (E.164)."
+          },
+          "first_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "First Name"
+          },
+          "last_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Name"
+          },
+          "timezone": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Timezone",
+            "description": "IANA timezone, or null if not set. When null, sends use the customer's default working-hours timezone."
+          },
+          "opted_out": {
+            "type": "boolean",
+            "title": "Opted Out",
+            "description": "True if this contact has opted out (STOP reply or manual opt-out). When true, all send attempts to this contact return `422 contact_opted_out`."
+          },
+          "opted_out_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Opted Out At",
+            "description": "ISO 8601 UTC timestamp of the opt-out, or null."
+          },
+          "created_at": {
+            "type": "string",
+            "title": "Created At",
+            "description": "ISO 8601 UTC timestamp the contact was created."
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "phone",
+          "opted_out",
+          "created_at"
+        ],
+        "title": "Contact",
+        "example": {
+          "created_at": "2026-05-17T14:23:45.123Z",
+          "first_name": "Sam",
+          "id": "c8a1f4e2-3b9d-4f7c-a8e5-1d2c3b4a5e6f",
+          "last_name": "Rivera",
+          "opted_out": false,
+          "phone": "+14155551234",
+          "timezone": "America/Los_Angeles"
+        }
+      },
+      "HTTPValidationError": {
+        "properties": {
+          "detail": {
+            "items": {
+              "$ref": "#/components/schemas/ValidationError"
+            },
+            "type": "array",
+            "title": "Detail"
+          }
+        },
+        "type": "object",
+        "title": "HTTPValidationError"
+      },
+      "Message": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id",
+            "description": "Unique message identifier (UUID)."
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "queued",
+              "pending",
+              "sent",
+              "delivered",
+              "read",
+              "failed"
+            ],
+            "title": "Status",
+            "description": "Lifecycle state. `queued` = accepted, not yet dispatched (capacity / working-hours hold). `pending` = handed to the device, waiting on the send. `sent` / `delivered` / `read` = delivery progression. `failed` = terminal failure \u2014 see webhook `message.failed` for the reason."
+          },
+          "to": {
+            "type": "string",
+            "title": "To",
+            "description": "Destination phone number (E.164).",
+            "examples": [
+              "+14155551234"
+            ]
+          },
+          "body": {
+            "type": "string",
+            "title": "Body",
+            "description": "The message text as sent."
+          },
+          "contact_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Contact Id",
+            "description": "ID of the contact this message was sent to."
+          },
+          "channel": {
+            "type": "string",
+            "enum": [
+              "imessage",
+              "sms"
+            ],
+            "title": "Channel",
+            "description": "Transport used. `imessage` for blue-bubble delivery (default). `sms` is reserved for future SMS fallback routing."
+          },
+          "sent_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sent At",
+            "description": "ISO 8601 UTC timestamp when the message left the device. Null until the device confirms send.",
+            "examples": [
+              "2026-05-17T14:23:45.123Z"
+            ]
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "status",
+          "to",
+          "body",
+          "channel"
+        ],
+        "title": "Message",
+        "example": {
+          "body": "Hey Sam \u2014 quick check-in about your order.",
+          "channel": "imessage",
+          "contact_id": "c8a1f4e2-3b9d-4f7c-a8e5-1d2c3b4a5e6f",
+          "id": "msg_8b3a4e72-1c2d-4e5f-9a0b-2c3d4e5f6a7b",
+          "status": "queued",
+          "to": "+14155551234"
+        }
+      },
+      "ContactUpsert": {
+        "properties": {
+          "phone": {
+            "type": "string",
+            "title": "Phone",
+            "description": "Phone number in E.164 format (e.g. `+14155551234`). The unique key for contacts \u2014 upserting an existing phone returns the same contact ID.",
+            "examples": [
+              "+14155551234"
+            ]
+          },
+          "first_name": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 128
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "First Name",
+            "description": "Contact's first name. Only applied if the existing record's `first_name` is null \u2014 rep-edited values are sticky and won't be overwritten by automation.",
+            "examples": [
+              "Sam"
+            ]
+          },
+          "last_name": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 128
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Name",
+            "description": "Contact's last name. Same sticky-update semantics as `first_name`.",
+            "examples": [
+              "Rivera"
+            ]
+          },
+          "timezone": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Timezone",
+            "description": "IANA timezone for working-hours scheduling. Must be one of the supported allowlist (US/Canada timezones, plus common international). Sends to this contact respect the timezone for outside-hours scheduling. Same sticky-update semantics as names.",
+            "examples": [
+              "America/Los_Angeles"
+            ]
+          }
+        },
+        "type": "object",
+        "required": [
+          "phone"
+        ],
+        "title": "ContactUpsert",
+        "example": {
+          "first_name": "Sam",
+          "last_name": "Rivera",
+          "phone": "+14155551234",
+          "timezone": "America/Los_Angeles"
+        }
+      },
+      "MessageCreate": {
+        "properties": {
+          "contact_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Contact Id",
+            "description": "ID of an existing contact to message. Mutually exclusive with `to`; exactly one is required.",
+            "examples": [
+              "c8a1f4e2-3b9d-4f7c-a8e5-1d2c3b4a5e6f"
+            ]
+          },
+          "to": {
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^\\+[1-9]\\d{7,14}$"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "To",
+            "description": "Destination phone number in E.164 format (e.g. `+14155551234`). If the number doesn't match an existing contact, one is created automatically. Mutually exclusive with `contact_id`.",
+            "examples": [
+              "+14155551234"
+            ]
+          },
+          "body": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Body",
+            "description": "The message text. Plain text only; emoji + Unicode are supported.",
+            "examples": [
+              "Hey Sam \u2014 quick check-in about your order."
+            ]
+          },
+          "idempotency_key": {
+            "type": "string",
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Idempotency Key",
+            "description": "Client-supplied unique key per logical send. Retrying with the same key + same payload replays the cached response (24-hour TTL). Same key + different payload returns `409 idempotency_conflict`. UUIDv4 is recommended.",
+            "examples": [
+              "a3f2c8d9-e0f1-4b4d-9c5a-7b8e2d1f0c4a"
+            ]
+          }
+        },
+        "type": "object",
+        "required": [
+          "body",
+          "idempotency_key"
+        ],
+        "title": "MessageCreate",
+        "example": {
+          "body": "Hey Sam \u2014 quick check-in about your order.",
+          "idempotency_key": "a3f2c8d9-e0f1-4b4d-9c5a-7b8e2d1f0c4a",
+          "to": "+14155551234"
+        }
+      },
+      "WebhookSubscriptionCreate": {
+        "properties": {
+          "url": {
+            "type": "string",
+            "title": "Url",
+            "description": "HTTPS URL that will receive webhook POST requests. HTTP is rejected (`422 invalid_url`).",
+            "examples": [
+              "https://api.example.com/ibubbl-webhooks"
+            ]
+          },
+          "event_types": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Event Types",
+            "description": "Filter to a specific subset of events. Omit or pass `null` to receive ALL event types. See the [Webhook Events catalog](/webhooks/events) for the full list.",
+            "examples": [
+              [
+                "message.sent",
+                "message.failed",
+                "message.inbound"
+              ]
+            ]
+          }
+        },
+        "type": "object",
+        "required": [
+          "url"
+        ],
+        "title": "WebhookSubscriptionCreate",
+        "example": {
+          "event_types": [
+            "message.sent",
+            "message.failed",
+            "message.inbound"
+          ],
+          "url": "https://api.example.com/ibubbl-webhooks"
+        }
+      },
+      "ValidationError": {
+        "properties": {
+          "loc": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                }
+              ]
+            },
+            "type": "array",
+            "title": "Location"
+          },
+          "msg": {
+            "type": "string",
+            "title": "Message"
+          },
+          "type": {
+            "type": "string",
+            "title": "Error Type"
+          }
+        },
+        "type": "object",
+        "required": [
+          "loc",
+          "msg",
+          "type"
+        ],
+        "title": "ValidationError"
+      },
+      "WebhookRevokeResponse": {
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "revoked",
+              "already_revoked"
+            ],
+            "title": "Status",
+            "description": "`revoked` if this call performed the revocation; `already_revoked` if the subscription was already revoked."
+          }
+        },
+        "type": "object",
+        "required": [
+          "status"
+        ],
+        "title": "WebhookRevokeResponse",
+        "example": {
+          "status": "revoked"
+        }
+      },
+      "WebhookSubscription": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id",
+            "description": "Unique subscription identifier (UUID)."
+          },
+          "url": {
+            "type": "string",
+            "title": "Url",
+            "description": "The HTTPS URL receiving events."
+          },
+          "secret_prefix": {
+            "type": "string",
+            "title": "Secret Prefix",
+            "description": "First 14 characters of the signing secret (`whsec_` + 8 hex). Useful for identifying which subscription's secret is in use without revealing the full value. The full secret is returned only once, at creation time.",
+            "examples": [
+              "whsec_a3f2c8d9"
+            ]
+          },
+          "event_types": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Event Types",
+            "description": "Event filter, or null if subscribed to all events."
+          },
+          "created_at": {
+            "type": "string",
+            "title": "Created At",
+            "description": "ISO 8601 UTC timestamp."
+          },
+          "last_delivered_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Delivered At",
+            "description": "ISO 8601 UTC timestamp of the most recent successful delivery to this subscription, or null if no event has been delivered yet."
+          },
+          "revoked_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Revoked At",
+            "description": "ISO 8601 UTC timestamp the subscription was revoked, or null if active. Revoked subscriptions stop receiving events."
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "url",
+          "secret_prefix",
+          "created_at"
+        ],
+        "title": "WebhookSubscription",
+        "example": {
+          "created_at": "2026-05-17T14:23:45.123Z",
+          "event_types": [
+            "message.sent",
+            "message.failed"
+          ],
+          "id": "whs_4a5b6c7d-8e9f-0a1b-2c3d-4e5f6a7b8c9d",
+          "last_delivered_at": "2026-05-17T15:01:12.456Z",
+          "secret_prefix": "whsec_a3f2c8d9",
+          "url": "https://api.example.com/ibubbl-webhooks"
+        }
+      },
+      "WebhookSubscriptionCreated": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id",
+            "description": "Unique subscription identifier (UUID)."
+          },
+          "url": {
+            "type": "string",
+            "title": "Url",
+            "description": "The HTTPS URL receiving events."
+          },
+          "secret_prefix": {
+            "type": "string",
+            "title": "Secret Prefix",
+            "description": "First 14 characters of the signing secret (`whsec_` + 8 hex). Useful for identifying which subscription's secret is in use without revealing the full value. The full secret is returned only once, at creation time.",
+            "examples": [
+              "whsec_a3f2c8d9"
+            ]
+          },
+          "event_types": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Event Types",
+            "description": "Event filter, or null if subscribed to all events."
+          },
+          "created_at": {
+            "type": "string",
+            "title": "Created At",
+            "description": "ISO 8601 UTC timestamp."
+          },
+          "last_delivered_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Delivered At",
+            "description": "ISO 8601 UTC timestamp of the most recent successful delivery to this subscription, or null if no event has been delivered yet."
+          },
+          "revoked_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Revoked At",
+            "description": "ISO 8601 UTC timestamp the subscription was revoked, or null if active. Revoked subscriptions stop receiving events."
+          },
+          "secret": {
+            "type": "string",
+            "title": "Secret",
+            "description": "Full signing secret. **Save it now** \u2014 this is the only time it is returned. Use it to verify the `X-iBubbl-Signature` header on incoming webhook POSTs (HMAC-SHA256 of the raw request body). See [Signature Verification](/webhooks/signatures).",
+            "examples": [
+              "whsec_a3f2c8d9e0f1b4d52c8a1f4e23b9d4f7ca8e51d2c3b4a5e6f"
+            ]
+          },
+          "warning": {
+            "type": "string",
+            "title": "Warning",
+            "description": "Reminder that the secret cannot be retrieved again. Present only on the create response."
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "url",
+          "secret_prefix",
+          "created_at",
+          "secret",
+          "warning"
+        ],
+        "title": "WebhookSubscriptionCreated",
+        "example": {
+          "created_at": "2026-05-17T14:23:45.123Z",
+          "event_types": [
+            "message.sent",
+            "message.failed"
+          ],
+          "id": "whs_4a5b6c7d-8e9f-0a1b-2c3d-4e5f6a7b8c9d",
+          "secret": "whsec_a3f2c8d9e0f1b4d52c8a1f4e23b9d4f7ca8e51d2c3b4a5e6f",
+          "secret_prefix": "whsec_a3f2c8d9",
+          "url": "https://api.example.com/ibubbl-webhooks",
+          "warning": "Save this secret now \u2014 it cannot be retrieved again."
+        }
+      }
+    },
+    "securitySchemes": {
+      "BearerAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "bearerFormat": "ib_pk_<32 hex>",
+        "description": "Bearer API key. Format: `Authorization: Bearer ib_pk_<32 hex>`. Generate keys from Dashboard \u2192 Settings \u2192 API Access."
+      }
+    }
+  },
+  "tags": [
+    {
+      "name": "Messages"
+    },
+    {
+      "name": "Contacts"
+    },
+    {
+      "name": "Webhooks"
+    }
+  ],
+  "security": [
+    {
+      "BearerAuth": []
+    }
+  ]
+}

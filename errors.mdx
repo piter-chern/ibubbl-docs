@@ -1,0 +1,101 @@
+---
+title: 'Error Reference'
+description: 'Stable error codes and what they mean.'
+---
+
+Every iBubbl API error response uses the same envelope shape:
+
+```json
+{
+  "detail": {
+    "error": "validation_error",
+    "message": "Either 'contact_id' or 'to' (E.164 phone) is required"
+  }
+}
+```
+
+The `error` field is a **stable machine-readable code** — branch your integration's logic on this, not on the HTTP status or `message`. The `message` field is human-readable and may change without notice.
+
+## Error catalog
+
+<ResponseField name="unauthorized" type="401">
+  Missing, malformed, or revoked API key. Verify the `Authorization: Bearer ib_pk_<hex>` header and that the key is active in your dashboard.
+</ResponseField>
+
+<ResponseField name="forbidden" type="403">
+  Authenticated, but the requested resource belongs to a different customer account. Returned only when access controls explicitly block a cross-account read; in most cross-tenant lookups, iBubbl returns `not_found` instead (existence isn't leaked).
+</ResponseField>
+
+<ResponseField name="not_found" type="404">
+  The requested resource doesn't exist, OR it exists but belongs to a different customer (existence is hidden across tenants). Verify the resource ID is correct and was created on the same account whose key you're using.
+</ResponseField>
+
+<ResponseField name="idempotency_conflict" type="409">
+  You reused an `idempotency_key` with a request payload that doesn't match the one originally cached. Either generate a new key for this distinct send, or fix your retry logic to reuse the original payload byte-for-byte. See [Idempotency](/idempotency).
+</ResponseField>
+
+<ResponseField name="validation_error" type="422">
+  Generic request-shape failure. The `message` will identify the field. Common causes: missing required body field, malformed E.164 phone, body length zero, `to` and `contact_id` both omitted.
+</ResponseField>
+
+<ResponseField name="contact_opted_out" type="422">
+  The destination contact has opted out and cannot receive new sends. iBubbl enforces this server-side; there is no programmatic way to override. See [Suppression & Opt-Outs](/concepts/suppression).
+</ResponseField>
+
+<ResponseField name="invalid_timezone" type="422">
+  The `timezone` field on a contact upsert is not in the supported IANA allowlist. The supported set covers US/Canada timezones plus common international zones; if you need a zone that isn't supported, contact support.
+</ResponseField>
+
+<ResponseField name="hourly_cap_hit" type="422">
+  Your account or line has hit its hourly send cap. iBubbl will auto-retry queued messages on the next hour; you don't need to do anything. To raise caps, contact support.
+</ResponseField>
+
+<ResponseField name="daily_cap_exhausted" type="422">
+  Daily send cap reached. Resets at 3am ET. Queued messages auto-retry on the next window.
+</ResponseField>
+
+<ResponseField name="cold_cap_exhausted" type="422">
+  Cold-outreach cap reached for the day. iBubbl ramps cold-send volume during line warm-up to protect sender reputation.
+</ResponseField>
+
+<ResponseField name="line_unavailable" type="503">
+  No active sending line is available to handle this send. Usually transient — the line is briefly offline. iBubbl retries automatically; no action required.
+</ResponseField>
+
+<ResponseField name="line_offline" type="503">
+  Your sending line is currently disconnected. Messages queue until the line reconnects.
+</ResponseField>
+
+<ResponseField name="internal_error" type="500">
+  An unexpected error on iBubbl's side. These are paired with our error-tracking system; we get paged when they happen. If you see a sustained pattern, contact support with the timestamp + request body.
+</ResponseField>
+
+## When to retry
+
+| Code | HTTP | Retryable? |
+| ---- | ---- | ---------- |
+| `unauthorized` | 401 | ❌ Fix the key. |
+| `forbidden` | 403 | ❌ Wrong account. |
+| `not_found` | 404 | ❌ Verify the ID. |
+| `idempotency_conflict` | 409 | ❌ Fix the retry logic. |
+| `validation_error` | 422 | ❌ Fix the payload. |
+| `contact_opted_out` | 422 | ❌ Cannot bypass. |
+| `invalid_timezone` | 422 | ❌ Fix the timezone. |
+| `hourly_cap_hit` / `daily_cap_exhausted` / `cold_cap_exhausted` | 422 | ⚠️ iBubbl auto-queues; you should not retry. |
+| `line_unavailable` / `line_offline` | 503 | ⚠️ iBubbl auto-queues; you should not retry. |
+| `internal_error` | 500 | ✅ Retry with the same idempotency key after a short backoff. |
+
+The general rule: **don't retry 4xx**. Most 4xxes are payload-level problems that retrying won't fix. The cap-related 422s are technically retryable on a longer time horizon, but iBubbl handles that internally — your retry just creates duplicate work.
+
+## HTTP status mapping summary
+
+| Status | When |
+| ------ | ---- |
+| `200` / `201` / `202` | Success. `202` for accepted-but-queued sends; `201` for created resources; `200` everywhere else. |
+| `401` | Auth failure. |
+| `403` | Cross-account access blocked. |
+| `404` | Resource not found (or hidden across tenants). |
+| `409` | Idempotency conflict. |
+| `422` | Validation or routing-level failure. |
+| `500` | Unexpected iBubbl error. |
+| `503` | Send-side capacity / line offline. |
