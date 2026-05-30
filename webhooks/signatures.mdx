@@ -1,28 +1,36 @@
 ---
 title: 'Signature Verification'
-description: 'Verify incoming webhooks with HMAC-SHA256.'
+description: 'Verify incoming webhooks with HMAC-SHA256 over a timestamp + body.'
 ---
 
-Every webhook iBubbl POSTs to your URL carries a signature in the `X-iBubbl-Signature` header. You should verify this signature before processing the event — it confirms the request actually came from iBubbl and wasn't forged or replayed by a third party.
+Every webhook iBubbl POSTs to your URL carries a signature in the `X-iBubbl-Signature` header. You should verify this signature before processing the event — it confirms the request actually came from iBubbl and bounds how long a captured request can be replayed against your endpoint.
 
 ## Header format
 
 ```http
-X-iBubbl-Signature: sha256=<64 hex chars>
+X-iBubbl-Signature: t=<unix_ts>,v1=<64 hex chars>
 ```
 
 Example:
 
 ```http
-X-iBubbl-Signature: sha256=3b8f2a9c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a0b1c2d3e4f5a6b7c8d9e0f1a
+X-iBubbl-Signature: t=1748600000,v1=3b8f2a9c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a0b1c2d3e4f5a6b7c8d9e0f1a
 ```
+
+The `t=` value is the Unix timestamp (seconds) when iBubbl generated the signature. The `v1=` value is the HMAC-SHA256 over the timestamp and body bytes — see [Algorithm](#algorithm) below. The `v1` tag leaves room for future signature scheme rotation (`v2`, etc.) without needing a new header name.
 
 ## Algorithm
 
 - Function: **HMAC-SHA256**
 - Key: the **literal UTF-8 bytes** of your subscription secret (the `whsec_<hex>` string). Do **not** hex-decode the secret before using it as the key.
-- Message: the **raw request body bytes** as received. Do **not** re-serialize the JSON before signing — whitespace, key ordering, and number formatting can all change between serializers, and any change breaks the signature.
-- Output: lowercase hex digest, prefixed with `sha256=`.
+- Message: `{timestamp}.{body}` — the timestamp from `t=` joined to the **raw request body bytes** with a literal `.` (dot) separator. Do **not** re-serialize the JSON before signing; the raw bytes as received are what was signed.
+- Output: lowercase hex digest, returned as the value of `v1=`.
+
+## Replay protection
+
+Reject the request if `|now - t| > 300` seconds (5 minutes). This bounds how long a captured request can be replayed against your endpoint.
+
+iBubbl's clock and your server's clock can drift by a few seconds; 5 minutes is a generous tolerance that handles typical NTP-synced drift while still bounding replay risk. If your server can be more than 5 minutes out of sync (no NTP), allow a wider window — but log when you do, since persistent drift indicates an ops problem.
 
 ## Reference verifiers
 
@@ -31,6 +39,9 @@ X-iBubbl-Signature: sha256=3b8f2a9c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a0b1c2d3e4f5a6
 ```python Python
 import hmac
 import hashlib
+import time
+
+REPLAY_TOLERANCE_SECONDS = 300
 
 def verify_signature(body_bytes: bytes, signature_header: str, secret: str) -> bool:
     """
@@ -38,27 +49,48 @@ def verify_signature(body_bytes: bytes, signature_header: str, secret: str) -> b
     signature_header: the value of the X-iBubbl-Signature header.
     secret: your subscription's whsec_<hex> secret.
     """
+    parts = dict(p.split("=", 1) for p in signature_header.split(","))
+    try:
+        ts = int(parts["t"])
+        received = parts["v1"]
+    except (KeyError, ValueError):
+        return False
+
+    # Reject replays.
+    if abs(time.time() - ts) > REPLAY_TOLERANCE_SECONDS:
+        return False
+
+    signed = f"{ts}.".encode("utf-8") + body_bytes
     expected = hmac.new(
-        secret.encode("utf-8"),
-        body_bytes,
-        hashlib.sha256,
+        secret.encode("utf-8"), signed, hashlib.sha256,
     ).hexdigest()
-    received = signature_header.removeprefix("sha256=")
     return hmac.compare_digest(expected, received)
 ```
 
 ```javascript Node
 const crypto = require('crypto');
 
+const REPLAY_TOLERANCE_SECONDS = 300;
+
 function verifySignature(bodyBytes, signatureHeader, secret) {
   // bodyBytes: Buffer (the raw request body as received)
   // signatureHeader: the value of the X-iBubbl-Signature header
   // secret: your subscription's whsec_<hex> secret
+  const parts = Object.fromEntries(
+    signatureHeader.split(',').map((p) => p.split('=', 2)),
+  );
+  const ts = parseInt(parts.t, 10);
+  const received = parts.v1;
+  if (!Number.isFinite(ts) || !received) return false;
+
+  // Reject replays.
+  if (Math.abs(Date.now() / 1000 - ts) > REPLAY_TOLERANCE_SECONDS) return false;
+
+  const signed = Buffer.concat([Buffer.from(`${ts}.`, 'utf-8'), bodyBytes]);
   const expected = crypto
     .createHmac('sha256', secret)
-    .update(bodyBytes)
+    .update(signed)
     .digest('hex');
-  const received = signatureHeader.replace(/^sha256=/, '');
   return crypto.timingSafeEqual(
     Buffer.from(expected, 'hex'),
     Buffer.from(received, 'hex'),
@@ -162,6 +194,10 @@ export async function POST(request) {
 
 <Warning>
 **Don't hex-decode the secret.** The HMAC key is the **literal string** `whsec_a3f2c8d9...` encoded as UTF-8 — not the hex-decoded bytes of the suffix. This trips up integrators who assume `whsec_` is a prefix tag separated from a hex-encoded key. It isn't.
+</Warning>
+
+<Warning>
+**Don't skip the timestamp check.** The HMAC alone proves the request came from iBubbl. The timestamp check prevents a captured request from being replayed against your endpoint hours later. Both are required for full replay protection — skipping the timestamp check is the most common "but it worked in dev" mistake.
 </Warning>
 
 - **Use constant-time comparison.** `hmac.compare_digest` (Python) and `crypto.timingSafeEqual` (Node) prevent timing-attack leaks. Don't use `==` on signatures.
