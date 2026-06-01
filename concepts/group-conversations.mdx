@@ -112,7 +112,24 @@ The `message.sent` webhook for a new group's first message includes the populate
 
 ## Limitations
 
-- **Dashboard- and API-initiated participant changes are deferred.** Add or remove participants via the iMessage app on the iBubbl line's Mac — iBubbl syncs the updated roster within ~10s. Programmatic participant management ships when the upstream BlueBubbles helper supports it on the current macOS.
-- **Single-participant groups aren't a thing in iMessage.** `participant_phones` requires at least 2 phones — use `to` or `contact_id` for 1:1 sends.
-- **Group naming is best-effort.** The `group_name` is set at creation time; mid-thread renames aren't currently exposed via the API.
-- **Attachments are not supported on group sends in v1.** Send a text-only first message; multi-attachment group sends arrive in a later slice.
+iBubbl's group conversation support has the following limitations in v1. All but the last stem from BlueBubbles' helper not yet supporting iMessage's newer iOS 16+ framework protocols on macOS 26 ("Tahoe"). When BlueBubbles ships an updated helper with Tahoe-compatible bindings — watch the [BlueBubbles GitHub releases](https://github.com/BlueBubblesApp/bluebubbles-server) — these resolve simultaneously and we'll unblock the corresponding endpoints.
+
+**Programmatic add/remove of participants is not supported.**
+The BlueBubbles helper's add-participant and remove-participant API hangs and times out on Tahoe. Change participants via the iMessage app on the Mac that hosts your iBubbl line — iBubbl's participant-sync worker picks up the change within ~10 seconds and the next `message.inbound` webhook for the group carries the updated `participants` array. Programmatic management ships when the upstream helper unblocks.
+
+**Typing indicators for outbound are not supported.**
+Sending a typing indicator to a contact's phone returns success at the API layer but the indicator never renders on the recipient's iMessage. Inbound typing indicators (your contacts typing) work and surface in the dashboard normally.
+
+**Editing or unsending sent messages is not supported.**
+The BlueBubbles helper's message-edit API crashes Messages.app on the line's Mac. Send a follow-up correction instead. Inbound edits and unsends from contacts work and fire `message.edited` / `message.unsent` webhook events normally.
+
+**Group renaming mid-thread is not exposed via the API.**
+The `group_name` is set at creation time when you use the `participant_phones` shape. Renaming a group after creation is supported by iMessage itself — change the group name via the iMessage app on the line's Mac and the participant-sync worker picks up the new name within ~10 seconds. Programmatic rename ships when the upstream helper unblocks.
+
+**New-group creation requires at least 2 participants.**
+Single-participant "groups" aren't a thing in iMessage. The `participant_phones` shape on [`POST /v1/messages`](/api-reference/messages/send) returns `422 insufficient_participants` if fewer than 2 phones are supplied. Use the `to` or `contact_id` shape for 1:1 sends.
+
+**Attachments are not supported on new-group creates.**
+The first message on a new group must be text-only. Send your first message via `participant_phones` + `body`, then send attachments to the populated `chat_guid` once it surfaces (~5–10s after creation, observable via `GET /v1/messages/{id}` or the `message.sent` webhook). Multi-attachment new-group creation in one call ships in a later slice.
+
+For full inbound + outbound functionality on existing groups (which works today), see [Sending messages](/api-reference/messages/send) above.
