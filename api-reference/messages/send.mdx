@@ -2,3 +2,114 @@
 title: 'Send a message'
 openapi: 'POST /v1/messages'
 ---
+
+Send an iMessage with any of four routing shapes — 1:1 by contact ID, 1:1 by phone, into an existing group by `chat_guid`, or as a brand-new group by `participant_phones`. Exactly one routing field is required per request.
+
+## 1:1 by phone number
+
+The most common shape. iBubbl looks up the contact by `(your customer, phone)`; if there isn't one yet, a new contact is created automatically and the message is sent.
+
+```bash
+curl https://api.ibubbl.com/v1/messages \
+  -H "Authorization: Bearer $IB_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "to": "+14155551234",
+    "body": "Hi Sarah, following up on our chat yesterday.",
+    "idempotency_key": "a3f2c8d9-e0f1-4b4d-9c5a-7b8e2d1f0c4a"
+  }'
+```
+
+## 1:1 by contact ID
+
+If you already have the contact's iBubbl ID (from a prior upsert or webhook), address by ID — skips the phone-number lookup.
+
+```bash
+curl https://api.ibubbl.com/v1/messages \
+  -H "Authorization: Bearer $IB_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "contact_id": "c8a1f4e2-3b9d-4f7c-a8e5-1d2c3b4a5e6f",
+    "body": "Hi Sarah, following up on our chat yesterday.",
+    "idempotency_key": "b4e3c9d0-f1a2-5c5e-0a6b-8c9f3e2a1d5b"
+  }'
+```
+
+## Send into an existing group
+
+Address a group you already know by `chat_guid`. Get this value from a prior [`message.inbound`](/webhooks/events) webhook event or from `GET /v1/messages/{id}` after creating a new group. The `chat_guid` is stable for the lifetime of the conversation. See [Group Conversations](/concepts/group-conversations) for the data model.
+
+```bash
+curl https://api.ibubbl.com/v1/messages \
+  -H "Authorization: Bearer $IB_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "chat_guid": "any;+;067ace6caf6c43aaa2f7d643975e15ea",
+    "body": "Quick update for the team — meeting moved to 3pm.",
+    "idempotency_key": "c5f4d0e1-a2b3-6d6f-1b7c-9d0a4f3b2e6c"
+  }'
+```
+
+Returns `404 group_not_found` if no group with that `chat_guid` exists under your account. Returns `422 group_outbound_blocked_suppression` if any participant of the group is on your suppression list.
+
+## Create a new group and send the first message
+
+Provide 2 or more E.164 participant phones and an optional group name. iBubbl creates the iMessage group and sends your first message in one operation.
+
+```bash
+curl https://api.ibubbl.com/v1/messages \
+  -H "Authorization: Bearer $IB_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "participant_phones": ["+14155551234", "+14155557654"],
+    "group_name": "Team Alpha",
+    "body": "Welcome to the team thread!",
+    "idempotency_key": "d6a5e1f2-b3c4-7e7a-2c8d-0e1b5a4c3f7d"
+  }'
+```
+
+The response returns immediately with `chat_guid: null` — the device hasn't yet created the iMessage group. Within ~5–10 seconds the device finalizes the group and the `chat_guid` populates on the conversation. To learn the populated value, either:
+
+- Subscribe to [`message.sent`](/webhooks/events) — the webhook for the first message carries the new `chat_guid`, or
+- Poll `GET /v1/messages/{id}` until `chat_guid` is non-null.
+
+Store the `chat_guid` and use the [existing-group shape](#send-into-an-existing-group) for subsequent sends.
+
+<Note>
+Single-participant "groups" aren't a thing in iMessage. `participant_phones` requires at least 2 phones — use `to` or `contact_id` for 1:1 sends. Attachments on new-group creates are not supported in v1; send a text-only first message, then send attachments to the populated `chat_guid` once it's available.
+</Note>
+
+## Response shape
+
+All four shapes return the same `Message`:
+
+```json
+{
+  "id": "msg_8b3a4e72-1c2d-4e5f-9a0b-2c3d4e5f6a7b",
+  "status": "queued",
+  "to": "+14155551234",
+  "body": "Hi Sarah, following up on our chat yesterday.",
+  "contact_id": "c8a1f4e2-3b9d-4f7c-a8e5-1d2c3b4a5e6f",
+  "conversation_id": "cnv_3a4b5c6d-7e8f-9a0b-1c2d-3e4f5a6b7c8d",
+  "conversation_kind": "one_to_one",
+  "chat_guid": null,
+  "channel": "imessage",
+  "sent_at": null
+}
+```
+
+For group sends `to` is `null`, `conversation_kind` is `"group"`, and `chat_guid` is populated for existing-group sends. For brand-new group creates `chat_guid` is `null` initially and populates within ~5–10 seconds as described above.
+
+Poll `GET /v1/messages/{id}` to check delivery state, or subscribe to [webhook events](/webhooks/events) for push notifications.
+
+## Validation errors
+
+| Error code | Cause |
+| ---------- | ----- |
+| `validation_error` | Zero or multiple routing fields set, `group_name` without `participant_phones`, or `participant_phones` with fewer than 2 numbers. |
+| `not_found` | `contact_id` doesn't match a contact under your account. |
+| `group_not_found` | `chat_guid` doesn't match a group under your account. |
+| `contact_opted_out` | Target contact (1:1) is on your suppression list. |
+| `group_outbound_blocked_suppression` | Any participant of the addressed group is on your suppression list. The `detail.blocked_phones` array lists every suppressed participant. |
+| `insufficient_participants` | `participant_phones` had fewer than 2 entries. (Same as `validation_error` semantics; surfaced separately for parity with the dashboard error catalog.) |
+| `idempotency_conflict` | The `idempotency_key` has been used before with a different payload. |

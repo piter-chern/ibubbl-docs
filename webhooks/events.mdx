@@ -130,7 +130,10 @@ Fired when a contact replies to you. This is the event most integrations care ab
     "body": "yeah sounds good, what time?",
     "received_at": "2026-05-17T14:24:12.456Z",
     "attachments": [],
-    "reply_to_message_id": null
+    "reply_to_message_id": null,
+    "conversation_kind": "one_to_one",
+    "sender_phone": "+14155551234",
+    "participants": []
   }
 }
 ```
@@ -141,8 +144,37 @@ If the inbound message contained attachments (images, videos, audio), the `attac
 
 `reply_to_message_id` is non-null when the contact is quoting one of your previous messages.
 
+### Group inbound
+
+For group conversations (`conversation_kind: "group"`), the same event fires with two additional fields populated. `sender_phone` identifies which of the group's participants posted the message; `participants` lists every active participant other than your iBubbl line:
+
+```json
+{
+  "id": "evt_9c4b5d83-2e3f-5a6b-0c1d-3e4f5a6b7c8d",
+  "type": "message.inbound",
+  "created_at": "2026-05-17T14:24:12.456Z",
+  "data": {
+    "message_id": "msg_6c7d8e9f-0a1b-2c3d-4e5f-6a7b8c9d0e1f",
+    "from_number": "+14155551234",
+    "to_number": "+14155550100",
+    "body": "what time tomorrow?",
+    "received_at": "2026-05-17T14:24:12.456Z",
+    "attachments": [],
+    "reply_to_message_id": null,
+    "conversation_kind": "group",
+    "sender_phone": "+14155551234",
+    "participants": [
+      {"phone": "+14155551234", "first_name": "Sarah", "last_name": "Smith"},
+      {"phone": "+14155557654", "first_name": "Bob",   "last_name": "Jones"}
+    ]
+  }
+}
+```
+
+For 1:1 conversations `sender_phone == from_number` and `participants` is `[]`. See [Group Conversations](/concepts/group-conversations) for the full model.
+
 <Note>
-If the inbound body matches a STOP-pattern keyword (see [Suppression & Opt-Outs](/concepts/suppression)), iBubbl auto-marks the contact opted-out and fires a separate `contact.opted_out` event. You'll receive **both** events for the same incoming text.
+If the inbound body matches a STOP-pattern keyword (see [Suppression & Opt-Outs](/concepts/suppression)), iBubbl auto-marks the contact opted-out and fires a separate `contact.opted_out` event. You'll receive **both** events for the same incoming text. In a group, opting out the sender blocks all subsequent outbound to the group with `group_outbound_blocked_suppression` — the rest of the group cannot be messaged until the opted-out participant is removed.
 </Note>
 </Accordion>
 

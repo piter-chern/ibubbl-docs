@@ -1,0 +1,118 @@
+---
+title: 'Group Conversations'
+description: 'How iBubbl represents and routes iMessage group conversations.'
+---
+
+iBubbl supports iMessage group conversations — threads with 2 or more participants in addition to your iBubbl line. Groups work alongside 1:1 conversations and share the same [`/v1/messages`](/api-reference/messages/send) API surface, with additional fields for routing.
+
+## Conversation kind
+
+Every conversation has a `kind` discriminator on webhook payloads and API responses:
+
+- `one_to_one` — a single contact plus your iBubbl line
+- `group` — your iBubbl line plus 2 or more contacts
+
+Branch your integration on `conversation_kind`. The same lifecycle and webhook events fire for both kinds — only the addressing differs.
+
+## Group identity (`chat_guid`)
+
+Each group conversation has an opaque `chat_guid` that BlueBubbles issues when the iMessage group is created. The `chat_guid` is stable for the lifetime of the conversation — it does not change when participants are added or removed.
+
+Format: `any;+;<32-hex-chars>` (e.g. `any;+;067ace6caf6c43aaa2f7d643975e15ea`). The leading `any;+;` marks it as a multi-participant chat. For 1:1 conversations the equivalent identifier has a different shape (`iMessage;-;<phone>`); use the `conversation_kind` discriminator to branch rather than parsing the prefix.
+
+Use `chat_guid` to send into an existing group — see [Sending messages](/api-reference/messages/send).
+
+## Participants
+
+The `participants` array on group webhook payloads contains every active participant other than your iBubbl line:
+
+```json
+{
+  "participants": [
+    {"phone": "+13477914509", "first_name": "Sarah", "last_name": "Smith"},
+    {"phone": "+17187699436", "first_name": "Bob",   "last_name": "Jones"}
+  ]
+}
+```
+
+Participants who have left the group are excluded. The list reflects the current roster at the time the webhook fires.
+
+## Sender attribution
+
+On inbound webhook events for group conversations, `sender_phone` identifies which specific participant sent the message:
+
+```json
+{
+  "type": "message.inbound",
+  "data": {
+    "message_id": "msg_...",
+    "from_number": "+13477914509",
+    "sender_phone": "+13477914509",
+    "conversation_kind": "group",
+    "participants": [
+      {"phone": "+13477914509", "first_name": "Sarah", "last_name": "Smith"},
+      {"phone": "+17187699436", "first_name": "Bob",   "last_name": "Jones"}
+    ],
+    "body": "What time tomorrow?"
+  }
+}
+```
+
+For 1:1 conversations `sender_phone` equals `from_number`. For groups `sender_phone` identifies which of the N participants posted the message — `from_number` is preserved as a legacy field with the same value, so existing 1:1 integrations keep working unchanged.
+
+## Suppression in groups
+
+If **any** participant of a group is on your suppression list, iBubbl blocks **all** outbound to the group with `422 group_outbound_blocked_suppression`. The error payload includes a `blocked_phones` array listing every suppressed participant:
+
+```json
+{
+  "detail": {
+    "error": "group_outbound_blocked_suppression",
+    "message": "Cannot send to this group — 1 participant(s) have opted out.",
+    "blocked_phones": ["+13477914509"]
+  }
+}
+```
+
+This is deliberate. Sending into a group where one participant opted out would deliver to that participant — defeating the opt-out. To send to the group again, either:
+
+- Remove the suppressed participant from the group via the iBubbl line's Mac (the iMessage app), or
+- Remove them from the suppression list (only if they re-opt-in)
+
+## Sending to groups
+
+Three request shapes on `POST /v1/messages` cover the group lifecycle:
+
+<CardGroup cols={2}>
+  <Card title="Existing group" icon="messages">
+    Send into a group you already know by `chat_guid` — from a prior webhook event or a `GET /v1/messages/{id}` response.
+  </Card>
+  <Card title="New group" icon="user-plus">
+    Pass `participant_phones` (2+ E.164 numbers) and an optional `group_name`. iBubbl creates the iMessage group and sends your first message in one operation.
+  </Card>
+</CardGroup>
+
+See [`POST /v1/messages`](/api-reference/messages/send) for full examples.
+
+## Lifecycle of a new group
+
+When you create a new group via `participant_phones`:
+
+1. iBubbl validates the request (≥2 participants, no suppressed phones).
+2. A conversation row is created with `chat_guid: null` — a placeholder.
+3. The first message is queued in `pending` state.
+4. Within ~5–10 seconds the device creates the iMessage group, sends the first message, and reports the BlueBubbles-issued `chat_guid` back.
+5. The conversation row updates with the real `chat_guid`. The message flips to `sent` and the `message.sent` webhook fires.
+
+The response from `POST /v1/messages` returns immediately after step 3 with `chat_guid: null`. To address the group on subsequent sends, poll `GET /v1/messages/{id}` to observe the transition — once `chat_guid` populates, store it and use the existing-group request shape from then on.
+
+<Note>
+The `message.sent` webhook for a new group's first message includes the populated `chat_guid` — subscribing to that event is the lowest-latency way to learn the group's identity without polling.
+</Note>
+
+## Limitations
+
+- **Dashboard- and API-initiated participant changes are deferred.** Add or remove participants via the iMessage app on the iBubbl line's Mac — iBubbl syncs the updated roster within ~10s. Programmatic participant management ships when the upstream BlueBubbles helper supports it on the current macOS.
+- **Single-participant groups aren't a thing in iMessage.** `participant_phones` requires at least 2 phones — use `to` or `contact_id` for 1:1 sends.
+- **Group naming is best-effort.** The `group_name` is set at creation time; mid-thread renames aren't currently exposed via the API.
+- **Attachments are not supported on group sends in v1.** Send a text-only first message; multi-attachment group sends arrive in a later slice.
