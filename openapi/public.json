@@ -669,9 +669,16 @@
             "description": "Lifecycle state. `queued` = accepted, not yet dispatched (capacity / working-hours hold). `pending` = handed to the device, waiting on the send. `sent` / `delivered` / `read` = delivery progression. `failed` = terminal failure \u2014 see webhook `message.failed` for the reason."
           },
           "to": {
-            "type": "string",
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
             "title": "To",
-            "description": "Destination phone number (E.164).",
+            "description": "Destination phone number (E.164) for 1:1 sends. Null for group sends \u2014 group destination is identified by `chat_guid` instead.",
             "examples": [
               "+14155551234"
             ]
@@ -691,7 +698,44 @@
               }
             ],
             "title": "Contact Id",
-            "description": "ID of the contact this message was sent to."
+            "description": "ID of the contact this message was sent to. For groups, this is the 'primary' participant the message was addressed to (the first participant in `participant_phones` on a new group create); the conversation's full participant list is available via the conversation."
+          },
+          "conversation_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Conversation Id",
+            "description": "ID of the conversation this message belongs to. Stable for the lifetime of the conversation; use it to fetch the thread or correlate webhook events."
+          },
+          "conversation_kind": {
+            "type": "string",
+            "enum": [
+              "one_to_one",
+              "group"
+            ],
+            "title": "Conversation Kind",
+            "description": "`one_to_one` for sends to a single contact, `group` for iMessage groups (2+ participants in addition to your iBubbl line).",
+            "default": "one_to_one"
+          },
+          "chat_guid": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Chat Guid",
+            "description": "BlueBubbles-issued opaque identifier for the group chat (`any;+;<hex>`). Returned for `group` sends \u2014 use it to address subsequent messages to the same group via the `chat_guid` request shape. Null for `one_to_one` sends and for brand-new group creates that haven't yet been finalized by the device (the value populates within ~5\u201310s once the device creates the iMessage chat; poll `GET /v1/messages/{id}` to observe the transition).",
+            "examples": [
+              "any;+;067ace6caf6c43aaa2f7d643975e15ea"
+            ]
           },
           "channel": {
             "type": "string",
@@ -722,7 +766,6 @@
         "required": [
           "id",
           "status",
-          "to",
           "body",
           "channel"
         ],
@@ -731,6 +774,8 @@
           "body": "Hey Sam \u2014 quick check-in about your order.",
           "channel": "imessage",
           "contact_id": "c8a1f4e2-3b9d-4f7c-a8e5-1d2c3b4a5e6f",
+          "conversation_id": "cnv_3a4b5c6d-7e8f-9a0b-1c2d-3e4f5a6b7c8d",
+          "conversation_kind": "one_to_one",
           "id": "msg_8b3a4e72-1c2d-4e5f-9a0b-2c3d4e5f6a7b",
           "status": "queued",
           "to": "+14155551234"
@@ -818,7 +863,7 @@
               }
             ],
             "title": "Contact Id",
-            "description": "ID of an existing contact to message. Mutually exclusive with `to`; exactly one is required.",
+            "description": "1:1 send by existing contact ID. Mutually exclusive with `to`, `chat_guid`, and `participant_phones`.",
             "examples": [
               "c8a1f4e2-3b9d-4f7c-a8e5-1d2c3b4a5e6f"
             ]
@@ -834,9 +879,61 @@
               }
             ],
             "title": "To",
-            "description": "Destination phone number in E.164 format (e.g. `+14155551234`). If the number doesn't match an existing contact, one is created automatically. Mutually exclusive with `contact_id`.",
+            "description": "1:1 send by E.164 phone number (e.g. `+14155551234`). If the number doesn't match an existing contact, one is created automatically. Mutually exclusive with `contact_id`, `chat_guid`, and `participant_phones`.",
             "examples": [
               "+14155551234"
+            ]
+          },
+          "chat_guid": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Chat Guid",
+            "description": "Send into an existing iMessage group identified by its BlueBubbles-issued `chat_guid` (`any;+;<hex>`). Get this value from a prior `message.inbound` webhook event or `GET /v1/messages/{id}` response. Mutually exclusive with `contact_id`, `to`, and `participant_phones`.",
+            "examples": [
+              "any;+;067ace6caf6c43aaa2f7d643975e15ea"
+            ]
+          },
+          "participant_phones": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Participant Phones",
+            "description": "Create a brand-new iMessage group and send the first message in one call. List of 2 or more E.164 phone numbers (your iBubbl line is added automatically; do not include it). Mutually exclusive with `contact_id`, `to`, and `chat_guid`. Optionally pair with `group_name` to set the group's display name.",
+            "examples": [
+              [
+                "+14155551234",
+                "+14155557654"
+              ]
+            ]
+          },
+          "group_name": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 80
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Group Name",
+            "description": "Display name for a new iMessage group. Only valid alongside `participant_phones`. Optional \u2014 iMessage will fall back to the participants' names if omitted.",
+            "examples": [
+              "Team Alpha"
             ]
           },
           "body": {
