@@ -61,6 +61,12 @@
       ]
     },
     {
+      "group": "Inbound Events",
+      "pages": [
+        "inbound-events/overview"
+      ]
+    },
+    {
       "group": "API Reference",
       "pages": [
         {
@@ -84,6 +90,12 @@
             "api-reference/webhooks/list",
             "api-reference/webhooks/retrieve",
             "api-reference/webhooks/revoke"
+          ]
+        },
+        {
+          "group": "Inbound Events",
+          "pages": [
+            "api-reference/inbound-events/receive"
           ]
         }
       ]

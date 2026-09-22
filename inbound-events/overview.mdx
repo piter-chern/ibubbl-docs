@@ -1,0 +1,175 @@
+---
+title: 'Inbound events'
+description: 'Let a connected app start an iBubbl workflow.'
+---
+
+Most of this documentation describes iBubbl talking to you. This page is the
+other direction: another app posts an event to iBubbl, and a workflow you built
+runs.
+
+The case it was built for: a customer's card is declined on a subscription
+renewal, and you want to text them about it while they can still fix it.
+
+<Note>
+  Not to be confused with [Webhooks](/webhooks/overview), which is iBubbl
+  sending events **to** your server. This page is about events arriving **at**
+  iBubbl.
+</Note>
+
+## How it fits together
+
+1. Create a **source** in your dashboard under **Settings → Inbound events**.
+   You get a URL with a credential built into it, shown once.
+2. Paste that URL into the sending app.
+3. Build a workflow whose trigger is **Webhook received**, pointed at that
+   source.
+
+When an event arrives, iBubbl verifies the signature, finds the customer's phone
+number in the payload, and starts your workflow.
+
+## The endpoint
+
+```
+POST https://api.ibubbl.com/v1/events/<token>
+```
+
+This is the one endpoint in the API that takes no `Authorization` header — the
+credential is the token in the URL. That is not a shortcut: several apps,
+Recharge among them, let you configure only a destination URL and give you no
+way to set a header. Authenticity comes from the signature instead, which every
+request must carry.
+
+Treat the URL like a password. Anyone who has it can post events to your
+workflows, subject to the signature check below. If it leaks, revoke the source
+and create a new one.
+
+### What you get back
+
+```json
+{ "received": true, "runs_started": 1 }
+```
+
+`runs_started` is `0` whenever the event was accepted but nothing ran — no
+workflow was listening, or the event was a repeat of one already handled.
+That is normal. When it is unexpectedly `0`, the source's row in **Settings →
+Inbound events** says which of those it was.
+
+Errors are limited to `403` (signature did not match), `404` (no such source, or
+it was revoked), and `413` (body over 256 KB). Everything else answers `200`,
+deliberately — see [Delivery](#delivery-and-retries).
+
+## Connecting Recharge
+
+In Recharge, create a webhook with your iBubbl URL as the address and
+`charge/failed` as the topic. You can do that from their API:
+
+```bash
+curl -X POST https://api.rechargeapps.com/webhooks \
+  -H "X-Recharge-Access-Token: <your recharge token>" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "address": "https://api.ibubbl.com/v1/events/ibev_...",
+    "topic": "charge/failed"
+  }'
+```
+
+<Warning>
+  When you create the source in iBubbl, paste your **API Client Secret** — not
+  your API token. They are different values. Find it in Recharge under
+  **Tools and apps → API tokens →** your token **→ Edit admin API token**.
+
+  Pasting the token instead is the most common setup mistake, and it shows up
+  as every event failing with "Signature did not match".
+</Warning>
+
+Recharge signs each request with an `X-Recharge-Hmac-Sha256` header. Despite the
+name, the value is **not** an HMAC — it is a plain SHA-256 of your client secret
+followed by the raw request body. iBubbl handles that for you; it is worth
+knowing only if you are comparing against your own verifier.
+
+### Writing the message
+
+The whole event is available to your message template under `trigger.event`,
+rooted at the app's own payload. Recharge wraps a charge, so:
+
+```
+Hi {{contact.first_name}} — the card on your subscription was declined.
+You can update it here: https://yourstore.rechargeapps.com/portal/{{trigger.event.charge.customer_hash}}/
+```
+
+`customer_hash` comes in the payload, so the link costs no extra API call. Link
+to the portal root rather than a deeper page: the exact path differs depending
+on which Recharge portal your store runs, and Recharge is migrating merchants
+between them.
+
+Once the customer updates their card, Recharge reschedules the retry itself — so
+"update your card and we'll take care of the rest" is literally true.
+
+## Repeat events
+
+Apps resend events. Recharge in particular sends `charge/failed` **every time it
+retries a charge**, and how many times that is depends on the retry settings in
+your own Recharge account.
+
+Without protection, a single declined card would text the customer on every one
+of those retries.
+
+The **Event ID path** on your trigger is what prevents it. It points at the field
+identifying the underlying object — for Recharge, `charge.id`. Events resolving
+to an ID that already started a run are folded into that run instead of starting
+a new one.
+
+<Warning>
+  Paths start inside the sending app's payload. Recharge wraps everything in a
+  `charge` object, so the path is `charge.id` — not `id`.
+
+  A path that matches nothing is treated as a configuration error: no workflow
+  runs, and the source reports **Event ID path not found**. Sending nothing is
+  the safer failure here than sending one message per retry.
+</Warning>
+
+Because the ID identifies the object rather than the delivery, this is permanent
+for that charge. To send a second, different message later in the dunning cycle,
+build a separate workflow on the `charge/max_retries_reached` topic.
+
+## Finding the customer
+
+iBubbl looks for a phone number in the payload — for Recharge, in the billing
+then shipping address — and converts it to international format. Numbers arrive
+as the shopper typed them, so `(310) 384-3698` and `3103843698` both work.
+
+A number that cannot be read as a real phone number is **rejected, not guessed
+at**, and the event starts nothing. That matters more than it looks: the message
+you are sending carries a link to that customer's account, so a number resolved
+onto the wrong person would hand a stranger access to someone else's
+subscription.
+
+Events for customers with no phone number on file therefore do nothing, and the
+source reports **No phone number in event**. If your store collects phone
+numbers from only some customers, this feature reaches only those customers.
+
+## Delivery and retries
+
+iBubbl answers `200` to anything it has verified, even when the event goes
+nowhere. That is on purpose. Recharge treats `408`, `429` and `5xx` as failures,
+retries 19 times over 48 hours, and then **deletes the webhook registration**
+and emails you. An endpoint that returned `500` on an unrecognised payload would
+eventually unsubscribe you without either side noticing.
+
+It also means the reason an event did nothing cannot live in the HTTP response.
+It lives on the source instead. **Settings → Inbound events** shows the last
+event's outcome:
+
+| What it says | What happened |
+| --- | --- |
+| Started a workflow | An event arrived and a run began. |
+| Already handled | A repeat of an event already processed. Expected on charge retries. |
+| No workflow listening | Verified, but no active workflow matched this source and topic. |
+| No phone number in event | No usable phone number in the payload. |
+| Event ID path not found | A workflow matched, but its Event ID path matched nothing in the payload. |
+| Signature did not match | Wrong signing secret — for Recharge, usually the API token pasted instead of the Client Secret. |
+
+## Sources you can revoke
+
+Revoking a source is immediate: its URL starts returning `404`. Do this if a URL
+leaks. Create a new source and update the sending app with the new URL.

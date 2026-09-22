@@ -70,6 +70,14 @@ The `error` field is a **stable machine-readable code** — branch your integrat
   An unexpected error on iBubbl's side. These are paired with our error-tracking system; we get paged when they happen. If you see a sustained pattern, contact support with the timestamp + request body.
 </ResponseField>
 
+<ResponseField name="invalid_signature" type="403">
+  An [inbound event](/inbound-events/overview) arrived with a missing or incorrect signature. For Recharge, the usual cause is that the source was created with your API token pasted where the **API Client Secret** belongs — they're different values.
+</ResponseField>
+
+<ResponseField name="payload_too_large" type="413">
+  An [inbound event](/inbound-events/overview) body exceeded 256 KB.
+</ResponseField>
+
 ## When to retry
 
 | Code | HTTP | Retryable? |
@@ -83,6 +91,8 @@ The `error` field is a **stable machine-readable code** — branch your integrat
 | `invalid_timezone` | 422 | ❌ Fix the timezone. |
 | `hourly_cap_hit` / `daily_cap_exhausted` / `cold_cap_exhausted` | 422 | ⚠️ iBubbl auto-queues; you should not retry. |
 | `line_unavailable` / `line_offline` | 503 | ⚠️ iBubbl auto-queues; you should not retry. |
+| `invalid_signature` | 403 | ❌ Fix the signing secret. |
+| `payload_too_large` | 413 | ❌ Fix the payload size. |
 | `internal_error` | 500 | ✅ Retry with the same idempotency key after a short backoff. |
 
 The general rule: **don't retry 4xx**. Most 4xxes are payload-level problems that retrying won't fix. The cap-related 422s are technically retryable on a longer time horizon, but iBubbl handles that internally — your retry just creates duplicate work.
@@ -98,4 +108,5 @@ The general rule: **don't retry 4xx**. Most 4xxes are payload-level problems tha
 | `409` | Idempotency conflict. |
 | `422` | Validation or routing-level failure. |
 | `500` | Unexpected iBubbl error. |
+| `413` | Inbound event body over 256 KB. |
 | `503` | Send-side capacity / line offline. |

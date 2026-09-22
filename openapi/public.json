@@ -495,6 +495,80 @@
           }
         }
       }
+    },
+    "/v1/events/{token}": {
+      "post": {
+        "tags": [
+          "Inbound Events"
+        ],
+        "summary": "Receive an event from a connected app",
+        "description": "Receive a webhook from a connected third-party app (for example Recharge) and start any workflow whose **Webhook received** trigger matches it.\n\nThe URL you paste into the sending app carries its own credential, so this endpoint takes no `Authorization` header. Create a source in **Settings \u2192 Inbound events** to get the full URL; the token is shown once.\n\nEvery request must be signed. For Recharge, that is the `X-Recharge-Hmac-Sha256` header computed with your **API Client Secret** \u2014 which is not the same value as your API token. An unsigned or mis-signed request returns `403 invalid_signature`.\n\n**Redeliveries are safe.** Providers resend events, and Recharge's dunning fires one event per charge retry. Each workflow's `event_id_path` identifies the underlying object, so repeat deliveries of the same event fold onto the run that already exists rather than messaging the customer again.\n\nA `200` means the event was accepted, not that it matched anything \u2014 check `runs_started`, and see the source's status in Settings when it is unexpectedly `0`.",
+        "operationId": "receive_event_v1_events__token__post",
+        "parameters": [
+          {
+            "name": "token",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Event accepted.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EventAck"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Signature missing or does not match.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such source, or it has been revoked.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Body larger than 256 KB.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": []
+      }
     }
   },
   "components": {
@@ -633,6 +707,36 @@
           "opted_out": false,
           "phone": "+14155551234",
           "timezone": "America/Los_Angeles"
+        }
+      },
+      "EventAck": {
+        "properties": {
+          "received": {
+            "type": "boolean",
+            "title": "Received",
+            "description": "Always `true` once the signature has been verified.",
+            "examples": [
+              true
+            ]
+          },
+          "runs_started": {
+            "type": "integer",
+            "title": "Runs Started",
+            "description": "How many workflow runs this event started. `0` is a normal answer \u2014 it means no active workflow's trigger matched, or this event was a redelivery that de-duplicated onto an existing run.",
+            "examples": [
+              1
+            ]
+          }
+        },
+        "type": "object",
+        "required": [
+          "received",
+          "runs_started"
+        ],
+        "title": "EventAck",
+        "example": {
+          "received": true,
+          "runs_started": 1
         }
       },
       "HTTPValidationError": {
@@ -1274,6 +1378,9 @@
     },
     {
       "name": "Webhooks"
+    },
+    {
+      "name": "Inbound Events"
     }
   ],
   "security": [
