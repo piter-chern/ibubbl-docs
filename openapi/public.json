@@ -502,7 +502,7 @@
           "Inbound Events"
         ],
         "summary": "Receive an event from a connected app",
-        "description": "Receive a webhook from a connected third-party app (for example Recharge) and start any workflow whose **Webhook received** trigger matches it.\n\nThe URL you paste into the sending app carries its own credential, so this endpoint takes no `Authorization` header. Create a source in **Settings \u2192 Inbound events** to get the full URL; the token is shown once.\n\nEvery request must be signed. For Recharge, that is the `X-Recharge-Hmac-Sha256` header computed with your **API Client Secret** \u2014 which is not the same value as your API token. An unsigned or mis-signed request returns `403 invalid_signature`.\n\n**Redeliveries are safe.** Providers resend events, and Recharge's dunning fires one event per charge retry. Each workflow's `event_id_path` identifies the underlying object, so repeat deliveries of the same event fold onto the run that already exists rather than messaging the customer again.\n\nA `200` means the event was accepted, not that it matched anything \u2014 check `runs_started`, and see the source's status in Settings when it is unexpectedly `0`.",
+        "description": "Receive a webhook from a connected third-party app (for example Recharge) and start any workflow whose **Webhook received** trigger matches it.\n\nThe URL you paste into the sending app carries its own credential, so this endpoint takes no `Authorization` header. Create a source in **Settings \u2192 Inbound events** to get the full URL; the token is shown once.\n\n**Any app (secret URL)** sources need no signature: the URL is the credential, so keep it private. They accept JSON or `application/x-www-form-urlencoded` bodies and at most 60 requests a minute (`429` beyond that).\n\n**Signed** sources must sign every request. For Recharge, that is the `X-Recharge-Hmac-Sha256` header computed with your **API Client Secret** \u2014 which is not the same value as your API token. An unsigned or mis-signed request returns `403 invalid_signature`.\n\n**Redeliveries are safe.** Providers resend events, and Recharge's dunning fires one event per charge retry. Each workflow's `event_id_path` identifies the underlying object, so repeat deliveries of the same event fold onto the run that already exists rather than messaging the customer again.\n\nA `200` means the event was accepted, not that it matched anything \u2014 check `runs_started`, and see the source's status in Settings when it is unexpectedly `0`.",
         "operationId": "receive_event_v1_events__token__post",
         "parameters": [
           {
@@ -548,6 +548,16 @@
           },
           "413": {
             "description": "Body larger than 256 KB.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Secret-URL source over its limit of 60 requests a minute.",
             "content": {
               "application/json": {
                 "schema": {
