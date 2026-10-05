@@ -10,7 +10,7 @@ Webhooks let iBubbl push events to your backend the moment they happen — inbou
 You register an HTTPS URL via [`POST /v1/webhooks`](/api-reference/webhooks/create). iBubbl returns a subscription with a signing secret. You can register **multiple subscriptions** per account — one per environment, one per service, or one filtered to a subset of event types.
 
 ```bash
-curl -X POST https://api.ibubbl.com/v1/webhooks \
+curl -X POST https://web-production-4e09a.up.railway.app/v1/webhooks \
   -H "Authorization: Bearer $IB_API_KEY" \
   -H "Content-Type: application/json" \
   -d '{

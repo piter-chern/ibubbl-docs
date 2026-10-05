@@ -14,12 +14,12 @@
   "topbarLinks": [
     {
       "name": "Dashboard",
-      "url": "https://app.ibubbl.com"
+      "url": "https://ibubbl-dashboard.vercel.app"
     }
   ],
   "topbarCtaButton": {
     "name": "Sign up",
-    "url": "https://app.ibubbl.com/signup"
+    "url": "https://ibubbl-dashboard.vercel.app/signup"
   },
   "anchors": [
     {

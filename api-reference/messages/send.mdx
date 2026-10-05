@@ -10,7 +10,7 @@ Send an iMessage with any of four routing shapes — 1:1 by contact ID, 1:1 by p
 The most common shape. iBubbl looks up the contact by `(your customer, phone)`; if there isn't one yet, a new contact is created automatically and the message is sent.
 
 ```bash
-curl https://api.ibubbl.com/v1/messages \
+curl https://web-production-4e09a.up.railway.app/v1/messages \
   -H "Authorization: Bearer $IB_API_KEY" \
   -H "Content-Type: application/json" \
   -d '{
@@ -25,7 +25,7 @@ curl https://api.ibubbl.com/v1/messages \
 If you already have the contact's iBubbl ID (from a prior upsert or webhook), address by ID — skips the phone-number lookup.
 
 ```bash
-curl https://api.ibubbl.com/v1/messages \
+curl https://web-production-4e09a.up.railway.app/v1/messages \
   -H "Authorization: Bearer $IB_API_KEY" \
   -H "Content-Type: application/json" \
   -d '{
@@ -40,7 +40,7 @@ curl https://api.ibubbl.com/v1/messages \
 Address a group you already know by `chat_guid`. Get this value from a prior [`message.inbound`](/webhooks/events) webhook event or from `GET /v1/messages/{id}` after creating a new group. The `chat_guid` is stable for the lifetime of the conversation. See [Group Conversations](/concepts/group-conversations) for the data model.
 
 ```bash
-curl https://api.ibubbl.com/v1/messages \
+curl https://web-production-4e09a.up.railway.app/v1/messages \
   -H "Authorization: Bearer $IB_API_KEY" \
   -H "Content-Type: application/json" \
   -d '{
@@ -57,7 +57,7 @@ Returns `404 group_not_found` if no group with that `chat_guid` exists under you
 Provide 2 or more E.164 participant phones and an optional group name. iBubbl creates the iMessage group and sends your first message in one operation.
 
 ```bash
-curl https://api.ibubbl.com/v1/messages \
+curl https://web-production-4e09a.up.railway.app/v1/messages \
   -H "Authorization: Bearer $IB_API_KEY" \
   -H "Content-Type: application/json" \
   -d '{

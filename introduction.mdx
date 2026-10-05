@@ -15,14 +15,14 @@ The API is HTTPS-only, JSON-everywhere, and authenticated with a single Bearer A
 
 <Steps>
   <Step title="Sign up">
-    Create an account at [app.ibubbl.com](https://app.ibubbl.com/signup) and connect your iMessage line.
+    Create an account at [ibubbl-dashboard.vercel.app](https://ibubbl-dashboard.vercel.app/signup) and connect your iMessage line.
   </Step>
   <Step title="Generate an API key">
     In the dashboard, open **Settings → API Access** and click **Create key**. Copy the key (format: `ib_pk_<32 hex chars>`). This is the only time the full secret is shown.
   </Step>
   <Step title="Send your first message">
     ```bash
-    curl -X POST https://api.ibubbl.com/v1/messages \
+    curl -X POST https://web-production-4e09a.up.railway.app/v1/messages \
       -H "Authorization: Bearer ib_pk_a3f2c8d9e0f1b4d52c8a1f4e23b9d4f7c" \
       -H "Content-Type: application/json" \
       -d '{
@@ -61,7 +61,7 @@ The API is HTTPS-only, JSON-everywhere, and authenticated with a single Bearer A
 All API requests go to:
 
 ```
-https://api.ibubbl.com
+https://web-production-4e09a.up.railway.app
 ```
 
 There is no staging endpoint at this time. Your dashboard account is your only environment; use a dedicated API key for each integration so you can rotate independently.

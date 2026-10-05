@@ -33,7 +33,7 @@ def send_with_retry(to: str, body: str, max_attempts: int = 3) -> dict:
     for attempt in range(max_attempts):
         try:
             response = requests.post(
-                "https://api.ibubbl.com/v1/messages",
+                "https://web-production-4e09a.up.railway.app/v1/messages",
                 headers={"Authorization": f"Bearer {API_KEY}"},
                 json={
                     "to": to,
@@ -58,7 +58,7 @@ const idempotencyKey = crypto.randomUUID();
 async function sendWithRetry(to, body, maxAttempts = 3) {
   for (let attempt = 0; attempt < maxAttempts; attempt++) {
     try {
-      const res = await fetch('https://api.ibubbl.com/v1/messages', {
+      const res = await fetch('https://web-production-4e09a.up.railway.app/v1/messages', {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${API_KEY}`,
@@ -83,7 +83,7 @@ async function sendWithRetry(to, body, maxAttempts = 3) {
 # Generate once, reuse on retry:
 IDEMPOTENCY_KEY=$(uuidgen)
 
-curl -X POST https://api.ibubbl.com/v1/messages \
+curl -X POST https://web-production-4e09a.up.railway.app/v1/messages \
   -H "Authorization: Bearer $IB_API_KEY" \
   -H "Content-Type: application/json" \
   -d "{
