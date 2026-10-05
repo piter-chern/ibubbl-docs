@@ -642,7 +642,7 @@
           "phone": {
             "type": "string",
             "title": "Phone",
-            "description": "Contact's phone number (E.164)."
+            "description": "Contact's phone number as first seen. Usually E.164; a contact first created by an inbound SMS can carry the sender's bare national form (e.g. `4155551234`). Upserting any form of the same number returns this contact."
           },
           "first_name": {
             "anyOf": [
