@@ -107,7 +107,7 @@ Fired when a send fails terminally. `failed_reason` carries the iBubbl error cod
 
 Common `failed_reason` values:
 
-- `mac_send_failed` — the device rejected the send (e.g., contact's iMessage account changed)
+- `mac_send_failed` — the device could not send it: it rejected the send (e.g., contact's iMessage account changed), or it accepted the message but it was not confirmed sent within 10 minutes
 - `bluebubbles_unreachable` — the device's relay was offline at send time
 - `agent_offline` — the device hadn't checked in for over an hour (swept)
 - `line_inactive` — the line was suspended or retired before the message went out (swept)
