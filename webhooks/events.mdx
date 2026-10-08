@@ -34,7 +34,7 @@ Webhook payloads identify the contact and line by **phone number** (`from_number
 <AccordionGroup>
 
 <Accordion title="message.queued" icon="hourglass-start">
-Fired when a message is accepted but not yet dispatched to the device. This happens when the send falls outside the contact's working hours, or when account/line capacity is exhausted.
+Fired when a one-to-one message is accepted, before it reaches the device. That covers every accepted one-to-one send: `status: "pending"` with `failed_reason: null` when it is on its way (including one waiting for the contact's [working hours](/concepts/working-hours)), or `status: "queued"` when it is parked by a capacity hold. Group sends do not fire this event.
 
 ```json
 {
@@ -53,7 +53,7 @@ Fired when a message is accepted but not yet dispatched to the device. This happ
 }
 ```
 
-The `failed_reason` field names the routing-time condition that caused the queue — e.g. `hourly_cap_hit`, `throughput_limited`, `line_offline`. (Despite the name, this isn't a final failure — queued messages auto-retry.)
+For a `queued` message, `failed_reason` names the capacity hold: `hourly_cap_hit` or `line_offline`. (Despite the name, this isn't a final failure — queued messages are retried every 30 seconds, and dropped to `status: "expired"` if still queued after an hour.) For a `pending` message it is `null`.
 
 A `message.sent` event follows when the queued message dispatches.
 </Accordion>

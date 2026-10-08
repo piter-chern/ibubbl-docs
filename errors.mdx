@@ -46,12 +46,12 @@ The `error` field is a **stable machine-readable code** — branch your integrat
   The `timezone` field on a contact upsert is not in the supported IANA allowlist. The supported set covers US/Canada timezones plus common international zones; if you need a zone that isn't supported, contact support.
 </ResponseField>
 
-<ResponseField name="hourly_cap_hit" type="422">
-  Your account or line has hit its hourly send cap. iBubbl will auto-retry queued messages on the next hour; you don't need to do anything. To raise caps, contact support.
+<ResponseField name="hourly_cap_hit" type="queued">
+  Your line has hit its hourly send cap. This is not returned as an error: the send is accepted (`202`, `status: "queued"`) and retried every 30 seconds. If it is still queued after an hour it expires (`status: "expired"`). To raise caps, contact support.
 </ResponseField>
 
 <ResponseField name="daily_cap_exhausted" type="422">
-  Daily send cap reached. Resets at 3am ET. Queued messages auto-retry on the next window.
+  Daily send cap reached. The send fails and is not queued; the cap resets at 3am ET, so send again after that.
 </ResponseField>
 
 <ResponseField name="cold_cap_exhausted" type="422">
@@ -63,7 +63,7 @@ The `error` field is a **stable machine-readable code** — branch your integrat
 </ResponseField>
 
 <ResponseField name="line_offline" type="503">
-  Your sending line is currently disconnected. Messages queue until the line reconnects.
+  Your sending line is currently disconnected. A one-to-one send is normally accepted (`202`, `status: "queued"`) and goes out when the line reconnects; if it is still queued after an hour it expires (`status: "expired"`).
 </ResponseField>
 
 <ResponseField name="internal_error" type="500">
@@ -89,13 +89,14 @@ The `error` field is a **stable machine-readable code** — branch your integrat
 | `validation_error` | 422 | ❌ Fix the payload. |
 | `contact_opted_out` | 422 | ❌ Cannot bypass. |
 | `invalid_timezone` | 422 | ❌ Fix the timezone. |
-| `hourly_cap_hit` / `daily_cap_exhausted` / `cold_cap_exhausted` | 422 | ⚠️ iBubbl auto-queues; you should not retry. |
+| `hourly_cap_hit` | — (`202`, `queued`) | ⚠️ Not an error: iBubbl queues and retries for up to an hour. |
+| `daily_cap_exhausted` / `cold_cap_exhausted` | 422 | ⚠️ Not queued. Send again after the cap resets (3am ET). |
 | `line_unavailable` / `line_offline` | 503 | ⚠️ iBubbl auto-queues; you should not retry. |
 | `invalid_signature` | 403 | ❌ Fix the signing secret. |
 | `payload_too_large` | 413 | ❌ Fix the payload size. |
 | `internal_error` | 500 | ✅ Retry with the same idempotency key after a short backoff. |
 
-The general rule: **don't retry 4xx**. Most 4xxes are payload-level problems that retrying won't fix. The cap-related 422s are technically retryable on a longer time horizon, but iBubbl handles that internally — your retry just creates duplicate work.
+The general rule: **don't retry 4xx**. Most 4xxes are payload-level problems that retrying won't fix. The cap-related 422s (`daily_cap_exhausted`, `cold_cap_exhausted`) are retryable only after the cap resets at 3am ET; iBubbl does not queue them for you. The hourly cap is different: those sends are queued, so retrying just creates duplicate work.
 
 ## HTTP status mapping summary
 

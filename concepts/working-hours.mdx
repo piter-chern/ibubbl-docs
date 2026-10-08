@@ -7,10 +7,11 @@ iBubbl never sends an iMessage outside of the recipient's working hours. This pr
 
 ## How it works
 
-Every send through `POST /v1/messages` runs through a working-hours check:
+Every outbound message — sent from the dashboard, `POST /v1/messages`, a workflow, a scheduled send or an integration — waits for the recipient's working hours before it leaves your device:
 
-- If the **recipient's local time** falls inside the configured working window, the message dispatches immediately and returns `status: "pending"`.
-- If outside the window, the message is **automatically scheduled** for the next opening. The API still returns `202 Accepted` immediately, but with `status: "queued"`. A [`message.queued`](/webhooks/events) webhook fires with `queued_reason: "outside_working_hours"`.
+- `POST /v1/messages` accepts the send straight away (`202 Accepted`) with `status: "pending"`, whatever the time.
+- If the **recipient's local time** is inside your working window, the message goes out within seconds.
+- If it is outside, the message stays `pending` and goes out automatically when the window next opens. There is no separate status or webhook for this wait; a [`message.sent`](/webhooks/events) webhook fires when it goes out.
 
 You don't need to do anything to opt in. The behavior is on by default for every account.
 
@@ -22,8 +23,9 @@ Working hours are set in the dashboard at **Settings → Working Hours**. Defaul
 | ----- | ------- |
 | Days | Monday – Friday |
 | Start | 09:00 |
-| End | 18:00 |
-| Timezone | (your account's default) |
+| End | 17:00 |
+
+The end time is exclusive: with the default window, sends pause at 5:00 PM. The window is applied in each **contact's** timezone (see below), so there is no timezone setting on the window itself.
 
 You can configure different windows per day of the week, or close specific days entirely. The dashboard is the only way to manage these settings — there's no API surface for them today.
 
@@ -33,7 +35,8 @@ The local time check uses the **contact's timezone**, not your account's. iBubbl
 
 1. **Explicit override** — if you set the `timezone` field on the contact (via [`POST /v1/contacts`](/api-reference/contacts/upsert) or the dashboard).
 2. **Area-code inference** — for North American numbers, iBubbl infers a default timezone from the area code (e.g., `+1415...` → `America/Los_Angeles`).
-3. **Account default** — falls back to your account's working-hours timezone.
+3. **Account timezone** — the timezone in your dashboard's **Settings → Notifications**, which starts as your browser's timezone.
+4. **`America/New_York`** — if none of the above is set.
 
 To override the inferred timezone, pass it on contact upsert:
 
@@ -49,40 +52,17 @@ curl -X POST https://web-production-4e09a.up.railway.app/v1/contacts \
 
 The override is sticky — once set, automation re-upserts will not overwrite it.
 
-## Detecting a queued send
+## Detecting a held send
 
-When a send is queued, the API response and the webhook both indicate this:
+A message waiting for working hours is `pending`, exactly like one that is about to go out. [`GET /v1/messages/{id}`](/api-reference/messages/retrieve) keeps returning `status: "pending"` until it sends, and a [`message.sent`](/webhooks/events) webhook fires when it does.
 
-**API response:**
-```json
-{
-  "id": "msg_4a5b6c7d-...",
-  "status": "queued",
-  "to": "+14155551234",
-  "body": "...",
-  "sent_at": null
-}
-```
+## Capacity holds (`status: "queued"`)
 
-**Webhook** ([`message.queued`](/webhooks/events)):
-```json
-{
-  "type": "message.queued",
-  "data": {
-    "message_id": "msg_4a5b6c7d-...",
-    "queued_reason": "outside_working_hours"
-  }
-}
-```
+Separately from working hours, a send can be accepted but parked because of capacity. The response is still `202 Accepted`, with `status: "queued"`, and the reason is in the `failed_reason` field of the [`message.queued`](/webhooks/events) webhook:
 
-A `message.sent` webhook follows when the queued message dispatches.
+- `hourly_cap_hit` — your line hit its hourly send cap.
+- `line_offline` — your sending line is temporarily disconnected.
 
-## Other queue reasons
+iBubbl re-checks queued messages every 30 seconds and sends them as soon as the condition clears. A message still queued after **one hour** is dropped and moves to `status: "expired"`; send it again if it still matters.
 
-`queued_reason: "outside_working_hours"` is the most common, but messages can also queue for capacity-related reasons:
-
-- `hourly_cap_hit` — your line hit its hourly send cap; will retry next hour
-- `throughput_limited` — global throughput protection engaged
-- `line_offline` — your sending line is temporarily disconnected
-
-In all cases, the queued message stays in flight automatically. You don't need to retry.
+Daily and cold-outreach caps do **not** queue: a send over those caps fails immediately with a `422`. See [Errors](/errors).
