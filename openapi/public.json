@@ -777,10 +777,11 @@
               "sent",
               "delivered",
               "read",
-              "failed"
+              "failed",
+              "expired"
             ],
             "title": "Status",
-            "description": "Lifecycle state. `queued` = accepted, not yet dispatched (capacity / working-hours hold). `pending` = handed to the device, waiting on the send. `sent` / `delivered` / `read` = delivery progression. `failed` = terminal failure \u2014 see webhook `message.failed` for the reason."
+            "description": "Lifecycle state. `pending` = accepted and on its way to the device; it may be waiting for the contact's working hours or your calendar (see `held_until`). `queued` = parked by a capacity hold (`hourly_cap_hit` / `line_offline`), retried automatically. `sent` / `delivered` / `read` = delivery progression. `failed` = terminal failure \u2014 see webhook `message.failed` for the reason. `expired` = still queued after an hour, so dropped; it will not send."
           },
           "to": {
             "anyOf": [
@@ -870,10 +871,41 @@
               }
             ],
             "title": "Sent At",
-            "description": "ISO 8601 UTC timestamp when the message left the device. Null until the device confirms send.",
+            "description": "ISO 8601 UTC timestamp. Set when the message is accepted, then replaced by the device's send time once it goes out. Use `status` (`sent` / `delivered` / `read`), not `sent_at`, to tell whether it has left the device.",
             "examples": [
               "2026-05-17T14:23:45.123Z"
             ]
+          },
+          "held_until": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Held Until",
+            "description": "While a `pending` message is being held, the expected time (ISO 8601 UTC) it will go out: the next opening of the contact's working hours, or the end of a busy block on your connected calendar, whichever is later. Recomputed within about 10 seconds when hours or the calendar change. Null when the message is not held \u2014 and also when `held_reason` is `working_hours` but no sending day is enabled.",
+            "examples": [
+              "2026-10-08T16:00:00+00:00"
+            ]
+          },
+          "held_reason": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "working_hours",
+                  "busy_window"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Held Reason",
+            "description": "Why a `pending` message is being held right now: `working_hours` (outside the contact's working hours) or `busy_window` (your connected calendar shows you busy). Null when it is not held."
           }
         },
         "type": "object",
@@ -890,8 +922,11 @@
           "contact_id": "c8a1f4e2-3b9d-4f7c-a8e5-1d2c3b4a5e6f",
           "conversation_id": "cnv_3a4b5c6d-7e8f-9a0b-1c2d-3e4f5a6b7c8d",
           "conversation_kind": "one_to_one",
+          "held_reason": "working_hours",
+          "held_until": "2026-10-08T16:00:00+00:00",
           "id": "msg_8b3a4e72-1c2d-4e5f-9a0b-2c3d4e5f6a7b",
-          "status": "queued",
+          "sent_at": "2026-10-08T11:40:44.770Z",
+          "status": "pending",
           "to": "+14155551234"
         }
       },

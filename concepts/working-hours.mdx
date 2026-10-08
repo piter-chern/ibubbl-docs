@@ -54,7 +54,22 @@ The override is sticky — once set, automation re-upserts will not overwrite it
 
 ## Detecting a held send
 
-A message waiting for working hours is `pending`, exactly like one that is about to go out. [`GET /v1/messages/{id}`](/api-reference/messages/retrieve) keeps returning `status: "pending"` until it sends, and a [`message.sent`](/webhooks/events) webhook fires when it does.
+A message waiting for working hours is `pending`, like one that is about to go out. [`GET /v1/messages/{id}`](/api-reference/messages/retrieve) tells them apart with two fields:
+
+```json
+{
+  "id": "msg_4a5b6c7d-...",
+  "status": "pending",
+  "to": "+14155551234",
+  "held_reason": "working_hours",
+  "held_until": "2026-10-08T16:00:00+00:00"
+}
+```
+
+- `held_reason` — why it is waiting right now: `working_hours`, or `busy_window` when your connected calendar shows you busy.
+- `held_until` — when it is **expected** to go out: the contact's next opening, or the end of the busy block if one covers that opening. It is recomputed within about 10 seconds when your hours or calendar change, and it is `null` if no sending day is enabled.
+
+Both are `null` when the message is not being held. A held message is first marked within about 10 seconds of being accepted, so a `GET` immediately after `POST` may not show the hold yet. A [`message.sent`](/webhooks/events) webhook fires when it goes out.
 
 ## Capacity holds (`status: "queued"`)
 
