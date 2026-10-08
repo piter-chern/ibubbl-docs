@@ -17,15 +17,16 @@ You don't need to do anything to opt in. The behavior is on by default for every
 
 ## Configuring working hours
 
-Working hours are set in the dashboard at **Settings → Working Hours**. Defaults:
+Working hours are set in the dashboard at **Settings → Sending Hours**. Defaults for new accounts:
 
-| Field | Default |
-| ----- | ------- |
-| Days | Monday – Friday |
-| Start | 09:00 |
-| End | 17:00 |
+| Day | Sends allowed |
+| --- | ------------- |
+| Monday – Saturday | 09:00 – 20:00 |
+| Sunday | 12:00 – 20:00 |
 
-The end time is exclusive: with the default window, sends pause at 5:00 PM. The window is applied in each **contact's** timezone (see below), so there is no timezone setting on the window itself.
+The end time is exclusive: with the default window, sends pause at 8:00 PM. The window is applied in each **contact's** timezone (see below), so there is no timezone setting on the window itself.
+
+These are only your **sending** hours. When people can book meetings with you is a separate setting, **Settings → Booking Hours**, in your own time zone.
 
 You can configure different windows per day of the week, or close specific days entirely. The dashboard is the only way to manage these settings — there's no API surface for them today.
 
