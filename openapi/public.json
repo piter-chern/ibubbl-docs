@@ -781,7 +781,7 @@
               "expired"
             ],
             "title": "Status",
-            "description": "Lifecycle state. `pending` = accepted and on its way to the device; it may be waiting for the contact's working hours or your calendar (see `held_until`). `queued` = parked by a capacity hold (`hourly_cap_hit` / `line_offline`), retried automatically. `sent` / `delivered` / `read` = delivery progression. `failed` = terminal failure \u2014 see webhook `message.failed` for the reason. `expired` = still queued after an hour, so dropped; it will not send."
+            "description": "Lifecycle state. `pending` = accepted and on its way to the device; it may be waiting for the contact's working hours or your calendar (see `held_until`). `queued` = parked by a capacity hold (`hourly_cap_hit` / `line_offline`), retried automatically. `sent` / `delivered` / `read` = delivery progression. `failed` = terminal failure \u2014 see webhook `message.failed` for the reason; it can follow `sent` (or a `read` with no confirmed delivery) when iMessage reports the send failed after accepting it (`failed_reason` `imessage_undeliverable` / `imessage_error:<code>`). `expired` = still queued after an hour, so dropped; it will not send."
           },
           "to": {
             "anyOf": [

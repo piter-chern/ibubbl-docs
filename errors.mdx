@@ -66,6 +66,10 @@ The `error` field is a **stable machine-readable code** — branch your integrat
   Your sending line is currently disconnected. A one-to-one send is normally accepted (`202`, `status: "queued"`) and goes out when the line reconnects; if it is still queued after an hour it expires (`status: "expired"`).
 </ResponseField>
 
+<ResponseField name="imessage_undeliverable" type="message.failed">
+  Not an API error: it appears only as `failed_reason` on a failed message and its [`message.failed`](/webhooks/events) webhook. iMessage couldn't deliver the message to this number because the number isn't reachable on iMessage. Resending fails the same way, so reach the contact another way. Other iMessage failures appear as `imessage_error:<code>`.
+</ResponseField>
+
 <ResponseField name="internal_error" type="500">
   An unexpected error on iBubbl's side. These are paired with our error-tracking system; we get paged when they happen. If you see a sustained pattern, contact support with the timestamp + request body.
 </ResponseField>
