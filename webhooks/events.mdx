@@ -88,6 +88,8 @@ Fired when a send fails terminally. `failed_reason` carries the iBubbl error cod
 
 `message.failed` can follow a `message.sent` for the same message. That happens when iMessage reports the send failed after it was handed over. It can also follow `message.read` when no delivery was ever confirmed. Treat the latest event as the message's state. A message with a confirmed delivery never moves to `failed`.
 
+A failed message can also move back. If Apple later confirms delivery or a read for a message that failed with an `imessage_*` reason, it moves to `delivered` or `read` and you receive that event.
+
 ```json
 {
   "id": "evt_8b3a4e72-1c2d-4e5f-9a0b-2c3d4e5f6a7b",
