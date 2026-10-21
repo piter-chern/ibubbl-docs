@@ -20,21 +20,31 @@ Every webhook POST iBubbl sends to your URL has the same envelope shape. The `ty
 
 | Field | Type | Description |
 | ----- | ---- | ----------- |
-| `id` | string | Unique event ID (`evt_<uuid>`). Use this for deduplication. |
+| `id` | string | Unique event ID (`evt_<uuid>`). The same on every retry of the event; use it to de-duplicate retries. |
 | `type` | string | One of the event types below. |
-| `created_at` | string (ISO 8601 UTC) | When the event was generated. |
+| `created_at` | string (ISO 8601 UTC) | When iBubbl recorded the event. |
 | `data` | object | Event-specific payload. |
+
+<Note>
+**Ignore event types you don't handle.** iBubbl adds new event types over time, and a subscription without an `event_types` filter receives them as they ship. Return `2xx` for any `type` your integration doesn't recognise.
+</Note>
 
 <Note>
 Webhook payloads identify the contact and line by **phone number** (`from_number`, `to_number`, `contact_phone`), not by iBubbl's internal contact ID. If you need the contact ID, look it up via [`POST /v1/contacts`](/api-reference/contacts/upsert) — the upsert is idempotent and returns the ID.
 </Note>
+
+### Ordering and duplicates
+
+- **Events can arrive out of order.** Retries, and events that fire close together, mean `message.read` can reach you before `message.delivered`. Order by the envelope's `created_at` (and treat `status` transitions as described below), not by arrival time.
+- **Events can arrive more than once.** Delivery is at-least-once. De-duplicate on the envelope `id`; for the rare case where the same change is recorded twice, also de-duplicate on `data.message_id` plus `type`.
+- **A message's status can move "backwards".** `message.failed` can follow `message.sent` (and even `message.read`), and a failed message can later move to `delivered` or `read`. See [`message.failed`](#message-failed). When in doubt, `GET /v1/messages/{id}` returns the current state.
 
 ## Event types
 
 <AccordionGroup>
 
 <Accordion title="message.queued" icon="hourglass-start">
-Fired when a one-to-one message is accepted, before it reaches the device. That covers every accepted one-to-one send: `status: "pending"` with `failed_reason: null` when it is on its way (including one waiting for the contact's [working hours](/concepts/working-hours)), or `status: "queued"` when it is parked by a capacity hold. Group sends do not fire this event.
+Fired when a one-to-one message is accepted. That covers every accepted one-to-one send: `status: "pending"` with `failed_reason: null` when it is on its way (including one waiting for the contact's [sending hours](/concepts/working-hours)), or `status: "queued"` when it is parked by a capacity hold. Group sends do not fire this event.
 
 ```json
 {
@@ -42,24 +52,28 @@ Fired when a one-to-one message is accepted, before it reaches the device. That 
   "type": "message.queued",
   "created_at": "2026-05-17T22:30:00.000Z",
   "data": {
-    "message_id": "msg_4a5b6c7d-8e9f-0a1b-2c3d-4e5f6a7b8c9d",
+    "message_id": "4a5b6c7d-8e9f-0a1b-2c3d-4e5f6a7b8c9d",
     "status": "queued",
     "to_number": "+14155551234",
     "body": "Hey Sam — quick check-in about your order.",
     "classification": "cold",
-    "line_id": "ln_2c3d4e5f-6a7b-8c9d-0e1f-2a3b4c5d6e7f",
+    "line_id": "2c3d4e5f-6a7b-8c9d-0e1f-2a3b4c5d6e7f",
     "failed_reason": "hourly_cap_hit"
   }
 }
 ```
 
-For a `queued` message, `failed_reason` names the capacity hold: `hourly_cap_hit` or `line_offline`. (Despite the name, this isn't a final failure — queued messages are retried every 30 seconds, and dropped to `status: "expired"` if still queued after an hour.) For a `pending` message it is `null`.
+For a `queued` message, `failed_reason` names the capacity hold: `hourly_cap_hit` or `line_offline`. (Despite the name, this isn't a final failure — queued messages are retried automatically.) For a `pending` message it is `null`.
 
-A `message.sent` event follows when the queued message dispatches.
+A `message.sent` event normally follows when the message goes out.
+
+<Warning>
+**Current limitation:** a queued message can end without any further event. If it is still queued after about an hour it becomes `status: "expired"` (`failed_reason: "queue_expired"`), and if a capacity re-check fails when it is retried it becomes `status: "failed"` — neither fires a webhook today. If you rely on queued messages, poll `GET /v1/messages/{id}` for any that haven't produced `message.sent` within an hour or so.
+</Warning>
 </Accordion>
 
 <Accordion title="message.sent" icon="paper-plane">
-Fired when the iMessage has been handed to the device and the device has confirmed send.
+Fired when the message has gone out from your iBubbl line.
 
 ```json
 {
@@ -67,7 +81,7 @@ Fired when the iMessage has been handed to the device and the device has confirm
   "type": "message.sent",
   "created_at": "2026-05-17T14:23:45.123Z",
   "data": {
-    "message_id": "msg_4a5b6c7d-8e9f-0a1b-2c3d-4e5f6a7b8c9d",
+    "message_id": "4a5b6c7d-8e9f-0a1b-2c3d-4e5f6a7b8c9d",
     "from_number": "+14155550100",
     "to_number": "+14155551234",
     "body": "Hey Sam — quick check-in about your order.",
@@ -78,15 +92,63 @@ Fired when the iMessage has been handed to the device and the device has confirm
 }
 ```
 
-`from_number` is the iBubbl line that sent the message; `to_number` is the contact.
+`from_number` is the iBubbl line that sent the message; `to_number` is the contact. For a group message, `to_number` is the group's primary contact (the first participant), not the whole group.
 
 `reply_to_message_id` is non-null when this message was sent as a reply (quote) to a previous inbound; otherwise null.
+
+The `message.sent` event for a new group's first message can occasionally be delivered twice; de-duplicate on `data.message_id` plus `type`.
+</Accordion>
+
+<Accordion title="message.delivered" icon="check">
+Fired when the recipient's device confirms delivery. Same payload shape as `message.sent`, with `status: "delivered"` and `occurred_at` set to the delivery time.
+
+```json
+{
+  "id": "evt_9c4b5d83-2e3f-5a6b-0c1d-3e4f5a6b7c8d",
+  "type": "message.delivered",
+  "created_at": "2026-05-17T14:23:47.010Z",
+  "data": {
+    "message_id": "4a5b6c7d-8e9f-0a1b-2c3d-4e5f6a7b8c9d",
+    "from_number": "+14155550100",
+    "to_number": "+14155551234",
+    "body": "Hey Sam — quick check-in about your order.",
+    "status": "delivered",
+    "occurred_at": "2026-05-17T14:23:46.900Z",
+    "reply_to_message_id": null
+  }
+}
+```
+
+If delivery and read are reported together, you may receive only `message.read`. Delivery receipts aren't available for every message (for example, some SMS), so don't wait on this event to consider a message sent.
+</Accordion>
+
+<Accordion title="message.read" icon="check-double">
+Fired when the recipient reads the message (only when they have read receipts turned on). Same payload shape as `message.sent`, with `status: "read"` and `occurred_at` set to the read time.
+
+```json
+{
+  "id": "evt_0d5c6e94-3f4a-6b7c-1d2e-4f5a6b7c8d9e",
+  "type": "message.read",
+  "created_at": "2026-05-17T14:30:02.215Z",
+  "data": {
+    "message_id": "4a5b6c7d-8e9f-0a1b-2c3d-4e5f6a7b8c9d",
+    "from_number": "+14155550100",
+    "to_number": "+14155551234",
+    "body": "Hey Sam — quick check-in about your order.",
+    "status": "read",
+    "occurred_at": "2026-05-17T14:30:02.100Z",
+    "reply_to_message_id": null
+  }
+}
+```
+
+When a contact reads a message, iMessage implies they've read your earlier messages in the conversation too. iBubbl marks those earlier messages read as well, but fires `message.read` only for the message the receipt was for.
 </Accordion>
 
 <Accordion title="message.failed" icon="circle-xmark">
-Fired when a send fails terminally. `failed_reason` carries the iBubbl error code (same catalog as the [Error Reference](/errors)); `error_message` is a human-readable description.
+Fired when a send fails. `failed_reason` carries a stable failure code; `error_message` is a free-form diagnostic for your logs — don't parse it or show it to end users.
 
-`message.failed` can follow a `message.sent` for the same message. That happens when iMessage reports the send failed after it was handed over. It can also follow `message.read` when no delivery was ever confirmed. Treat the latest event as the message's state. A message with a confirmed delivery never moves to `failed`.
+`message.failed` can follow a `message.sent` for the same message. That happens when iMessage reports the send failed after it was handed over. It can also follow `message.read` when no delivery was ever confirmed. A message with a confirmed delivery never moves to `failed`.
 
 A failed message can also move back. If Apple later confirms delivery or a read for a message that failed with an `imessage_*` reason, it moves to `delivered` or `read` and you receive that event.
 
@@ -96,28 +158,29 @@ A failed message can also move back. If Apple later confirms delivery or a read 
   "type": "message.failed",
   "created_at": "2026-05-17T14:23:45.123Z",
   "data": {
-    "message_id": "msg_4a5b6c7d-8e9f-0a1b-2c3d-4e5f6a7b8c9d",
+    "message_id": "4a5b6c7d-8e9f-0a1b-2c3d-4e5f6a7b8c9d",
     "from_number": "+14155550100",
     "to_number": "+14155551234",
     "body": "Hey Sam — quick check-in about your order.",
     "status": "failed",
     "occurred_at": "2026-05-17T14:23:45.123Z",
     "reply_to_message_id": null,
-    "failed_reason": "mac_send_failed",
-    "error_message": "Device rejected: not registered for iMessage"
+    "failed_reason": "imessage_undeliverable",
+    "error_message": "Message failed to send"
   }
 }
 ```
 
-Common `failed_reason` values:
+`occurred_at` on this event is when the message was sent (or accepted, if it never went out), not when it failed; use the envelope's `created_at` for the failure time.
 
-- `mac_send_failed` — the device could not send it: it rejected the send (e.g., contact's iMessage account changed), or it accepted the message but it was not confirmed sent within 10 minutes
-- `bluebubbles_unreachable` — the device's relay was offline at send time
-- `agent_offline` — the device hadn't checked in for over an hour (swept)
-- `line_inactive` — the line was suspended or retired before the message went out (swept)
-- `contact_opted_out` — the contact opted out between queue and send
+`failed_reason` values (treat them as opaque codes; new ones may be added):
+
 - `imessage_undeliverable` — iMessage couldn't deliver it to this number: the number isn't reachable on iMessage. Resending fails the same way; reach the contact another way.
 - `imessage_error:<code>` — iMessage reported another failure; `<code>` is its error number
+- `mac_send_failed` — your line couldn't send it, or it wasn't confirmed sent within 10 minutes
+- `bluebubbles_unreachable` — your line couldn't be reached at send time
+- `agent_offline` — your line was offline for over an hour, so the message was failed rather than sent late
+- `line_inactive` — the line was suspended or retired before the message went out
 
 See the [Error Reference](/errors) for the full catalog.
 </Accordion>
@@ -131,7 +194,7 @@ Fired when a contact replies to you. This is the event most integrations care ab
   "type": "message.inbound",
   "created_at": "2026-05-17T14:24:12.456Z",
   "data": {
-    "message_id": "msg_5b6c7d8e-9f0a-1b2c-3d4e-5f6a7b8c9d0e",
+    "message_id": "5b6c7d8e-9f0a-1b2c-3d4e-5f6a7b8c9d0e",
     "from_number": "+14155551234",
     "to_number": "+14155550100",
     "body": "yeah sounds good, what time?",
@@ -140,20 +203,42 @@ Fired when a contact replies to you. This is the event most integrations care ab
     "reply_to_message_id": null,
     "conversation_kind": "one_to_one",
     "sender_phone": "+14155551234",
-    "participants": []
+    "participants": [
+      {"phone": "+14155551234", "first_name": "Sam", "last_name": "Lee"}
+    ]
   }
 }
 ```
 
-`from_number` is the contact (the sender); `to_number` is your iBubbl line (the recipient).
-
-If the inbound message contained attachments (images, videos, audio), the `attachments` array is populated with signed download URLs and metadata. iBubbl waits until all attachments have been fetched before firing the event, so you receive one `message.inbound` per message rather than separate text + attachment events.
+`from_number` is the contact (the sender) and `to_number` is your iBubbl line (the recipient). `from_number` is the sender's address exactly as iMessage reported it: usually E.164, but it can be an Apple ID email address, or a number without the leading `+` for some SMS senders.
 
 `reply_to_message_id` is non-null when the contact is quoting one of your previous messages.
 
+### Attachments
+
+If the message contained attachments (images, GIFs, videos, audio, files), `attachments` lists them, and the event fires once, after every attachment has been fetched. Each entry:
+
+```json
+{
+  "id": "6c7d8e9f-0a1b-2c3d-4e5f-6a7b8c9d0e1f",
+  "kind": "image",
+  "mime_type": "image/jpeg",
+  "url": "https://…signed download URL…",
+  "expires_at": "2026-05-18T14:24:12.456Z",
+  "size_bytes": 204811,
+  "width": 1170,
+  "height": 2532
+}
+```
+
+- `kind` is one of `image`, `gif`, `video`, `audio`, `file`.
+- `url` is a signed download link that **expires after 24 hours** (`expires_at`). Download the file promptly if you need to keep it. Retries of the same event carry the same URL.
+- An attachment that couldn't be fetched has `"unavailable": true` and no `url`.
+- Attachments of unsupported types are left out of the array.
+
 ### Group inbound
 
-For group conversations (`conversation_kind: "group"`), the same event fires with two additional fields populated. `sender_phone` identifies which of the group's participants posted the message; `participants` lists every active participant other than your iBubbl line:
+For group conversations (`conversation_kind: "group"`), `sender_phone` identifies which of the group's participants posted the message, and `participants` lists the participants other than your iBubbl line:
 
 ```json
 {
@@ -161,7 +246,7 @@ For group conversations (`conversation_kind: "group"`), the same event fires wit
   "type": "message.inbound",
   "created_at": "2026-05-17T14:24:12.456Z",
   "data": {
-    "message_id": "msg_6c7d8e9f-0a1b-2c3d-4e5f-6a7b8c9d0e1f",
+    "message_id": "6c7d8e9f-0a1b-2c3d-4e5f-6a7b8c9d0e1f",
     "from_number": "+14155551234",
     "to_number": "+14155550100",
     "body": "what time tomorrow?",
@@ -178,15 +263,15 @@ For group conversations (`conversation_kind: "group"`), the same event fires wit
 }
 ```
 
-For 1:1 conversations `sender_phone == from_number` and `participants` is `[]`. See [Group Conversations](/concepts/group-conversations) for the full model.
+`sender_phone` always equals `from_number`. For 1:1 conversations, `participants` holds the one contact. The event doesn't carry the group's `chat_guid`; to reply into the group, call `GET /v1/messages/{message_id}` to get it. See [Group Conversations](/concepts/group-conversations) for the full model, including why `participants` can list people who have left.
 
 <Note>
-If the inbound body matches a STOP-pattern keyword (see [Suppression & Opt-Outs](/concepts/suppression)), iBubbl auto-marks the contact opted-out and fires a separate `contact.opted_out` event. You'll receive **both** events for the same incoming text. In a group, opting out the sender blocks all subsequent outbound to the group with `group_outbound_blocked_suppression` — the rest of the group cannot be messaged until the opted-out participant is removed.
+If the inbound body matches a STOP-pattern keyword (see [Suppression & Opt-Outs](/concepts/suppression)), iBubbl marks the contact opted out and fires a separate `contact.opted_out` event. You'll receive **both** events for the same incoming text. In a group, opting out the sender blocks all subsequent outbound to the group with `group_outbound_blocked_suppression` — the rest of the group can't be messaged in that thread either.
 </Note>
 </Accordion>
 
 <Accordion title="message.edited" icon="pen-to-square">
-Fired when a contact edits a message they previously sent you. iMessage supports edit-after-send for ~15 minutes.
+Fired when a contact edits a message they previously sent you (iMessage allows edits for about 15 minutes), or when a message you sent is edited from the dashboard.
 
 ```json
 {
@@ -194,7 +279,7 @@ Fired when a contact edits a message they previously sent you. iMessage supports
   "type": "message.edited",
   "created_at": "2026-05-17T14:25:00.000Z",
   "data": {
-    "message_id": "msg_5b6c7d8e-9f0a-1b2c-3d4e-5f6a7b8c9d0e",
+    "message_id": "5b6c7d8e-9f0a-1b2c-3d4e-5f6a7b8c9d0e",
     "new_body": "yeah sounds good, what time were you thinking?",
     "edited_at": "2026-05-17T14:25:00.000Z",
     "direction": "inbound"
@@ -202,7 +287,9 @@ Fired when a contact edits a message they previously sent you. iMessage supports
 }
 ```
 
-The `message_id` matches the original `message.inbound` event — your store can update the existing record. `direction` is `inbound` for edits the contact made to a message they sent, or `outbound` for edits to a message you sent.
+The `message_id` matches the original `message.inbound` (or outbound) message — your store can update the existing record. `direction` is `inbound` for edits the contact made to a message they sent, or `outbound` for edits to a message you sent.
+
+When a contact unsends a message, no event fires.
 </Accordion>
 
 <Accordion title="message.reaction.added" icon="heart">
@@ -214,8 +301,8 @@ Fired when a tapback reaction is added to a message. Most commonly this is a con
   "type": "message.reaction.added",
   "created_at": "2026-05-17T14:26:00.000Z",
   "data": {
-    "reaction_id": "rxn_7a8b9c0d-1e2f-3a4b-5c6d-7e8f9a0b1c2d",
-    "target_message_id": "msg_4a5b6c7d-8e9f-0a1b-2c3d-4e5f6a7b8c9d",
+    "reaction_id": "7a8b9c0d-1e2f-3a4b-5c6d-7e8f9a0b1c2d",
+    "target_message_id": "4a5b6c7d-8e9f-0a1b-2c3d-4e5f6a7b8c9d",
     "from_number": "+14155551234",
     "reaction_type": "love",
     "emoji": "❤️",
@@ -228,7 +315,7 @@ Fired when a tapback reaction is added to a message. Most commonly this is a con
 
 `emoji` carries the rendered Unicode character — useful if you're displaying reactions in your own UI without maintaining a tapback-to-emoji mapping.
 
-`from_number` is the contact who reacted (inbound) or the iBubbl line that reacted (outbound). `target_message_id` is the message being reacted to.
+`from_number` is the contact who reacted. Outbound reactions (`direction: "outbound"`) have no `from_number`. `target_message_id` is the message being reacted to.
 </Accordion>
 
 <Accordion title="message.reaction.removed" icon="heart-crack">
@@ -240,8 +327,8 @@ Fired when a previously-added reaction is removed (the reactor un-tapped it). Sa
   "type": "message.reaction.removed",
   "created_at": "2026-05-17T14:27:00.000Z",
   "data": {
-    "reaction_id": "rxn_7a8b9c0d-1e2f-3a4b-5c6d-7e8f9a0b1c2d",
-    "target_message_id": "msg_4a5b6c7d-8e9f-0a1b-2c3d-4e5f6a7b8c9d",
+    "reaction_id": "7a8b9c0d-1e2f-3a4b-5c6d-7e8f9a0b1c2d",
+    "target_message_id": "4a5b6c7d-8e9f-0a1b-2c3d-4e5f6a7b8c9d",
     "from_number": "+14155551234",
     "reaction_type": "love",
     "emoji": "❤️",
@@ -254,7 +341,7 @@ The `reaction_id` matches the original `.added` event so you can update or delet
 </Accordion>
 
 <Accordion title="contact.opted_out" icon="ban">
-Fired when a contact opts out — via STOP-keyword reply, or marked opted out by a rep from the dashboard.
+Fired when a contact opts out.
 
 ```json
 {
@@ -264,7 +351,7 @@ Fired when a contact opts out — via STOP-keyword reply, or marked opted out by
   "data": {
     "contact_phone": "+14155551234",
     "source": "auto_keyword",
-    "triggered_by_message_id": "msg_5b6c7d8e-9f0a-1b2c-3d4e-5f6a7b8c9d0e",
+    "triggered_by_message_id": "5b6c7d8e-9f0a-1b2c-3d4e-5f6a7b8c9d0e",
     "opted_out_at": "2026-05-17T14:28:00.000Z"
   }
 }
@@ -273,12 +360,15 @@ Fired when a contact opts out — via STOP-keyword reply, or marked opted out by
 `source` values:
 
 - `auto_keyword` — auto-detected from a STOP-pattern inbound reply
-- `manual` — opt-out marked by a rep from the dashboard
-- `api` — opt-out via an internal automation (not yet exposed on the public `/v1/` API)
+- `manual` — marked opted out by a rep from the dashboard
+- `ghl_dnd` — the contact was marked Do Not Disturb (SMS or all channels) in your connected GoHighLevel sub-account
+- `api` — an internal iBubbl process (not available on the public `/v1/` API)
 
-`triggered_by_message_id` is the inbound message ID that triggered the keyword detection (for `auto_keyword`), or null for manual paths.
+`triggered_by_message_id` is the inbound message that triggered the keyword detection (for `auto_keyword`), or null otherwise.
 
-After this event, all [`POST /v1/messages`](/api-reference/messages/send) to this contact return `422 contact_opted_out`.
+The event fires once per person: the first time they opt out. A person who is already opted out (under any form of their number) doesn't produce another event.
+
+After this event, [`POST /v1/messages`](/api-reference/messages/send) to this contact returns `422 contact_opted_out`. See [Suppression & Opt-Outs](/concepts/suppression) for what happens to messages that were already accepted.
 </Accordion>
 
 </AccordionGroup>
@@ -297,4 +387,4 @@ curl -X POST https://web-production-4e09a.up.railway.app/v1/webhooks \
   }'
 ```
 
-Filtering is exact-match on the `type` field. Unknown event types in the filter list are silently ignored (so subscriptions don't break when new event types ship).
+Filtering is exact-match on the `type` field. Omitting `event_types` (or passing `null` or `[]`) subscribes to every event type, including types added later.

@@ -43,16 +43,18 @@ import time
 
 REPLAY_TOLERANCE_SECONDS = 300
 
-def verify_signature(body_bytes: bytes, signature_header: str, secret: str) -> bool:
+
+def verify_signature(body_bytes: bytes, signature_header, secret: str) -> bool:
     """
     body_bytes: the raw HTTP request body as received.
-    signature_header: the value of the X-iBubbl-Signature header.
+    signature_header: the X-iBubbl-Signature header value (None if missing).
     secret: your subscription's whsec_<hex> secret.
+    Returns False for any missing, malformed, stale or wrong signature.
     """
-    parts = dict(p.split("=", 1) for p in signature_header.split(","))
     try:
+        parts = dict(p.split("=", 1) for p in (signature_header or "").split(","))
         ts = int(parts["t"])
-        received = parts["v1"]
+        received = parts["v1"].encode("ascii")
     except (KeyError, ValueError):
         return False
 
@@ -63,7 +65,7 @@ def verify_signature(body_bytes: bytes, signature_header: str, secret: str) -> b
     signed = f"{ts}.".encode("utf-8") + body_bytes
     expected = hmac.new(
         secret.encode("utf-8"), signed, hashlib.sha256,
-    ).hexdigest()
+    ).hexdigest().encode("ascii")
     return hmac.compare_digest(expected, received)
 ```
 
@@ -74,31 +76,32 @@ const REPLAY_TOLERANCE_SECONDS = 300;
 
 function verifySignature(bodyBytes, signatureHeader, secret) {
   // bodyBytes: Buffer (the raw request body as received)
-  // signatureHeader: the value of the X-iBubbl-Signature header
+  // signatureHeader: the X-iBubbl-Signature header value (undefined/null if missing)
   // secret: your subscription's whsec_<hex> secret
-  const parts = Object.fromEntries(
-    signatureHeader.split(',').map((p) => p.split('=', 2)),
-  );
-  const ts = parseInt(parts.t, 10);
+  // Returns false for any missing, malformed, stale or wrong signature.
+  if (typeof signatureHeader !== 'string') return false;
+  const parts = {};
+  for (const part of signatureHeader.split(',')) {
+    const i = part.indexOf('=');
+    if (i > 0) parts[part.slice(0, i)] = part.slice(i + 1);
+  }
+  const ts = Number.parseInt(parts.t, 10);
   const received = parts.v1;
-  if (!Number.isFinite(ts) || !received) return false;
+  if (!Number.isFinite(ts) || !/^[0-9a-f]{64}$/i.test(received || '')) return false;
 
   // Reject replays.
   if (Math.abs(Date.now() / 1000 - ts) > REPLAY_TOLERANCE_SECONDS) return false;
 
   const signed = Buffer.concat([Buffer.from(`${ts}.`, 'utf-8'), bodyBytes]);
-  const expected = crypto
-    .createHmac('sha256', secret)
-    .update(signed)
-    .digest('hex');
-  return crypto.timingSafeEqual(
-    Buffer.from(expected, 'hex'),
-    Buffer.from(received, 'hex'),
-  );
+  const expected = crypto.createHmac('sha256', secret).update(signed).digest();
+  // Both are 32 bytes (checked above), so timingSafeEqual can't throw.
+  return crypto.timingSafeEqual(expected, Buffer.from(received, 'hex'));
 }
 ```
 
 </CodeGroup>
+
+Both return `false` for a missing, malformed, stale or wrong signature rather than throwing, so a bad request can't crash your handler.
 
 ## Framework integration
 
@@ -140,6 +143,8 @@ If you have other routes that need `express.json()`, mount it on a sub-router or
 FastAPI's body parsing is lazy, so you can read raw bytes via `request.body()` before any model validation runs.
 
 ```python
+import json
+
 from fastapi import FastAPI, HTTPException, Request
 
 app = FastAPI()
@@ -147,7 +152,7 @@ app = FastAPI()
 @app.post("/ibubbl-webhooks")
 async def receive_webhook(request: Request):
     body_bytes = await request.body()
-    signature = request.headers.get("X-iBubbl-Signature", "")
+    signature = request.headers.get("X-iBubbl-Signature")
 
     if not verify_signature(body_bytes, signature, IBUBBL_WEBHOOK_SECRET):
         raise HTTPException(status_code=401, detail="invalid signature")
@@ -161,22 +166,21 @@ async def receive_webhook(request: Request):
 
 <Accordion title="Next.js (App Router) — read raw bytes" icon="react">
 
-In a route handler, use `request.text()` to get the raw body string, then encode to bytes for signing.
+In a route handler, read the raw body with `request.arrayBuffer()` and verify those bytes before parsing.
 
 ```javascript
 import { NextResponse } from 'next/server';
 import crypto from 'node:crypto';
 
 export async function POST(request) {
-  const bodyText = await request.text();
+  const bodyBytes = Buffer.from(await request.arrayBuffer());
   const signature = request.headers.get('X-iBubbl-Signature');
 
-  const bodyBytes = Buffer.from(bodyText, 'utf-8');
   if (!verifySignature(bodyBytes, signature, process.env.IBUBBL_WEBHOOK_SECRET)) {
     return new NextResponse('invalid signature', { status: 401 });
   }
 
-  const event = JSON.parse(bodyText);
+  const event = JSON.parse(bodyBytes.toString('utf-8'));
   // process event...
   return NextResponse.json({ status: 'ok' });
 }
@@ -202,4 +206,4 @@ export async function POST(request) {
 
 - **Use constant-time comparison.** `hmac.compare_digest` (Python) and `crypto.timingSafeEqual` (Node) prevent timing-attack leaks. Don't use `==` on signatures.
 - **Don't skip verification "for testing."** A common shortcut becomes a production hole. The reference verifier is short; copy it.
-- **Reject on signature mismatch immediately.** Return `401` and don't process the body. iBubbl won't retry signature failures any differently than other 4xx — your endpoint just won't see the event.
+- **Reject on signature mismatch immediately.** Return `401` and don't process the body. Like any non-`2xx`, a `401` counts as a failed delivery: iBubbl retries it on the normal schedule and then marks it dead. If valid deliveries are being rejected, check that you're using the raw body and the full `whsec_…` secret.
