@@ -3,7 +3,9 @@ title: 'Send a message'
 openapi: 'POST /v1/messages'
 ---
 
-Send an iMessage with any of four routing shapes — 1:1 by contact ID, 1:1 by phone, into an existing group by `chat_guid`, or as a brand-new group by `participant_phones`. Exactly one routing field is required per request.
+Send a message with any of four routing shapes — 1:1 by contact ID, 1:1 by phone, into an existing group by `chat_guid`, or as a brand-new group by `participant_phones`. Exactly one routing field is required per request.
+
+Messages go out over iMessage. A 1:1 message to a number that can't receive iMessage may be delivered as an SMS instead.
 
 ## 1:1 by phone number
 
@@ -37,7 +39,7 @@ curl https://web-production-4e09a.up.railway.app/v1/messages \
 
 ## Send into an existing group
 
-Address a group you already know by `chat_guid`. Get this value from a prior [`message.inbound`](/webhooks/events) webhook event or from `GET /v1/messages/{id}` after creating a new group. The `chat_guid` is stable for the lifetime of the conversation. See [Group Conversations](/concepts/group-conversations) for the data model.
+Address a group you already know by `chat_guid`. Webhook events don't carry it: call `GET /v1/messages/{id}` with the `message_id` of a `message.inbound` event from the group (or of a message you sent to it). The value changes when a participant is added to the group, so a stored one can go stale. See [Group identity](/concepts/group-conversations#group-identity-chat-guid).
 
 ```bash
 curl https://web-production-4e09a.up.railway.app/v1/messages \
@@ -50,7 +52,7 @@ curl https://web-production-4e09a.up.railway.app/v1/messages \
   }'
 ```
 
-Returns `404 group_not_found` if no group with that `chat_guid` exists under your account. Returns `422 group_outbound_blocked_suppression` if any participant of the group is on your suppression list.
+Returns `404 group_not_found` if no group under your account currently has that `chat_guid` (including a value that changed when a participant was added). Returns `422 group_outbound_blocked_suppression` if any participant of the group is on your suppression list.
 
 ## Create a new group and send the first message
 
@@ -68,15 +70,12 @@ curl https://web-production-4e09a.up.railway.app/v1/messages \
   }'
 ```
 
-The response returns immediately with `chat_guid: null` — the device hasn't yet created the iMessage group. Within ~5–10 seconds the device finalizes the group and the `chat_guid` populates on the conversation. To learn the populated value, either:
+The response returns immediately with `chat_guid: null`: the iMessage group is created when the first message goes out, which can wait for the contacts' [sending hours](/concepts/working-hours). Poll `GET /v1/messages/{id}` until `chat_guid` is non-null (the `message.sent` webhook tells you when it has gone out, but doesn't carry `chat_guid`), then store it and use the [existing-group shape](#send-into-an-existing-group) for later sends.
 
-- Subscribe to [`message.sent`](/webhooks/events) — the webhook for the first message carries the new `chat_guid`, or
-- Poll `GET /v1/messages/{id}` until `chat_guid` is non-null.
-
-Store the `chat_guid` and use the [existing-group shape](#send-into-an-existing-group) for subsequent sends.
+If any of the numbers are opted out, the request fails with `422 group_outbound_blocked_suppression`, and `detail.blocked_phones` lists them as stored on your suppression list.
 
 <Note>
-Single-participant "groups" aren't a thing in iMessage. `participant_phones` requires at least 2 phones — use `to` or `contact_id` for 1:1 sends. Attachments on new-group creates are not supported in v1; send a text-only first message, then send attachments to the populated `chat_guid` once it's available.
+Single-participant "groups" aren't a thing in iMessage. `participant_phones` requires at least 2 different people — use `to` or `contact_id` for 1:1 sends. The v1 API sends text only; it has no attachments.
 </Note>
 
 ## Response shape
@@ -85,12 +84,12 @@ All four shapes return the same `Message`:
 
 ```json
 {
-  "id": "msg_8b3a4e72-1c2d-4e5f-9a0b-2c3d4e5f6a7b",
-  "status": "queued",
+  "id": "8b3a4e72-1c2d-4e5f-9a0b-2c3d4e5f6a7b",
+  "status": "pending",
   "to": "+14155551234",
   "body": "Hi Sarah, following up on our chat yesterday.",
   "contact_id": "c8a1f4e2-3b9d-4f7c-a8e5-1d2c3b4a5e6f",
-  "conversation_id": "cnv_3a4b5c6d-7e8f-9a0b-1c2d-3e4f5a6b7c8d",
+  "conversation_id": "3a4b5c6d-7e8f-9a0b-1c2d-3e4f5a6b7c8d",
   "conversation_kind": "one_to_one",
   "chat_guid": null,
   "channel": "imessage",
@@ -98,7 +97,7 @@ All four shapes return the same `Message`:
 }
 ```
 
-For group sends `to` is `null`, `conversation_kind` is `"group"`, and `chat_guid` is populated for existing-group sends. For brand-new group creates `chat_guid` is `null` initially and populates within ~5–10 seconds as described above.
+For group sends `to` is `null`, `conversation_kind` is `"group"`, and `chat_guid` is populated for existing-group sends. For brand-new group creates `chat_guid` is `null` until the first message has gone out, as described above.
 
 Poll `GET /v1/messages/{id}` to check delivery state, or subscribe to [webhook events](/webhooks/events) for push notifications.
 
@@ -110,6 +109,6 @@ Poll `GET /v1/messages/{id}` to check delivery state, or subscribe to [webhook e
 | `not_found` | `contact_id` doesn't match a contact under your account. |
 | `group_not_found` | `chat_guid` doesn't match a group under your account. |
 | `contact_opted_out` | Target contact (1:1) is on your suppression list. |
-| `group_outbound_blocked_suppression` | Any participant of the addressed group is on your suppression list. The `detail.blocked_phones` array lists every suppressed participant. |
-| `insufficient_participants` | `participant_phones` had fewer than 2 entries. (Same as `validation_error` semantics; surfaced separately for parity with the dashboard error catalog.) |
+| `group_outbound_blocked_suppression` | Any participant of the group is on your suppression list. On a new-group create, `detail.blocked_phones` lists the opted-out numbers. |
+| `insufficient_participants` | The `participant_phones` resolve to fewer than 2 different people — for example the same number twice. (Fewer than 2 entries is a `validation_error`.) |
 | `idempotency_conflict` | The `idempotency_key` has been used before with a different payload. |
