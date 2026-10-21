@@ -33,6 +33,11 @@
       "url": "webhooks"
     }
   ],
+  "api": {
+    "playground": {
+      "mode": "simple"
+    }
+  },
   "navigation": [
     {
       "group": "Getting Started",

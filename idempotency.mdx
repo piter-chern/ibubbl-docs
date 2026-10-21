@@ -7,33 +7,37 @@ Sending the same message twice — because of a network retry, a request timeout
 
 ## How it works
 
-`POST /v1/messages` requires an `idempotency_key` field on every request. iBubbl stores the key alongside a hash of the request payload for 24 hours.
+`POST /v1/messages` requires an `idempotency_key` field on every request. iBubbl stores the key with the message it created, alongside a hash of the request payload. **Keys never expire.**
 
-When you retry with the same key:
+When you send with a key that your account has used before:
 
-- **Same key + same payload** → iBubbl returns the cached response (HTTP `202` with the original message ID). No duplicate send.
-- **Same key + different payload** → iBubbl returns `409 idempotency_conflict`. This usually means a bug in your retry logic generated the same key for two genuinely-different messages.
+- **Same key + same payload** → iBubbl returns the original message (HTTP `202`, the same message ID, its current `status`). Nothing is sent again — however long ago the original was sent.
+- **Same key + different payload** → `409 idempotency_conflict`. This usually means your code generated one key for two genuinely different messages.
+- **Same key, and the original message ended `failed` or `expired`** → the key is released and the request is sent as a new message. This is the one case where reusing a key sends again, so retrying a failed send with its original key is safe.
 - **New key** → treated as a fresh request.
-
-After 24 hours, the key is forgotten and can be reused.
 
 ## Generating keys
 
-Use a UUIDv4 per logical send. Generate it **before** the request, and reuse the same value across retries of that single logical operation.
+Use a new UUIDv4 for every logical send. Generate it **once per message**, before the first attempt, and reuse that same value across retries of that one message.
 
 <CodeGroup>
 
 ```python Python
+import time
 import uuid
+
 import requests
 
-idempotency_key = str(uuid.uuid4())
+API_URL = "https://web-production-4e09a.up.railway.app/v1/messages"
+
 
 def send_with_retry(to: str, body: str, max_attempts: int = 3) -> dict:
+    # One key per message: generated here, outside the retry loop.
+    idempotency_key = str(uuid.uuid4())
     for attempt in range(max_attempts):
         try:
             response = requests.post(
-                "https://web-production-4e09a.up.railway.app/v1/messages",
+                API_URL,
                 headers={"Authorization": f"Bearer {API_KEY}"},
                 json={
                     "to": to,
@@ -47,18 +51,21 @@ def send_with_retry(to: str, body: str, max_attempts: int = 3) -> dict:
         except requests.RequestException:
             if attempt == max_attempts - 1:
                 raise
+        time.sleep(2 ** attempt)  # back off before retrying a 5xx or network error
     raise RuntimeError("all retries failed")
 ```
 
 ```javascript Node
 import crypto from 'node:crypto';
 
-const idempotencyKey = crypto.randomUUID();
+const API_URL = 'https://web-production-4e09a.up.railway.app/v1/messages';
 
 async function sendWithRetry(to, body, maxAttempts = 3) {
+  // One key per message: generated here, outside the retry loop.
+  const idempotencyKey = crypto.randomUUID();
   for (let attempt = 0; attempt < maxAttempts; attempt++) {
     try {
-      const res = await fetch('https://web-production-4e09a.up.railway.app/v1/messages', {
+      const res = await fetch(API_URL, {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${API_KEY}`,
@@ -74,13 +81,14 @@ async function sendWithRetry(to, body, maxAttempts = 3) {
     } catch (err) {
       if (attempt === maxAttempts - 1) throw err;
     }
+    await new Promise((r) => setTimeout(r, 1000 * 2 ** attempt)); // back off
   }
   throw new Error('all retries failed');
 }
 ```
 
 ```bash curl
-# Generate once, reuse on retry:
+# Generate once per message, reuse on retry:
 IDEMPOTENCY_KEY=$(uuidgen)
 
 curl -X POST https://web-production-4e09a.up.railway.app/v1/messages \
@@ -99,20 +107,32 @@ curl -X POST https://web-production-4e09a.up.railway.app/v1/messages \
 
 Idempotency keys are scoped **per customer account**. Two different iBubbl accounts can use the same key without collision — but within a single account, the namespace is shared across all API keys for that account. (If you have multiple API keys for the same account, they share the idempotency-key space.)
 
+## What "same payload" means
+
+iBubbl hashes the routing field **exactly as you sent it**, plus the `body`:
+
+| Request shape | Hashed |
+| --- | --- |
+| `to` | the `to` string + `body` |
+| `contact_id` | the `contact_id` string + `body` |
+| `chat_guid` | the `chat_guid` string + `body` |
+| `participant_phones` | the phones, sorted, + `group_name` + `body` |
+
+The routing field is compared as text, not by the contact it resolves to. So a retry that switches from `to` to the same contact's `contact_id` (or reformats the phone number) is a different payload and gets `409 idempotency_conflict`. Retry with the exact request you sent the first time.
+
 ## Common pitfalls
 
 <AccordionGroup>
   <Accordion title="Regenerating the key on retry">
-    The most common mistake. If you generate the key inside your retry loop, each retry gets a fresh key and the deduplication never fires. Generate **once**, outside the loop, and reuse it.
+    If you generate the key inside your retry loop, each retry gets a fresh key and the deduplication never fires. Generate it **once per message**, before the first attempt, and reuse it.
   </Accordion>
   <Accordion title="Reusing a key across different sends">
-    The key represents *one logical send*. If your code sends to multiple contacts in a campaign, each one needs its own key.
+    The key represents *one logical send*. If your code sends to multiple contacts in a campaign, each one needs its own key. A key generated once at module level and shared by every send gets `409 idempotency_conflict` on the second message.
+  </Accordion>
+  <Accordion title="Reusing old keys">
+    Keys never expire, so a key reused months later still replays (or conflicts with) the original message. Never derive keys from something that repeats, such as a date or a contact ID alone.
   </Accordion>
   <Accordion title='Getting 409 when you think the payload matches'>
-    iBubbl hashes the destination (`to` or resolved phone from `contact_id`) and the `body`. Any difference — including whitespace — triggers a conflict. Inspect your retry's payload character-by-character against the original.
+    Any difference in the hashed fields above — including whitespace in `body`, or a different spelling of the same phone number — triggers a conflict. Compare your retry's payload character by character against the original.
   </Accordion>
 </AccordionGroup>
-
-## TTL and cleanup
-
-Cached idempotency records expire 24 hours after the original request. After that window, the key is reusable. You don't need to clean anything up — iBubbl handles it.
