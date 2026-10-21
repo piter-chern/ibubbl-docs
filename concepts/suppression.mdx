@@ -3,7 +3,11 @@ title: 'Suppression & Opt-Outs'
 description: 'How iBubbl handles opt-outs to keep you TCPA-compliant.'
 ---
 
-iBubbl enforces opt-outs at every send. Once a contact is opted out, any subsequent send attempt — through any API endpoint, dashboard action, or automation — fails immediately with `422 contact_opted_out`. There's no way to bypass this server-side.
+iBubbl checks opt-outs when a send is accepted. Once a contact is opted out, any new send attempt — through any API endpoint, dashboard action, or automation — fails immediately with `422 contact_opted_out`. There's no way to bypass this server-side.
+
+<Warning>
+**Messages accepted before the opt-out may still be sent.** Today the check happens when a message is accepted. A message that was already accepted and is still waiting — held for the contact's [sending hours](/concepts/working-hours) or your calendar, or queued for capacity — when the contact opts out can still go out afterwards. A fix is in progress; until it ships, if a contact opts out while you have messages waiting for them, contact support.
+</Warning>
 
 This isn't just hygiene — it's how you stay TCPA-compliant for US recipients. Opt-out enforcement is non-negotiable.
 
@@ -24,29 +28,33 @@ Recognized keywords:
 
 The match is intentionally strict: the body must equal one of these keywords after `.strip().lower()`. Common false-positive patterns like `"STOP! that's hilarious"` or `"please stop sending"` do **not** match — they don't equal the keyword exactly.
 
-If you need broader pattern handling, post-process inbound webhooks yourself and have your rep mark the contact opted out from the dashboard. Programmatic opt-out is on the roadmap for v1.
+If you need broader pattern handling, post-process inbound webhooks yourself and have your rep mark the contact opted out from the dashboard.
 
 ### Manual dashboard opt-out
 
 A rep can mark a contact opted out from the dashboard's contact detail view. A [`contact.opted_out`](/webhooks/events) webhook fires with `source: "manual"`.
 
+### GoHighLevel Do Not Disturb
+
+If your account is connected to a GoHighLevel sub-account, marking a contact Do Not Disturb there (for SMS or all channels) opts them out in iBubbl too. The webhook fires with `source: "ghl_dnd"`.
+
 <Note>
-**Programmatic manual opt-out is not yet on the v1 API.** If your integration needs to push opt-outs from an external CRM, contact support — we're scoping this for a near-term release. In the meantime, STOP-keyword detection on inbound messages is the only automatic path.
+**Programmatic opt-out is not on the v1 API.** If your integration needs to push opt-outs from an external CRM, contact support.
 </Note>
 
 ## What happens after opt-out
 
 - All `POST /v1/messages` to the contact return `422 contact_opted_out`.
-- Active sequence subscriptions for the contact are auto-paused.
+- Automation (workflow) sends to the contact are refused the same way.
 - The contact remains visible in your dashboard with an opted-out badge.
 
 ## Re-opting in
 
-There is **no API to re-opt-in a contact**. This is intentional — accidental or automated re-opt-ins are a compliance risk. To re-opt-in a contact, a rep must manually do so from the dashboard's contact detail view. This action is logged with the rep's identity for audit purposes.
+An opt-out can't currently be undone — not through the API and not from the dashboard. This is deliberate: accidental or automated re-opt-ins are a compliance risk. If a contact was opted out by mistake, contact support.
 
 ## Detecting opt-outs in your integration
 
-The cleanest path is the [`contact.opted_out`](/webhooks/events) webhook — you'll see it the moment the opt-out happens, with the source.
+The cleanest path is the [`contact.opted_out`](/webhooks/events) webhook — you'll see it shortly after the opt-out happens, with the source. It fires once per person, the first time they opt out.
 
 If you can't run webhooks, check `opted_out` on each contact response:
 
@@ -67,6 +75,6 @@ curl https://web-production-4e09a.up.railway.app/v1/contacts/c8a1f4e2-... \
 
 ## Compliance posture
 
-iBubbl's suppression is built for TCPA compliance for US recipients of iMessage. The defaults — strict STOP matching, mandatory enforcement, no programmatic re-opt-in, audit logging — reflect that posture. If your use case has different jurisdictional requirements, talk to support before launching.
+iBubbl's suppression is built for TCPA compliance for US recipients of iMessage. The defaults — strict STOP matching, mandatory enforcement, no re-opt-in — reflect that posture. If your use case has different jurisdictional requirements, talk to support before launching.
 
 You remain the responsible party for your account's send patterns and content. iBubbl's enforcement reduces risk; it doesn't eliminate it.

@@ -39,7 +39,7 @@ The local time check uses the **contact's timezone**, not your account's. iBubbl
 3. **Account timezone** — the timezone in your dashboard's **Settings → Notifications**, which starts as your browser's timezone.
 4. **`America/New_York`** — if none of the above is set.
 
-To override the inferred timezone, pass it on contact upsert:
+To set a contact's timezone yourself, pass it on contact upsert **before you send to them**:
 
 ```bash
 curl -X POST https://web-production-4e09a.up.railway.app/v1/contacts \
@@ -51,7 +51,9 @@ curl -X POST https://web-production-4e09a.up.railway.app/v1/contacts \
   }'
 ```
 
-The override is sticky — once set, automation re-upserts will not overwrite it.
+Once a contact has a timezone, an upsert never changes it. That includes the inferred one: the area-code guess is saved on the contact when their first message is processed, so a `timezone` sent on a later upsert is ignored. Upsert first, then send.
+
+The `timezone` must be one of the supported zones (US, Canada, and a few international ones); anything else returns `422 invalid_timezone`.
 
 ## Detecting a held send
 
@@ -59,7 +61,7 @@ A message waiting for working hours is `pending`, like one that is about to go o
 
 ```json
 {
-  "id": "msg_4a5b6c7d-...",
+  "id": "4a5b6c7d-8e9f-0a1b-2c3d-4e5f6a7b8c9d",
   "status": "pending",
   "to": "+14155551234",
   "held_reason": "working_hours",
@@ -79,6 +81,6 @@ Separately from working hours, a send can be accepted but parked because of capa
 - `hourly_cap_hit` — your line hit its hourly send cap.
 - `line_offline` — your sending line is temporarily disconnected.
 
-iBubbl re-checks queued messages every 30 seconds and sends them as soon as the condition clears. A message still queued after **one hour** is dropped and moves to `status: "expired"`; send it again if it still matters.
+iBubbl re-checks queued messages automatically and sends them once the condition clears. A message still queued after about **an hour** is dropped and moves to `status: "expired"` — no webhook fires for that today, so poll `GET /v1/messages/{id}` if you need to know. Send it again (a new `idempotency_key`, or the same one: an expired message's key is released) if it still matters.
 
 Daily and cold-outreach caps do **not** queue: a send over those caps fails immediately with a `422`. See [Errors](/errors).

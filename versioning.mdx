@@ -28,9 +28,10 @@ iBubbl **may**:
 - Add new response fields (treat unknown fields defensively in your parser).
 - Add new event types to the webhook catalog (filter by `event_types` if you only want a subset).
 - Add new error codes for new failure modes.
+- Add new values to an existing enum — for example a new message `status` or `failed_reason`. Handle values you don't recognise (log them, treat them as "other") instead of failing.
 - Tighten validation in ways that previously-accepted requests still pass.
 
-Treat unknown fields as forward-compat. Your code should not error on an extra response field it doesn't recognize.
+Treat unknown fields, enum values and event types as forward-compat. Your code should not error on an extra response field, status or event type it doesn't recognize.
 
 ## Breaking changes
 

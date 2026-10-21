@@ -47,7 +47,8 @@ Treat the URL like a password. If it leaks, use **New URL** on the source (the
 old URL stops working at once) or revoke the source.
 
 Bodies may be JSON or `application/x-www-form-urlencoded` form data, up to
-256 KB.
+256 KB. `multipart/form-data` isn't supported: such a request is accepted but
+recorded as **Event wasn't JSON or form data**, and starts nothing.
 
 ### What you get back
 
@@ -62,14 +63,16 @@ Inbound events** says which of those it was.
 
 Errors are limited to `403` (signature did not match), `404` (no such source, or
 it was revoked), `413` (body over 256 KB) and, for secret-URL sources only, `429`
-(more than 60 events a minute). Everything else answers `200`, deliberately —
-see [Delivery](#delivery-and-retries).
+(over 60 events a minute, while a workflow is listening on the source — see
+[Source types](#source-types)). Everything else answers `200`, deliberately —
+see [Delivery](#delivery-and-retries). (Only `POST` is accepted; a `GET` to the
+URL returns `405`.)
 
 ## Source types
 
 | Type | Who it's for | How a request is checked |
 | --- | --- | --- |
-| **Any app (secret URL)** | Any app that can send a webhook | The URL is the key; no signature. At most 60 events a minute per source. |
+| **Any app (secret URL)** | Any app that can send a webhook | The URL is the key; no signature. At most 60 events a minute per source (see below). |
 | **Recharge** | Recharge | Recharge's `X-Recharge-Hmac-Sha256` signature, using your API Client Secret. |
 | **iBubbl-signed** | Your own systems | An `X-iBubbl-Signature` header you compute with a secret iBubbl gives you. |
 
@@ -78,7 +81,16 @@ see [Delivery](#delivery-and-retries).
 Most apps can't sign a request in a way iBubbl could check, so for these the
 long, random URL is the credential — the same approach as Zapier's and Make's
 catch hooks. Create the source, paste the URL into the app, and send a test
-event. For example:
+event.
+
+A secret-URL source accepts at most 60 events a minute. Over that, the answer
+depends on whether any active workflow is listening on the source: if one is,
+iBubbl answers `429` so the app retries later; if none is, the event is
+accepted (`200`) and dropped, since it couldn't have started anything. Dropped
+events don't appear in the source's recent events. Recharge sources are never
+rate limited.
+
+For example:
 
 ```bash
 curl -X POST https://web-production-4e09a.up.railway.app/v1/events/ibev_... \
@@ -150,7 +162,10 @@ Hi {{contact.first_name}} — the card on your subscription was declined.
 You can update it here: https://yourstore.rechargeapps.com/portal/{{trigger.event.charge.customer_hash}}/
 ```
 
-`customer_hash` comes in the payload, so the link costs no extra API call. Link
+`customer_hash` comes in the payload, so the link costs no extra API call. (It is
+`charge.customer_hash` in Recharge's 2021-01 API format. In the 2021-11 format the
+charge carries it as `charge.customer.hash` instead — use **Insert field** on a
+real event to see which one your store sends.) Link
 to the portal root rather than a deeper page: the exact path differs depending
 on which Recharge portal your store runs, and Recharge is migrating merchants
 between them.
@@ -167,14 +182,19 @@ your own Recharge account.
 Without protection, a single declined card would text the customer on every one
 of those retries.
 
-The **Event ID path** on your trigger is what prevents it. It points at the field
-identifying the underlying object — for Recharge, `charge.id`. Events resolving
-to an ID that already started a run are folded into that run instead of starting
-a new one.
+The **Event ID path** on your trigger is what prevents it, and every
+**Webhook received** trigger needs one. It points at the field identifying the
+underlying object — for Recharge, `charge.id`. An event resolving to an ID that
+already started a run starts nothing new; the source records it as **Already
+handled**.
 
 <Warning>
   Paths start inside the sending app's payload. Recharge wraps everything in a
   `charge` object, so the path is `charge.id` — not `id`.
+
+  A path is field names separated by dots; a number selects an array element
+  (`line_items.0.sku`). Don't write a `$.` prefix: `$.charge.id` matches
+  nothing.
 
   A path that matches nothing is treated as a configuration error: no workflow
   runs, and the source reports **Event ID path not found**. Sending nothing is
@@ -188,9 +208,15 @@ build a separate workflow on the `charge/max_retries_reached` topic.
 ## Finding the customer
 
 iBubbl looks for a phone number in the payload — for Recharge, in the billing
-then shipping address; for other sources, where you pointed it (see
-[Any app](#any-app-secret-url)) — and converts it to international format. Numbers arrive
-as the shopper typed them, so `(310) 384-3698` and `3103843698` both work.
+address, or the shipping address when the billing phone is blank; for other
+sources, where you pointed it (see [Any app](#any-app-secret-url)) — and converts
+it to international format. Numbers arrive as the shopper typed them, so
+`(310) 384-3698` and `3103843698` both work.
+
+A number without a leading `+` is read in the country named by a two-letter
+`country_code` or `country` field in the payload when there is one, otherwise in
+the source's default country (the US unless it was set otherwise). A billing
+phone that can't be read is not replaced by the shipping one.
 
 A number that cannot be read as a real phone number is **rejected, not guessed
 at**, and the event starts nothing. That matters more than it looks: the message
@@ -229,6 +255,9 @@ each:
 | Signature did not match | Wrong signing secret — for Recharge, usually the API token pasted instead of the Client Secret. |
 | Event wasn't JSON or form data | The body couldn't be read. |
 | Something went wrong | An error on iBubbl's side; the event was not processed. |
+
+Events dropped over a secret-URL source's rate limit (with no workflow
+listening) are not recorded here.
 
 ## New URL and revoking
 
