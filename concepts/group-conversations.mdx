@@ -14,7 +14,7 @@ Messages carry a `conversation_kind` field — on the `message.inbound` webhook 
 
 Branch your integration on `conversation_kind`. The same message lifecycle applies to both kinds — only the addressing differs. (One exception: `message.queued` fires only for 1:1 sends.)
 
-## Group identity (`chat_guid`)
+## Group identity
 
 Each group conversation has an opaque `chat_guid`, for example `any;+;067ace6caf6c43aaa2f7d643975e15ea`. Treat it as an opaque string: don't parse it, and branch on `conversation_kind` rather than its prefix.
 
@@ -93,7 +93,7 @@ Two of the four request shapes on `POST /v1/messages` are for groups:
 
 <CardGroup cols={2}>
   <Card title="Existing group" icon="messages">
-    Send into a group you already know by `chat_guid` (see [Group identity](#group-identity-chat-guid) for how to get it).
+    Send into a group you already know by `chat_guid` (see [Group identity](#group-identity) for how to get it).
   </Card>
   <Card title="New group" icon="user-plus">
     Pass `participant_phones` (2+ E.164 numbers) and an optional `group_name`. iBubbl creates the iMessage group and sends your first message in one operation.

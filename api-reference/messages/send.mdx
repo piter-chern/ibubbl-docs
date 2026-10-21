@@ -39,7 +39,7 @@ curl https://web-production-4e09a.up.railway.app/v1/messages \
 
 ## Send into an existing group
 
-Address a group you already know by `chat_guid`. Webhook events don't carry it: call `GET /v1/messages/{id}` with the `message_id` of a `message.inbound` event from the group (or of a message you sent to it). The value changes when a participant is added to the group, so a stored one can go stale. See [Group identity](/concepts/group-conversations#group-identity-chat-guid).
+Address a group you already know by `chat_guid`. Webhook events don't carry it: call `GET /v1/messages/{id}` with the `message_id` of a `message.inbound` event from the group (or of a message you sent to it). The value changes when a participant is added to the group, so a stored one can go stale. See [Group identity](/concepts/group-conversations#group-identity).
 
 ```bash
 curl https://web-production-4e09a.up.railway.app/v1/messages \
