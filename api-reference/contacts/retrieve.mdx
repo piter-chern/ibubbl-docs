@@ -7,7 +7,7 @@ openapi: 'GET /v1/contacts/{contact_id}'
 
 **Method:** `GET` | **Endpoint:** `/v1/contacts/{contact_id}`
 
-**Description:** Fetch one contact by its ID, including whether it has opted out.
+**Description:** Fetch one contact by its ID, with its tags and whether it has opted out.
 
 **Authentication:** API key in the `Authorization` header: `Authorization: Bearer ib_pk_<64 hex>`. Create keys in the dashboard under **Settings → API access**.
 
@@ -28,7 +28,14 @@ curl https://web-production-4e09a.up.railway.app/v1/contacts/c8a1f4e2-3b9d-4f7c-
   "phone": "+14155551234",
   "first_name": "Sam",
   "last_name": "Rivera",
-  "timezone": "America/Los_Angeles",
+  "email": "sam@example.com",
+  "city": "Brooklyn",
+  "state": "NY",
+  "timezone": "America/New_York",
+  "tags": [
+    "Spring promo",
+    "VIP"
+  ],
   "opted_out": false,
   "opted_out_at": null,
   "created_at": "2026-11-05T14:23:45.123Z"

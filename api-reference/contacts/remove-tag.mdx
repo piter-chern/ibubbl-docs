@@ -1,0 +1,76 @@
+---
+title: 'Remove a tag from a contact'
+openapi: 'DELETE /v1/contacts/{contact_id}/tags/{name}'
+---
+
+### Remove a tag from a contact
+
+**Method:** `DELETE` | **Endpoint:** `/v1/contacts/{contact_id}/tags/{name}`
+
+**Description:** Take a tag off a contact by name, ignoring case and outer spaces. Calling it for a tag the contact doesn't have changes nothing. Removing a tag starts no workflow, and the tag itself stays available for other contacts.
+
+**Authentication:** API key in the `Authorization` header: `Authorization: Bearer ib_pk_<64 hex>`. Create keys in the dashboard under **Settings → API access**.
+
+#### Request Body
+None. The path parameters are `contact_id`, the contact's ID (a UUID), and `name`, the tag name, URL-encoded (`Spring%20promo`). If two tags differ only by case (`VIP` and `vip`), both come off.
+
+#### Example Request
+```bash
+curl -X DELETE https://web-production-4e09a.up.railway.app/v1/contacts/c8a1f4e2-3b9d-4f7c-a8e5-1d2c3b4a5e6f/tags/vip \
+  -H "Authorization: Bearer $IB_API_KEY"
+```
+
+#### Responses
+**200 OK**
+```json
+{
+  "id": "c8a1f4e2-3b9d-4f7c-a8e5-1d2c3b4a5e6f",
+  "phone": "+14155551234",
+  "first_name": "Sam",
+  "last_name": "Rivera",
+  "email": "sam@example.com",
+  "city": "Brooklyn",
+  "state": "NY",
+  "timezone": "America/New_York",
+  "tags": [
+    "Spring promo"
+  ],
+  "opted_out": false,
+  "opted_out_at": null,
+  "created_at": "2026-11-05T14:23:45.123Z"
+}
+```
+The contact, with the tags it has left.
+
+**401 Unauthorized**
+```json
+{
+  "detail": {
+    "error": "unauthorized",
+    "message": "Invalid or revoked API key"
+  }
+}
+```
+Other `message` values: `Authorization Bearer token required`, `API key required (use Authorization: Bearer ib_pk_…)`, `Invalid API key format`, `Customer account not found`.
+
+**403 Forbidden**
+```json
+{
+  "detail": {
+    "error": "forbidden",
+    "message": "Account is suspended"
+  }
+}
+```
+Your iBubbl account is suspended or cancelled (`message` is then `Account is cancelled`). Every API-key endpoint returns this.
+
+**404 Not Found**
+```json
+{
+  "detail": {
+    "error": "not_found",
+    "message": "Contact not found"
+  }
+}
+```
+Also returned for a malformed ID, a deleted contact, and a contact that belongs to another account.

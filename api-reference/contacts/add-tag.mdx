@@ -1,0 +1,107 @@
+---
+title: 'Add a tag to a contact'
+openapi: 'POST /v1/contacts/{contact_id}/tags'
+---
+
+### Add a tag to a contact
+
+**Method:** `POST` | **Endpoint:** `/v1/contacts/{contact_id}/tags`
+
+**Description:** Add one tag to a contact. Calling it again with the same name changes nothing, so it is safe to retry. A newly added tag can start workflows with a "Tag added" trigger.
+
+**Authentication:** API key in the `Authorization` header: `Authorization: Bearer ib_pk_<64 hex>`. Create keys in the dashboard under **Settings → API access**.
+
+#### Request Body
+The path parameter `contact_id` is the contact's ID (a UUID).
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `name` | string, 1–64 characters | Yes | The tag name, with no invisible characters. It matches an existing tag ignoring case and outer spaces; a new name creates the tag. |
+
+Fields not listed above are rejected with `422 validation_error`, and the message names the field.
+
+#### Example Request
+```bash
+curl -X POST https://web-production-4e09a.up.railway.app/v1/contacts/c8a1f4e2-3b9d-4f7c-a8e5-1d2c3b4a5e6f/tags \
+  -H "Authorization: Bearer $IB_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"name": "Spring promo"}'
+```
+
+#### Responses
+**200 OK**
+```json
+{
+  "id": "c8a1f4e2-3b9d-4f7c-a8e5-1d2c3b4a5e6f",
+  "phone": "+14155551234",
+  "first_name": "Sam",
+  "last_name": "Rivera",
+  "email": "sam@example.com",
+  "city": "Brooklyn",
+  "state": "NY",
+  "timezone": "America/New_York",
+  "tags": [
+    "Spring promo",
+    "VIP"
+  ],
+  "opted_out": false,
+  "opted_out_at": null,
+  "created_at": "2026-11-05T14:23:45.123Z"
+}
+```
+The contact, with all its tags. The same response comes back if the contact already had the tag.
+
+**401 Unauthorized**
+```json
+{
+  "detail": {
+    "error": "unauthorized",
+    "message": "Invalid or revoked API key"
+  }
+}
+```
+Other `message` values: `Authorization Bearer token required`, `API key required (use Authorization: Bearer ib_pk_…)`, `Invalid API key format`, `Customer account not found`.
+
+**403 Forbidden**
+```json
+{
+  "detail": {
+    "error": "forbidden",
+    "message": "Account is suspended"
+  }
+}
+```
+Your iBubbl account is suspended or cancelled (`message` is then `Account is cancelled`). Every API-key endpoint returns this.
+
+**404 Not Found**
+```json
+{
+  "detail": {
+    "error": "not_found",
+    "message": "Contact not found"
+  }
+}
+```
+Also returned for a malformed ID, a deleted contact, and a contact that belongs to another account.
+
+**422 Unprocessable Entity**
+```json
+{
+  "detail": {
+    "error": "invalid_tag",
+    "message": "A tag name needs 1–64 characters and no invisible characters"
+  }
+}
+```
+Other `error` values: `validation_error` for a bad shape or an unknown field (`color: Extra inputs are not permitted`); `duplicate_tag`, rare, when the name collides with an existing tag in a way iBubbl can't resolve.
+
+**500 Internal Server Error**
+```json
+{
+  "detail": {
+    "error": "internal_error",
+    "message": "The tag was deleted while it was being added; retry"
+  }
+}
+```
+Only if a tag is deleted in the dashboard twice while this call is adding it. Retry the request.

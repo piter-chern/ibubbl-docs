@@ -7,7 +7,7 @@ openapi: 'POST /v1/contacts'
 
 **Method:** `POST` | **Endpoint:** `/v1/contacts`
 
-**Description:** Create a contact, or match an existing one, by phone number. On an existing contact the optional fields are only filled where they are still empty; values a rep or an earlier call set are never overwritten.
+**Description:** Create a contact, or match an existing one, by phone number, and add tags. On an existing contact the optional fields are only filled where they are still empty: values a rep or an earlier call set are never overwritten here. To overwrite, use [Update a contact](/api-reference/contacts/update).
 
 **Authentication:** API key in the `Authorization` header: `Authorization: Bearer ib_pk_<64 hex>`. Create keys in the dashboard under **Settings → API access**.
 
@@ -17,9 +17,13 @@ openapi: 'POST /v1/contacts'
 | `phone` | string (E.164, e.g. `+14155551234`) | Yes | The contact's phone number, and the key it is matched on. Sending the same number again returns the same contact. |
 | `first_name` | string, at most 128 characters | No | Only applied if the contact has no first name yet. |
 | `last_name` | string, at most 128 characters | No | Only applied if the contact has no last name yet. |
+| `email` | string, at most 254 characters | No | Must look like an email address (`name@domain.tld`, no spaces), or `422 invalid_email`. Only applied if the contact has no email yet. |
+| `city` | string, at most 128 characters | No | Trimmed; blank counts as not sent. Only applied if the contact has no city yet. |
+| `state` | string, at most 128 characters | No | Trimmed, and a 2-letter code is upper-cased (`ny` becomes `NY`). Only applied if the contact has no state yet. |
 | `timezone` | string | No | IANA zone used for the contact's sending hours. Must be one of 20 supported zones (the US, Canada and a few international ones, e.g. `Europe/London`). Only applied if the contact has no timezone yet, so set it on the first call, before you send. |
+| `tags` | array of strings, at most 20 | No | Tag names to add. Only ever adds: tags the contact has are kept and none are removed. A name matches an existing tag ignoring case and outer spaces (`vip` uses `VIP`); a new name creates the tag. Each name is 1–64 characters with no invisible characters. A newly added tag can start workflows with a "Tag added" trigger. |
 
-Fields not listed above are ignored without an error: the request still succeeds, and they are not stored. There is no API endpoint yet to update, list or delete contacts.
+Fields not listed above are rejected with `422 validation_error`, and the message names the field. Every value is checked before anything is saved, so a rejected call changes nothing.
 
 #### Example Request
 ```bash
@@ -30,7 +34,11 @@ curl -X POST https://web-production-4e09a.up.railway.app/v1/contacts \
     "phone": "+14155551234",
     "first_name": "Sam",
     "last_name": "Rivera",
-    "timezone": "America/Los_Angeles"
+    "email": "sam@example.com",
+    "city": "Brooklyn",
+    "state": "ny",
+    "timezone": "America/New_York",
+    "tags": ["VIP", "Spring promo"]
   }'
 ```
 
@@ -42,13 +50,20 @@ curl -X POST https://web-production-4e09a.up.railway.app/v1/contacts \
   "phone": "+14155551234",
   "first_name": "Sam",
   "last_name": "Rivera",
-  "timezone": "America/Los_Angeles",
+  "email": "sam@example.com",
+  "city": "Brooklyn",
+  "state": "NY",
+  "timezone": "America/New_York",
+  "tags": [
+    "Spring promo",
+    "VIP"
+  ],
   "opted_out": false,
   "opted_out_at": null,
-  "created_at": "2026-11-05T14:23:45.123Z"
+  "created_at": "2026-11-05T00:00:00+00:00"
 }
 ```
-A new contact was created. A number whose only match is a deleted contact also creates a new one.
+A new contact was created. A number whose only match is a deleted contact also creates a new one. `tags` lists the contact's tag names, sorted.
 
 **200 OK**
 ```json
@@ -57,13 +72,19 @@ A new contact was created. A number whose only match is a deleted contact also c
   "phone": "+14155551234",
   "first_name": "Sam",
   "last_name": "Rivera",
-  "timezone": "America/Los_Angeles",
+  "email": "sam@example.com",
+  "city": "Brooklyn",
+  "state": "NY",
+  "timezone": "America/New_York",
+  "tags": [
+    "VIP"
+  ],
   "opted_out": false,
   "opted_out_at": null,
   "created_at": "2026-11-05T14:23:45.123Z"
 }
 ```
-The number matched an existing contact; empty fields were filled from the request.
+The number matched an existing contact: empty fields were filled from the request, and the tags were added. `vip` matched the existing `VIP` tag.
 
 **401 Unauthorized**
 ```json
@@ -92,16 +113,24 @@ Your iBubbl account is suspended or cancelled (`message` is then `Account is can
 {
   "detail": {
     "error": "validation_error",
-    "message": "phone must be E.164 format (e.g. +14155551234)"
+    "message": "company: Extra inputs are not permitted"
   }
 }
 ```
-Other `error` value: `invalid_timezone`, for a `timezone` outside the supported list:
+Other `error` values:
+- `validation_error` for a bad shape: `phone` not E.164 (`phone must be E.164 format (e.g. +14155551234)`), a field too long, or more than 20 tags.
+- `invalid_email`: `'sam@example' is not an email address`
+- `invalid_tag`: `A tag name needs 1–64 characters and no invisible characters (got '')`
+- `invalid_timezone`: `timezone` outside the supported list.
+- `duplicate_tag`: a tag name collides with an existing tag in a way iBubbl can't resolve. Rare; change the name.
+
+**500 Internal Server Error**
 ```json
 {
   "detail": {
-    "error": "invalid_timezone",
-    "message": "timezone must be one of ['America/Anchorage', 'America/Chicago', 'America/Denver', 'America/Edmonton', 'America/Halifax', 'America/Los_Angeles', 'America/New_York', 'America/Phoenix', 'America/St_Johns', 'America/Toronto', 'America/Vancouver', 'America/Winnipeg', 'Asia/Singapore', 'Asia/Tokyo', 'Australia/Sydney', 'Europe/Berlin', 'Europe/London', 'Europe/Madrid', 'Europe/Paris', 'Pacific/Honolulu']; got 'Mars/Olympus'"
+    "error": "internal_error",
+    "message": "The tag was deleted while it was being added; retry"
   }
 }
 ```
+Only if a tag is deleted in the dashboard twice while this call is adding it. Retry the request.

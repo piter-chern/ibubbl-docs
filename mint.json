@@ -86,7 +86,10 @@
           "group": "Contacts",
           "pages": [
             "api-reference/contacts/upsert",
-            "api-reference/contacts/retrieve"
+            "api-reference/contacts/retrieve",
+            "api-reference/contacts/update",
+            "api-reference/contacts/add-tag",
+            "api-reference/contacts/remove-tag"
           ]
         },
         {

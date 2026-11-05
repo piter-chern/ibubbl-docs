@@ -167,7 +167,7 @@
           "Contacts"
         ],
         "summary": "Create or update a contact",
-        "description": "Upsert a contact by E.164 phone number. Returns `201 Created` on a new contact, `200 OK` on an existing match. A number whose only match is a deleted contact creates a new contact.\n\nOptional fields (`first_name`, `last_name`, `timezone`) apply only when the existing record's value is null \u2014 values set previously by a rep or by a prior API call are preserved. This protects human-edited data from being clobbered by automation.\n\nIf `timezone` is provided, it must be one of the 20 supported IANA timezones (US, Canada, and a few international zones such as `Europe/London`); anything else returns `422 invalid_timezone`.\n\nv1 has no endpoint to update, list or delete contacts.",
+        "description": "Upsert a contact by E.164 phone number. Returns `201 Created` on a new contact, `200 OK` on an existing match. A number whose only match is a deleted contact creates a new contact.\n\nOptional fields (`first_name`, `last_name`, `email`, `city`, `state`, `timezone`) apply only when the existing record's value is null \u2014 values set previously by a rep or by a prior API call are preserved. This protects human-edited data from being clobbered by automation; to overwrite, use `PATCH /v1/contacts/{id}`.\n\n`tags` only ever adds tags. Every value is checked before anything is saved.\n\nIf `timezone` is provided, it must be one of the 20 supported IANA timezones (US, Canada, and a few international zones such as `Europe/London`); anything else returns `422 invalid_timezone`.\n\nv1 has no endpoint to list or delete contacts.",
         "operationId": "v1_upsert_contact_v1_contacts_post",
         "requestBody": {
           "required": true,
@@ -211,7 +211,17 @@
             }
           },
           "422": {
-            "description": "Validation failure \u2014 `phone` not in E.164 format, or `timezone` not in the supported allowlist.",
+            "description": "`validation_error` (bad request shape, `phone` not E.164, an unknown field), `invalid_timezone`, `invalid_email`, `invalid_tag` or `duplicate_tag`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "`internal_error`: a tag was deleted twice while it was being added. Retry.",
             "content": {
               "application/json": {
                 "schema": {
@@ -255,6 +265,252 @@
         "responses": {
           "200": {
             "description": "The contact.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Contact"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid API key.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Contact not found.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "`forbidden`: your iBubbl account is suspended or cancelled.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "patch": {
+        "tags": [
+          "Contacts"
+        ],
+        "summary": "Update a contact",
+        "description": "Overwrite the fields you send. Fields you leave out are not touched; a field sent as `null` is cleared. Unlike the upsert, this replaces values a rep set.\n\n`phone` can't be changed. Tags have their own endpoints.",
+        "operationId": "v1_update_contact_v1_contacts__contact_id__patch",
+        "parameters": [
+          {
+            "name": "contact_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Contact Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ContactUpdate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The updated contact.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Contact"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid API key.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Contact not found.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "`validation_error` (bad request shape or an unknown field, including `phone` and `tags`), `invalid_timezone` or `invalid_email`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "`forbidden`: your iBubbl account is suspended or cancelled.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/contacts/{contact_id}/tags": {
+      "post": {
+        "tags": [
+          "Contacts"
+        ],
+        "summary": "Add a tag to a contact",
+        "description": "Add one tag. Idempotent: a tag the contact already has answers `200` unchanged. The name matches an existing tag trimmed and case-insensitively; a new name creates the tag. A newly added tag can start workflows with a \"Tag added\" trigger.",
+        "operationId": "v1_add_contact_tag_v1_contacts__contact_id__tags_post",
+        "parameters": [
+          {
+            "name": "contact_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Contact Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ContactTagAdd"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The contact, with its tags.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Contact"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid API key.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Contact not found.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "`validation_error` (bad request shape or an unknown field), `invalid_tag` or `duplicate_tag`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "`internal_error`: a tag was deleted twice while it was being added. Retry.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "`forbidden`: your iBubbl account is suspended or cancelled.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/contacts/{contact_id}/tags/{name}": {
+      "delete": {
+        "tags": [
+          "Contacts"
+        ],
+        "summary": "Remove a tag from a contact",
+        "description": "Remove a tag by name (URL-encode it), matched trimmed and case-insensitively. Idempotent: a tag the contact doesn't have answers `200` unchanged. Removing a tag starts no workflow.",
+        "operationId": "v1_remove_contact_tag_v1_contacts__contact_id__tags__name__delete",
+        "parameters": [
+          {
+            "name": "contact_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Contact Id"
+            }
+          },
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Name"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The contact, with its tags.",
             "content": {
               "application/json": {
                 "schema": {
@@ -696,6 +952,39 @@
             ],
             "title": "Last Name"
           },
+          "email": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Email"
+          },
+          "city": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "City"
+          },
+          "state": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "State"
+          },
           "timezone": {
             "anyOf": [
               {
@@ -706,7 +995,15 @@
               }
             ],
             "title": "Timezone",
-            "description": "IANA timezone used for this contact's sending hours, or null if not set yet. When it is null and the number is a US or Canadian one, iBubbl infers the zone from the area code and saves it here when the contact's first message is processed; otherwise your account's timezone is used. Once set, an upsert never replaces it, so pass `timezone` on the first upsert, before you send."
+            "description": "IANA timezone used for this contact's sending hours, or null if not set yet. When it is null and the number is a US or Canadian one, iBubbl infers the zone from the area code and saves it here when the contact's first message is processed; otherwise your account's timezone is used. Once set, an upsert never replaces it, so pass `timezone` on the first upsert, before you send, or change it with PATCH."
+          },
+          "tags": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Tags",
+            "description": "The contact's tag names, sorted case-insensitively."
           },
           "opted_out": {
             "type": "boolean",
@@ -740,12 +1037,19 @@
         ],
         "title": "Contact",
         "example": {
+          "city": "Brooklyn",
           "created_at": "2026-05-17T14:23:45.123Z",
+          "email": "sam@example.com",
           "first_name": "Sam",
           "id": "c8a1f4e2-3b9d-4f7c-a8e5-1d2c3b4a5e6f",
           "last_name": "Rivera",
           "opted_out": false,
           "phone": "+14155551234",
+          "state": "NY",
+          "tags": [
+            "Spring promo",
+            "VIP"
+          ],
           "timezone": "America/Los_Angeles"
         }
       },
@@ -953,6 +1257,110 @@
           "to": "+14155551234"
         }
       },
+      "ContactUpdate": {
+        "properties": {
+          "first_name": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 128
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "First Name",
+            "examples": [
+              "Sam"
+            ]
+          },
+          "last_name": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 128
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Name",
+            "examples": [
+              "Rivera"
+            ]
+          },
+          "email": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 254
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Email",
+            "description": "Must look like an email address, or `422 invalid_email`.",
+            "examples": [
+              "sam@example.com"
+            ]
+          },
+          "city": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 128
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "City",
+            "description": "Trimmed; blank clears it.",
+            "examples": [
+              "Brooklyn"
+            ]
+          },
+          "state": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 128
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "State",
+            "description": "Trimmed, a 2-letter code upper-cased; blank clears it.",
+            "examples": [
+              "NY"
+            ]
+          },
+          "timezone": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Timezone",
+            "description": "One of the supported IANA zones, or `422 invalid_timezone`. `null` returns the contact to automatic: iBubbl infers the zone from a US or Canadian area code again.",
+            "examples": [
+              "America/New_York"
+            ]
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "ContactUpdate",
+        "description": "Only the fields you send change. Send a field as `null` to clear it. `phone` can't be changed, and tags have their own endpoints. Fields not listed here are rejected with `422 validation_error`.",
+        "example": {
+          "email": "sam.rivera@example.com"
+        }
+      },
       "ContactUpsert": {
         "properties": {
           "phone": {
@@ -974,7 +1382,7 @@
               }
             ],
             "title": "First Name",
-            "description": "Contact's first name. Only applied if the existing record's `first_name` is null \u2014 rep-edited values are sticky and won't be overwritten by automation.",
+            "description": "Contact's first name. Only applied if the existing record's `first_name` is null \u2014 rep-edited values are sticky and won't be overwritten by automation. To change it, use `PATCH /v1/contacts/{id}`.",
             "examples": [
               "Sam"
             ]
@@ -995,6 +1403,54 @@
               "Rivera"
             ]
           },
+          "email": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 254
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Email",
+            "description": "Email address. Must look like one (`name@domain.tld`, no spaces), or the call returns `422 invalid_email`. Same sticky-update semantics as `first_name`.",
+            "examples": [
+              "sam@example.com"
+            ]
+          },
+          "city": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 128
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "City",
+            "description": "City. Trimmed; blank is treated as not sent. Same sticky-update semantics as `first_name`.",
+            "examples": [
+              "Brooklyn"
+            ]
+          },
+          "state": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 128
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "State",
+            "description": "State, province or region. Trimmed, and a 2-letter code is upper-cased (`ny` \u2192 `NY`). Same sticky-update semantics as `first_name`.",
+            "examples": [
+              "NY"
+            ]
+          },
           "timezone": {
             "anyOf": [
               {
@@ -1009,19 +1465,49 @@
             "examples": [
               "America/Los_Angeles"
             ]
+          },
+          "tags": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array",
+                "maxItems": 20
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tags",
+            "description": "Tag names to add, at most 20. Only ever adds: tags the contact already has are kept, and none are removed. A name matches an existing tag trimmed and case-insensitively (`vip` reuses `VIP`); a new name creates the tag. Each name is 1\u201364 characters with no invisible characters, or the call returns `422 invalid_tag` before anything is saved. A newly added tag can start workflows with a \"Tag added\" trigger.",
+            "examples": [
+              [
+                "VIP",
+                "Spring promo"
+              ]
+            ]
           }
         },
+        "additionalProperties": false,
         "type": "object",
         "required": [
           "phone"
         ],
         "title": "ContactUpsert",
-        "description": "Fields not listed here are ignored without an error: the request still succeeds and they are not stored.",
+        "description": "Fields not listed here are rejected with `422 validation_error`.",
         "example": {
+          "city": "Brooklyn",
+          "email": "sam@example.com",
           "first_name": "Sam",
           "last_name": "Rivera",
           "phone": "+14155551234",
-          "timezone": "America/Los_Angeles"
+          "state": "NY",
+          "tags": [
+            "VIP",
+            "Spring promo"
+          ],
+          "timezone": "America/New_York"
         }
       },
       "MessageCreate": {
@@ -1140,6 +1626,27 @@
           "body": "Hey Sam \u2014 quick check-in about your order.",
           "idempotency_key": "a3f2c8d9-e0f1-4b4d-9c5a-7b8e2d1f0c4a",
           "to": "+14155551234"
+        }
+      },
+      "ContactTagAdd": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "title": "Name",
+            "description": "Tag name, 1\u201364 characters with no invisible characters. Matches an existing tag trimmed and case-insensitively; a new name creates the tag.",
+            "examples": [
+              "VIP"
+            ]
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "name"
+        ],
+        "title": "ContactTagAdd",
+        "example": {
+          "name": "VIP"
         }
       },
       "WebhookSubscriptionCreate": {
