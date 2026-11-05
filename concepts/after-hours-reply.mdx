@@ -1,0 +1,40 @@
+---
+title: 'After-Hours Auto-Reply'
+description: 'Answer texts that arrive while you are closed, automatically.'
+---
+
+When someone texts you while you're closed, iBubbl can answer for you: "Thanks for your message! We're closed right now and will get back to you tomorrow at 8:00 AM CST." It's a ready-made workflow you can edit.
+
+## Set it up
+
+1. **Set your business hours.** Go to **Settings → Hours → Business hours**. By default they are **the same as your booking hours**. Turn that off to set different ones. Business hours use your own time zone, which is shown next to the schedule.
+2. **Create the workflow.** On **Automations**, choose **New workflow → After-hours auto-reply**. It's created as a draft.
+3. **Edit the message** if you like, then **Activate** it.
+
+## What it does
+
+```
+Someone texts you (direct messages only)
+  → wait 2 minutes
+  → are you closed, and has nobody on your team replied?
+       yes → send the after-hours reply, and tag the contact "after-hours"
+       no  → do nothing
+```
+
+- **About 2 minutes after the text.** The wait gives your team a chance to answer first. If anyone replies in that time, from the dashboard, the API, an integration or a scheduled send, no auto-reply goes out.
+- **Checked at the moment it would reply, not when the text arrived.** A text at 8:59 AM whose reply would go out at 9:01 AM, after you've opened, gets no "we're closed" message.
+- **Once per contact every 12 hours.** Three texts in one evening get one reply. This also stops two businesses' auto-replies from answering each other all night. You can change the number of hours on the Send step, between 1 and 168, but you can't turn the limit off.
+- **Direct messages only.** Group chats never get an auto-reply. The reply would go to one person privately, not to the group.
+- **It answers even outside your [sending hours](/concepts/working-hours)**, because it is a reply to someone who just texted you. That exception applies only for **20 minutes** after their message arrived. If the reply can't go out in that time, for example because your line is offline, it is **cancelled** so that it never arrives later. A cancelled reply fires [`message.cancelled`](/webhooks/events).
+- **The `after-hours` tag** lets you filter your inbox in the morning and pick up those conversations first.
+
+The message can include `{{ live.next_open_label }}`, which reads like "tomorrow at 8:00 AM CST" or "Monday at 8:00 AM CST", in your time zone. If no day is open, it falls back to the text after `or`, "as soon as we can" in the template.
+
+## Testing it
+
+Open the workflow's **Test** tab. You can choose whether to treat the business as open or closed and whether a rep has replied, then see which path the workflow takes without sending anything.
+
+## Limits
+
+- Holidays and one-off closures aren't supported yet. Business hours are a weekly schedule.
+- STOP messages and opted-out or blocked contacts never start the workflow.
