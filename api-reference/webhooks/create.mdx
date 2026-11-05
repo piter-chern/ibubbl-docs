@@ -2,3 +2,101 @@
 title: 'Create a webhook subscription'
 openapi: 'POST /v1/webhooks'
 ---
+
+### Create a webhook subscription
+
+**Method:** `POST` | **Endpoint:** `/v1/webhooks`
+
+**Description:** Register an HTTPS URL to receive [webhook events](/webhooks/events). The response is the only time the signing secret is shown.
+
+**Authentication:** API key in the `Authorization` header: `Authorization: Bearer ib_pk_<64 hex>`. Create keys in the dashboard under **Settings → API access**.
+
+#### Request Body
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `url` | string | Yes | Your HTTPS endpoint. Must start with `https://`. |
+| `event_types` | array of strings | No | Only send these types. Leave it out, or send `null` or `[]`, to receive every type, including ones added later. Each entry must be a type from the [event catalog](/webhooks/events). |
+
+#### Example Request
+```bash
+curl -X POST https://web-production-4e09a.up.railway.app/v1/webhooks \
+  -H "Authorization: Bearer $IB_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "url": "https://api.example.com/ibubbl-webhooks",
+    "event_types": ["message.sent", "message.failed", "message.inbound"]
+  }'
+```
+
+#### Responses
+**201 Created**
+```json
+{
+  "id": "4a5b6c7d-8e9f-0a1b-2c3d-4e5f6a7b8c9d",
+  "url": "https://api.example.com/ibubbl-webhooks",
+  "secret_prefix": "whsec_a3f2c8d9",
+  "event_types": [
+    "message.sent",
+    "message.failed",
+    "message.inbound"
+  ],
+  "created_at": "2026-11-05T14:23:45.123Z",
+  "last_delivered_at": null,
+  "revoked_at": null,
+  "secret": "whsec_a3f2c8d9e0f1b4d52c8a1f4e23b9d4f7ca8e51d2c3b4a5e6f7a8b9c0d1e2f3a4",
+  "warning": "Save this secret now — it cannot be retrieved again. Use it to verify the X-iBubbl-Signature header on incoming webhook POSTs (HMAC-SHA256 over `{t}.{raw body}`)."
+}
+```
+Store `secret` now; later responses only show `secret_prefix`. See [Signatures](/webhooks/signatures).
+
+**401 Unauthorized**
+```json
+{
+  "detail": {
+    "error": "unauthorized",
+    "message": "Invalid or revoked API key"
+  }
+}
+```
+Other `message` values: `Authorization Bearer token required`, `API key required (use Authorization: Bearer ib_pk_…)`, `Invalid API key format`, `Customer account not found`.
+
+**403 Forbidden**
+```json
+{
+  "detail": {
+    "error": "forbidden",
+    "message": "Account is suspended"
+  }
+}
+```
+Your iBubbl account is suspended or cancelled (`message` is then `Account is cancelled`). Every API-key endpoint returns this.
+
+**422 Unprocessable Entity**
+```json
+{
+  "detail": {
+    "error": "invalid_url",
+    "message": "Webhook URL must start with https://"
+  }
+}
+```
+Other `error` value: `validation_error`, for example an unknown event type:
+```json
+{
+  "detail": {
+    "error": "validation_error",
+    "message": "event_types: unknown event type(s): message.bogus. See https://ibubbl.mintlify.app/webhooks/events"
+  }
+}
+```
+
+**500 Internal Server Error**
+```json
+{
+  "detail": {
+    "error": "internal_error",
+    "message": "Failed to create subscription"
+  }
+}
+```
+The subscription was not saved. Retry the request.

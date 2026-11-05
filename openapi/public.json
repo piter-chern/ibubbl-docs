@@ -12,7 +12,7 @@
           "Messages"
         ],
         "summary": "Send a message",
-        "description": "Send an iMessage to a contact, identified by either `contact_id` (an existing contact in your account) or `to` (an E.164 phone number \u2014 the contact is created on first use).\n\nThe response returns immediately with `status: \"queued\"` or `\"pending\"`. Final delivery state arrives via the [`message.delivered`](/webhooks/events) webhook.\n\n**Idempotency is required.** Provide a unique `idempotency_key` per logical send (UUIDv4 recommended); a retry with the same key and payload replays the original response, while a reused key with a different payload returns `409 idempotency_conflict`. See the [Idempotency](/idempotency) guide.\n\nSuppression is enforced server-side: messaging an opted-out contact returns `422 contact_opted_out`.",
+        "description": "Send a message to one contact (`contact_id`, or `to` \u2014 an E.164 phone number; the contact is created on first use), into an existing group (`chat_guid`), or to a new group (`participant_phones`). Exactly one of the four is required.\n\nThe response returns immediately with `status: \"pending\"` or `\"queued\"`. Delivery progress arrives as [webhook events](/webhooks/events) (`message.sent`, `message.delivered`, `message.read`, `message.failed`), or poll `GET /v1/messages/{id}`.\n\n**Idempotency is required.** Provide a unique `idempotency_key` per logical send (UUIDv4 recommended); a retry with the same key and payload replays the original response, while a reused key with a different payload returns `409 idempotency_conflict`. See the [Idempotency](/idempotency) guide.\n\nA send to an opted-out contact returns `422 contact_opted_out`; see [Suppression](/concepts/suppression).\n\nOn a `5xx` (including a `502`/`503` from the network edge during a deploy), retry with the same `idempotency_key`.",
         "operationId": "v1_send_message_v1_messages_post",
         "requestBody": {
           "required": true,
@@ -46,7 +46,7 @@
             }
           },
           "404": {
-            "description": "Contact not found.",
+            "description": "`not_found` (no contact with that `contact_id`) or `group_not_found` (no group with that `chat_guid`).",
             "content": {
               "application/json": {
                 "schema": {
@@ -66,7 +66,7 @@
             }
           },
           "422": {
-            "description": "Validation failure \u2014 missing required field, opted-out contact, or capacity exhausted. See `detail.error`.",
+            "description": "Request rejected; see `detail.error`. `validation_error` (bad request shape), `contact_opted_out`, `contact_blocked`, `no_eligible_line`, `unresponsive_contact`, `cold_cap_exhausted`, `followup_cap_exhausted`, `daily_cap_exhausted`, `group_outbound_blocked_suppression`, or `insufficient_participants`.",
             "content": {
               "application/json": {
                 "schema": {
@@ -75,8 +75,18 @@
               }
             }
           },
-          "503": {
-            "description": "No active line available to send from.",
+          "500": {
+            "description": "`no_owner_rep` (your account has no active owner rep to send as) or `internal_error`. Retry with the same `idempotency_key`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "`forbidden`: your iBubbl account is suspended or cancelled.",
             "content": {
               "application/json": {
                 "schema": {
@@ -138,12 +148,12 @@
               }
             }
           },
-          "422": {
-            "description": "Validation Error",
+          "403": {
+            "description": "`forbidden`: your iBubbl account is suspended or cancelled.",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "$ref": "#/components/schemas/ApiError"
                 }
               }
             }
@@ -157,7 +167,7 @@
           "Contacts"
         ],
         "summary": "Create or update a contact",
-        "description": "Upsert a contact by phone number. Returns `201 Created` on a new contact, `200 OK` on an existing match.\n\nOptional fields (`first_name`, `last_name`, `timezone`) apply only when the existing record's value is null \u2014 values set previously by a rep or by a prior API call are preserved. This protects human-edited data from being clobbered by automation.\n\nIf `timezone` is provided, it must be one of the supported IANA timezones; invalid values return `422 invalid_timezone`.",
+        "description": "Upsert a contact by E.164 phone number. Returns `201 Created` on a new contact, `200 OK` on an existing match. A number whose only match is a deleted contact creates a new contact.\n\nOptional fields (`first_name`, `last_name`, `timezone`) apply only when the existing record's value is null \u2014 values set previously by a rep or by a prior API call are preserved. This protects human-edited data from being clobbered by automation.\n\nIf `timezone` is provided, it must be one of the 20 supported IANA timezones (US, Canada, and a few international zones such as `Europe/London`); anything else returns `422 invalid_timezone`.\n\nv1 has no endpoint to update, list or delete contacts.",
         "operationId": "v1_upsert_contact_v1_contacts_post",
         "requestBody": {
           "required": true,
@@ -202,6 +212,16 @@
           },
           "422": {
             "description": "Validation failure \u2014 `phone` not in E.164 format, or `timezone` not in the supported allowlist.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "`forbidden`: your iBubbl account is suspended or cancelled.",
             "content": {
               "application/json": {
                 "schema": {
@@ -263,12 +283,12 @@
               }
             }
           },
-          "422": {
-            "description": "Validation Error",
+          "403": {
+            "description": "`forbidden`: your iBubbl account is suspended or cancelled.",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "$ref": "#/components/schemas/ApiError"
                 }
               }
             }
@@ -316,7 +336,27 @@
             }
           },
           "422": {
-            "description": "URL is not HTTPS.",
+            "description": "`invalid_url` (URL is not HTTPS) or `validation_error` (for example an unknown event type).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "`internal_error`: the subscription could not be saved. Retry.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "`forbidden`: your iBubbl account is suspended or cancelled.",
             "content": {
               "application/json": {
                 "schema": {
@@ -359,12 +399,12 @@
               }
             }
           },
-          "422": {
-            "description": "Validation Error",
+          "403": {
+            "description": "`forbidden`: your iBubbl account is suspended or cancelled.",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "$ref": "#/components/schemas/ApiError"
                 }
               }
             }
@@ -422,12 +462,12 @@
               }
             }
           },
-          "422": {
-            "description": "Validation Error",
+          "403": {
+            "description": "`forbidden`: your iBubbl account is suspended or cancelled.",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "$ref": "#/components/schemas/ApiError"
                 }
               }
             }
@@ -483,12 +523,12 @@
               }
             }
           },
-          "422": {
-            "description": "Validation Error",
+          "403": {
+            "description": "`forbidden`: your iBubbl account is suspended or cancelled.",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "$ref": "#/components/schemas/ApiError"
                 }
               }
             }
@@ -502,7 +542,7 @@
           "Inbound Events"
         ],
         "summary": "Receive an event from a connected app",
-        "description": "Receive a webhook from a connected third-party app (for example Recharge) and start any workflow whose **Webhook received** trigger matches it.\n\nThe URL you paste into the sending app carries its own credential, so this endpoint takes no `Authorization` header. Create a source in **Settings \u2192 Inbound events** to get the full URL; the token is shown once.\n\n**Any app (secret URL)** sources need no signature: the URL is the credential, so keep it private. They accept JSON or `application/x-www-form-urlencoded` bodies and at most 60 requests a minute (`429` beyond that).\n\n**Signed** sources must sign every request. For Recharge, that is the `X-Recharge-Hmac-Sha256` header computed with your **API Client Secret** \u2014 which is not the same value as your API token. An unsigned or mis-signed request returns `403 invalid_signature`.\n\n**Redeliveries are safe.** Providers resend events, and Recharge's dunning fires one event per charge retry. Each workflow's `event_id_path` identifies the underlying object, so repeat deliveries of the same event fold onto the run that already exists rather than messaging the customer again.\n\nA `200` means the event was accepted, not that it matched anything \u2014 check `runs_started`, and see the source's status in Settings when it is unexpectedly `0`.",
+        "description": "Receive a webhook from a connected third-party app (for example Recharge) and start any workflow whose **Webhook received** trigger matches it.\n\nThe URL you paste into the sending app carries its own credential, so this endpoint takes no `Authorization` header. Create a source in **Settings \u2192 Inbound events** to get the full URL; the token is shown once.\n\n**Any app (secret URL)** sources need no signature: the URL is the credential, so keep it private. They accept JSON or `application/x-www-form-urlencoded` bodies and at most 60 requests a minute. Beyond that the answer is `429` while a workflow is listening on the source; with none listening, the event is accepted and dropped.\n\n**Signed** sources must sign every request. For Recharge, that is the `X-Recharge-Hmac-Sha256` header computed with your **API Client Secret** \u2014 which is not the same value as your API token. An unsigned or mis-signed request returns `403 invalid_signature`.\n\n**Redeliveries are safe.** Providers resend events, and Recharge's dunning fires one event per charge retry. Each workflow's `event_id_path` identifies the underlying object, so repeat deliveries of the same event fold onto the run that already exists rather than messaging the customer again.\n\nA `200` means the event was accepted, not that it matched anything \u2014 check `runs_started`, and see the source's status in Settings when it is unexpectedly `0`.",
         "operationId": "receive_event_v1_events__token__post",
         "parameters": [
           {
@@ -557,21 +597,11 @@
             }
           },
           "429": {
-            "description": "Secret-URL source over its limit of 60 requests a minute.",
+            "description": "Secret-URL source over its limit of 60 requests a minute, while a workflow is listening on it.",
             "content": {
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/ApiError"
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
                 }
               }
             }
@@ -591,7 +621,7 @@
                 "$ref": "#/components/schemas/ApiErrorDetail"
               }
             ],
-            "description": "Error envelope. The outer `detail` key is FastAPI's convention for error responses; the inner `error` + `message` are the iBubbl API's stable shape."
+            "description": "Error envelope. Every `/v1` error response wraps a stable `error` code and a human-readable `message` in `detail`."
           }
         },
         "type": "object",
@@ -602,7 +632,7 @@
         "example": {
           "detail": {
             "error": "validation_error",
-            "message": "Either 'contact_id' or 'to' (E.164 phone) is required"
+            "message": "Exactly one of contact_id, to, chat_guid, or participant_phones is required"
           }
         }
       },
@@ -621,7 +651,7 @@
             "title": "Message",
             "description": "Human-readable description of what went wrong.",
             "examples": [
-              "Either 'contact_id' or 'to' (E.164 phone) is required"
+              "Exactly one of contact_id, to, chat_guid, or participant_phones is required"
             ]
           }
         },
@@ -676,7 +706,7 @@
               }
             ],
             "title": "Timezone",
-            "description": "IANA timezone, or null if not set. When null, sends use the customer's default working-hours timezone."
+            "description": "IANA timezone used for this contact's sending hours, or null if not set yet. When it is null and the number is a US or Canadian one, iBubbl infers the zone from the area code and saves it here when the contact's first message is processed; otherwise your account's timezone is used. Once set, an upsert never replaces it, so pass `timezone` on the first upsert, before you send."
           },
           "opted_out": {
             "type": "boolean",
@@ -749,19 +779,6 @@
           "runs_started": 1
         }
       },
-      "HTTPValidationError": {
-        "properties": {
-          "detail": {
-            "items": {
-              "$ref": "#/components/schemas/ValidationError"
-            },
-            "type": "array",
-            "title": "Detail"
-          }
-        },
-        "type": "object",
-        "title": "HTTPValidationError"
-      },
       "Message": {
         "properties": {
           "id": {
@@ -782,7 +799,7 @@
               "cancelled"
             ],
             "title": "Status",
-            "description": "Lifecycle state. `pending` = accepted and on its way to the device; it may be waiting for the contact's working hours or your calendar (see `held_until`). `queued` = parked by a capacity hold (`hourly_cap_hit` / `line_offline`), retried automatically. `sent` / `delivered` / `read` = delivery progression. `failed` = terminal failure \u2014 see webhook `message.failed` for the reason; it can follow `sent` (or a `read` with no confirmed delivery) when iMessage reports the send failed after accepting it (`failed_reason` `imessage_undeliverable` / `imessage_error:<code>`). `expired` = still queued after an hour, so dropped; it will not send. `cancelled` = stopped in the dashboard before it was sent; it will not send (webhook `message.cancelled`)."
+            "description": "Lifecycle state. `pending` = accepted and on its way out; it may be waiting for the contact's working hours, your calendar or the line's hourly limit for new contacts (see `held_until`). `queued` = parked by a capacity hold (`hourly_cap_hit` / `line_offline`), retried automatically. `sent` / `delivered` / `read` = delivery progression. `failed` = the send failed \u2014 see webhook `message.failed` for the reason; it can follow `sent` (or a `read` with no confirmed delivery) when iMessage reports the send failed after accepting it (`failed_reason` `imessage_undeliverable` / `imessage_error:<code>`), and such a message can still move to `delivered` / `read` if Apple later confirms it. `expired` = still queued after an hour, so dropped; it will not send. `cancelled` = stopped in the dashboard before it was sent; it will not send (webhook `message.cancelled`)."
           },
           "to": {
             "anyOf": [
@@ -848,19 +865,26 @@
               }
             ],
             "title": "Chat Guid",
-            "description": "BlueBubbles-issued opaque identifier for the group chat (`any;+;<hex>`). Returned for `group` sends \u2014 use it to address subsequent messages to the same group via the `chat_guid` request shape. Null for `one_to_one` sends and for brand-new group creates that haven't yet been finalized by the device (the value populates within ~5\u201310s once the device creates the iMessage chat; poll `GET /v1/messages/{id}` to observe the transition).",
+            "description": "Opaque identifier for the group chat (e.g. `any;+;<hex>`). Returned for `group` messages \u2014 use it to address later messages to the same group via the `chat_guid` request shape. Null for `one_to_one` messages, and for a brand-new group until the group has been created in iMessage (that happens when the first message goes out, which can wait for sending hours); poll `GET /v1/messages/{id}` to see it fill in. It changes when a participant is added to the group.",
             "examples": [
               "any;+;067ace6caf6c43aaa2f7d643975e15ea"
             ]
           },
           "channel": {
-            "type": "string",
-            "enum": [
-              "imessage",
-              "sms"
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "imessage",
+                  "sms"
+                ]
+              },
+              {
+                "type": "null"
+              }
             ],
             "title": "Channel",
-            "description": "Transport used. `imessage` for blue-bubble delivery (default). `sms` is reserved for future SMS fallback routing."
+            "description": "How an outbound message actually went out: `imessage`, or `sms` (a text, including RCS) when the recipient couldn't be reached on iMessage. Null until the message has been sent, and for inbound messages."
           },
           "sent_at": {
             "anyOf": [
@@ -872,7 +896,7 @@
               }
             ],
             "title": "Sent At",
-            "description": "ISO 8601 UTC timestamp. Set when the message is accepted, then replaced by the device's send time once it goes out. Use `status` (`sent` / `delivered` / `read`), not `sent_at`, to tell whether it has left the device.",
+            "description": "ISO 8601 UTC timestamp. Set when the message is accepted, then replaced by the actual send time once it goes out. Use `status` (`sent` / `delivered` / `read`), not `sent_at`, to tell whether it has actually gone out.",
             "examples": [
               "2026-05-17T14:23:45.123Z"
             ]
@@ -887,7 +911,7 @@
               }
             ],
             "title": "Held Until",
-            "description": "While a `pending` message is being held, the expected time (ISO 8601 UTC) it will go out: the next opening of the contact's working hours, or the end of a busy block on your connected calendar, whichever is later. Recomputed within about 10 seconds when hours or the calendar change. Null when the message is not held \u2014 and also when `held_reason` is `working_hours` but no sending day is enabled.",
+            "description": "While a `pending` message is being held, the expected time (ISO 8601 UTC) it will go out: the next opening of the contact's working hours, or the end of a busy block on your connected calendar, whichever is later; for `hourly_limit`, an estimate of when a slot frees. Recomputed within about 10 seconds. Null when the message is not held, when `held_reason` is `working_hours` but no sending day is enabled, and when it is `hourly_limit` with no estimate.",
             "examples": [
               "2026-10-08T16:00:00+00:00"
             ]
@@ -898,7 +922,8 @@
                 "type": "string",
                 "enum": [
                   "working_hours",
-                  "busy_window"
+                  "busy_window",
+                  "hourly_limit"
                 ]
               },
               {
@@ -906,26 +931,24 @@
               }
             ],
             "title": "Held Reason",
-            "description": "Why a `pending` message is being held right now: `working_hours` (outside the contact's working hours) or `busy_window` (your connected calendar shows you busy). Null when it is not held."
+            "description": "Why a `pending` message is being held right now: `working_hours` (outside the contact's working hours), `busy_window` (your connected calendar shows you busy) or `hourly_limit` (the line has started its limit of new contacts for this hour; the message goes out by itself when a slot frees, at about `held_until`). Null when it is not held."
           }
         },
         "type": "object",
         "required": [
           "id",
           "status",
-          "body",
-          "channel"
+          "body"
         ],
         "title": "Message",
         "example": {
           "body": "Hey Sam \u2014 quick check-in about your order.",
-          "channel": "imessage",
           "contact_id": "c8a1f4e2-3b9d-4f7c-a8e5-1d2c3b4a5e6f",
-          "conversation_id": "cnv_3a4b5c6d-7e8f-9a0b-1c2d-3e4f5a6b7c8d",
+          "conversation_id": "3a4b5c6d-7e8f-9a0b-1c2d-3e4f5a6b7c8d",
           "conversation_kind": "one_to_one",
           "held_reason": "working_hours",
           "held_until": "2026-10-08T16:00:00+00:00",
-          "id": "msg_8b3a4e72-1c2d-4e5f-9a0b-2c3d4e5f6a7b",
+          "id": "8b3a4e72-1c2d-4e5f-9a0b-2c3d4e5f6a7b",
           "sent_at": "2026-10-08T11:40:44.770Z",
           "status": "pending",
           "to": "+14155551234"
@@ -994,6 +1017,7 @@
           "phone"
         ],
         "title": "ContactUpsert",
+        "description": "Fields not listed here are ignored without an error: the request still succeeds and they are not stored.",
         "example": {
           "first_name": "Sam",
           "last_name": "Rivera",
@@ -1013,7 +1037,7 @@
               }
             ],
             "title": "Contact Id",
-            "description": "1:1 send by existing contact ID. Mutually exclusive with `to`, `chat_guid`, and `participant_phones`.",
+            "description": "1:1 send by existing contact ID (a UUID). Mutually exclusive with `to`, `chat_guid`, and `participant_phones`.",
             "examples": [
               "c8a1f4e2-3b9d-4f7c-a8e5-1d2c3b4a5e6f"
             ]
@@ -1044,7 +1068,7 @@
               }
             ],
             "title": "Chat Guid",
-            "description": "Send into an existing iMessage group identified by its BlueBubbles-issued `chat_guid` (`any;+;<hex>`). Get this value from a prior `message.inbound` webhook event or `GET /v1/messages/{id}` response. Mutually exclusive with `contact_id`, `to`, and `participant_phones`.",
+            "description": "Send into an existing iMessage group identified by its opaque `chat_guid` (e.g. `any;+;<hex>`). Webhook events don't carry it: read it from the response to a send into the group, or from `GET /v1/messages/{id}` for any message in the group (an inbound `message_id` works too). The value changes when a participant is added to the group; an old value then returns `404 group_not_found`. Mutually exclusive with `contact_id`, `to`, and `participant_phones`.",
             "examples": [
               "any;+;067ace6caf6c43aaa2f7d643975e15ea"
             ]
@@ -1090,7 +1114,7 @@
             "type": "string",
             "minLength": 1,
             "title": "Body",
-            "description": "The message text. Plain text only; emoji + Unicode are supported. For a line break, include a newline (`\\n` in the JSON string); use `\\n`, not `\\r\\n`. A retry with the same `idempotency_key` must send the identical body, line breaks included, or it returns `409 idempotency_conflict`.",
+            "description": "The message text. Plain text only; emoji + Unicode are supported.",
             "examples": [
               "Hey Sam \u2014 quick check-in about your order."
             ]
@@ -1100,7 +1124,7 @@
             "maxLength": 128,
             "minLength": 1,
             "title": "Idempotency Key",
-            "description": "Client-supplied unique key per logical send. Retrying with the same key + same payload replays the cached response (24-hour TTL). Same key + different payload returns `409 idempotency_conflict`. UUIDv4 is recommended.",
+            "description": "Client-supplied unique key per logical send. Keys never expire: reusing a key with the same payload replays the original message, however long ago it was sent, and the same key with a different payload returns `409 idempotency_conflict`. The one exception is a message that ended `failed` or `expired`: its key is released and the retry is sent as a new message. The payload compared is the routing field exactly as sent (`to`, `contact_id`, `chat_guid`, or the sorted `participant_phones` plus `group_name`) and `body`, so a retry that switches from `to` to the same contact's `contact_id` is a 409. Generate a new UUIDv4 for every distinct message.",
             "examples": [
               "a3f2c8d9-e0f1-4b4d-9c5a-7b8e2d1f0c4a"
             ]
@@ -1112,6 +1136,7 @@
           "idempotency_key"
         ],
         "title": "MessageCreate",
+        "description": "Fields not listed here are ignored without an error: the request still succeeds and they are not stored.",
         "example": {
           "body": "Hey Sam \u2014 quick check-in about your order.",
           "idempotency_key": "a3f2c8d9-e0f1-4b4d-9c5a-7b8e2d1f0c4a",
@@ -1141,7 +1166,7 @@
               }
             ],
             "title": "Event Types",
-            "description": "Filter to a specific subset of events. Omit or pass `null` to receive ALL event types. See the [Webhook Events catalog](/webhooks/events) for the full list.",
+            "description": "Filter to a specific subset of events. Omit, or pass `null` or `[]`, to receive ALL event types, including ones added later. Every entry must be a type from the [Webhook Events catalog](/webhooks/events); an unknown type returns `422 validation_error`.",
             "examples": [
               [
                 "message.sent",
@@ -1164,39 +1189,6 @@
           ],
           "url": "https://api.example.com/ibubbl-webhooks"
         }
-      },
-      "ValidationError": {
-        "properties": {
-          "loc": {
-            "items": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "integer"
-                }
-              ]
-            },
-            "type": "array",
-            "title": "Location"
-          },
-          "msg": {
-            "type": "string",
-            "title": "Message"
-          },
-          "type": {
-            "type": "string",
-            "title": "Error Type"
-          }
-        },
-        "type": "object",
-        "required": [
-          "loc",
-          "msg",
-          "type"
-        ],
-        "title": "ValidationError"
       },
       "WebhookRevokeResponse": {
         "properties": {
@@ -1298,7 +1290,7 @@
             "message.sent",
             "message.failed"
           ],
-          "id": "whs_4a5b6c7d-8e9f-0a1b-2c3d-4e5f6a7b8c9d",
+          "id": "4a5b6c7d-8e9f-0a1b-2c3d-4e5f6a7b8c9d",
           "last_delivered_at": "2026-05-17T15:01:12.456Z",
           "secret_prefix": "whsec_a3f2c8d9",
           "url": "https://api.example.com/ibubbl-webhooks"
@@ -1371,9 +1363,9 @@
           "secret": {
             "type": "string",
             "title": "Secret",
-            "description": "Full signing secret. **Save it now** \u2014 this is the only time it is returned. Use it to verify the `X-iBubbl-Signature` header on incoming webhook POSTs (HMAC-SHA256 of the raw request body). See [Signature Verification](/webhooks/signatures).",
+            "description": "Full signing secret. **Save it now** \u2014 this is the only time it is returned. Use it to verify the `X-iBubbl-Signature` header on incoming webhook POSTs (HMAC-SHA256 over `{t}.{raw request body}`, keyed with this whole string). See [Signature Verification](/webhooks/signatures).",
             "examples": [
-              "whsec_a3f2c8d9e0f1b4d52c8a1f4e23b9d4f7ca8e51d2c3b4a5e6f"
+              "whsec_a3f2c8d9e0f1b4d52c8a1f4e23b9d4f7ca8e51d2c3b4a5e6f7a8b9c0d1e2f3a4"
             ]
           },
           "warning": {
@@ -1398,8 +1390,8 @@
             "message.sent",
             "message.failed"
           ],
-          "id": "whs_4a5b6c7d-8e9f-0a1b-2c3d-4e5f6a7b8c9d",
-          "secret": "whsec_a3f2c8d9e0f1b4d52c8a1f4e23b9d4f7ca8e51d2c3b4a5e6f",
+          "id": "4a5b6c7d-8e9f-0a1b-2c3d-4e5f6a7b8c9d",
+          "secret": "whsec_a3f2c8d9e0f1b4d52c8a1f4e23b9d4f7ca8e51d2c3b4a5e6f7a8b9c0d1e2f3a4",
           "secret_prefix": "whsec_a3f2c8d9",
           "url": "https://api.example.com/ibubbl-webhooks",
           "warning": "Save this secret now \u2014 it cannot be retrieved again."
@@ -1410,11 +1402,16 @@
       "BearerAuth": {
         "type": "http",
         "scheme": "bearer",
-        "bearerFormat": "ib_pk_<32 hex>",
-        "description": "Bearer API key. Format: `Authorization: Bearer ib_pk_<32 hex>`. Generate keys from Dashboard \u2192 Settings \u2192 API Access."
+        "bearerFormat": "ib_pk_<64 hex>",
+        "description": "Bearer API key. Format: `Authorization: Bearer ib_pk_<64 hex>` (70 characters). Generate keys from Dashboard \u2192 Settings \u2192 API Access."
       }
     }
   },
+  "servers": [
+    {
+      "url": "https://web-production-4e09a.up.railway.app"
+    }
+  ],
   "tags": [
     {
       "name": "Messages"

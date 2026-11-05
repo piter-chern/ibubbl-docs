@@ -9,7 +9,7 @@ Every iBubbl API error response uses the same envelope shape:
 {
   "detail": {
     "error": "validation_error",
-    "message": "Either 'contact_id' or 'to' (E.164 phone) is required"
+    "message": "Exactly one of contact_id, to, chat_guid, or participant_phones is required"
   }
 }
 ```
@@ -23,7 +23,7 @@ The `error` field is a **stable machine-readable code** — branch your integrat
 </ResponseField>
 
 <ResponseField name="forbidden" type="403">
-  Authenticated, but the requested resource belongs to a different customer account. Returned only when access controls explicitly block a cross-account read; in most cross-tenant lookups, iBubbl returns `not_found` instead (existence isn't leaked).
+  Your API key is valid, but your iBubbl account is suspended or cancelled (`message` is `Account is suspended` or `Account is cancelled`). Every API-key endpoint returns this. A resource that belongs to another account is never a 403: it returns `not_found`.
 </ResponseField>
 
 <ResponseField name="not_found" type="404">
@@ -74,6 +74,10 @@ The `error` field is a **stable machine-readable code** — branch your integrat
   An unexpected error on iBubbl's side. These are paired with our error-tracking system; we get paged when they happen. If you see a sustained pattern, contact support with the timestamp + request body.
 </ResponseField>
 
+<ResponseField name="no_owner_rep" type="500">
+  Your account has no active owner rep to send as, so `POST /v1/messages` can't send. Retrying won't help until the account has one; contact support.
+</ResponseField>
+
 <ResponseField name="invalid_signature" type="403">
   An [inbound event](/inbound-events/overview) arrived with a missing or incorrect signature. For Recharge, the usual cause is that the source was created with your API token pasted where the **API Client Secret** belongs — they're different values.
 </ResponseField>
@@ -87,7 +91,7 @@ The `error` field is a **stable machine-readable code** — branch your integrat
 | Code | HTTP | Retryable? |
 | ---- | ---- | ---------- |
 | `unauthorized` | 401 | ❌ Fix the key. |
-| `forbidden` | 403 | ❌ Wrong account. |
+| `forbidden` | 403 | ❌ Account suspended or cancelled; contact support. |
 | `not_found` | 404 | ❌ Verify the ID. |
 | `idempotency_conflict` | 409 | ❌ Fix the retry logic. |
 | `validation_error` | 422 | ❌ Fix the payload. |
@@ -98,6 +102,7 @@ The `error` field is a **stable machine-readable code** — branch your integrat
 | `line_unavailable` / `line_offline` | 503 | ⚠️ iBubbl auto-queues; you should not retry. |
 | `invalid_signature` | 403 | ❌ Fix the signing secret. |
 | `payload_too_large` | 413 | ❌ Fix the payload size. |
+| `no_owner_rep` | 500 | ❌ Not until your account has an active owner rep; contact support. |
 | `internal_error` | 500 | ✅ Retry with the same idempotency key after a short backoff. |
 
 The general rule: **don't retry 4xx**. Most 4xxes are payload-level problems that retrying won't fix. The cap-related 422s (`daily_cap_exhausted`, `cold_cap_exhausted`) are retryable only after the cap resets at midnight ET; iBubbl does not queue them for you. The hourly cap is different: those sends are queued, so retrying just creates duplicate work.
@@ -108,10 +113,10 @@ The general rule: **don't retry 4xx**. Most 4xxes are payload-level problems tha
 | ------ | ---- |
 | `200` / `201` / `202` | Success. `202` for accepted-but-queued sends; `201` for created resources; `200` everywhere else. |
 | `401` | Auth failure. |
-| `403` | Cross-account access blocked. |
+| `403` | Account suspended or cancelled (`forbidden`), or an inbound event's signature failed (`invalid_signature`). |
 | `404` | Resource not found (or hidden across tenants). |
 | `409` | Idempotency conflict. |
 | `422` | Validation or routing-level failure. |
-| `500` | Unexpected iBubbl error. |
+| `500` | No owner rep (`no_owner_rep`) or an unexpected iBubbl error (`internal_error`). |
 | `413` | Inbound event body over 256 KB. |
 | `503` | Send-side capacity / line offline. |

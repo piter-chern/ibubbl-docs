@@ -2,3 +2,72 @@
 title: 'Retrieve a webhook subscription'
 openapi: 'GET /v1/webhooks/{subscription_id}'
 ---
+
+### Retrieve a webhook subscription
+
+**Method:** `GET` | **Endpoint:** `/v1/webhooks/{subscription_id}`
+
+**Description:** Fetch one webhook subscription by its ID.
+
+**Authentication:** API key in the `Authorization` header: `Authorization: Bearer ib_pk_<64 hex>`. Create keys in the dashboard under **Settings → API access**.
+
+#### Request Body
+None. The path parameter `subscription_id` is the subscription's ID (a UUID), from Create a webhook subscription.
+
+#### Example Request
+```bash
+curl https://web-production-4e09a.up.railway.app/v1/webhooks/4a5b6c7d-8e9f-0a1b-2c3d-4e5f6a7b8c9d \
+  -H "Authorization: Bearer $IB_API_KEY"
+```
+
+#### Responses
+**200 OK**
+```json
+{
+  "id": "4a5b6c7d-8e9f-0a1b-2c3d-4e5f6a7b8c9d",
+  "url": "https://api.example.com/ibubbl-webhooks",
+  "secret_prefix": "whsec_a3f2c8d9",
+  "event_types": [
+    "message.sent",
+    "message.failed",
+    "message.inbound"
+  ],
+  "created_at": "2026-11-05T14:23:45.123Z",
+  "last_delivered_at": "2026-11-05T15:01:12.456Z",
+  "revoked_at": null
+}
+```
+A revoked subscription has `revoked_at` set.
+
+**401 Unauthorized**
+```json
+{
+  "detail": {
+    "error": "unauthorized",
+    "message": "Invalid or revoked API key"
+  }
+}
+```
+Other `message` values: `Authorization Bearer token required`, `API key required (use Authorization: Bearer ib_pk_…)`, `Invalid API key format`, `Customer account not found`.
+
+**403 Forbidden**
+```json
+{
+  "detail": {
+    "error": "forbidden",
+    "message": "Account is suspended"
+  }
+}
+```
+Your iBubbl account is suspended or cancelled (`message` is then `Account is cancelled`). Every API-key endpoint returns this.
+
+**404 Not Found**
+```json
+{
+  "detail": {
+    "error": "not_found",
+    "message": "Webhook subscription not found"
+  }
+}
+```
+Also returned for a malformed ID and for a subscription that belongs to another account.

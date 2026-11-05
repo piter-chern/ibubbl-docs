@@ -3,5 +3,76 @@ title: 'Receive an event'
 openapi: 'POST /v1/events/{token}'
 ---
 
-See [Inbound events](/inbound-events/overview) for setup, signing and the
-repeat-event rules.
+### Receive an event
+
+**Method:** `POST` | **Endpoint:** `/v1/events/{token}`
+
+**Description:** The URL a connected app (Recharge, your own system, or a no-code tool such as Zapier or Make) posts its events to. An event that matches an active workflow's "Webhook received" trigger starts a run. See [Inbound events](/inbound-events/overview) for setup.
+
+**Authentication:** No API key. The `token` in the path (`ibev_` followed by 64 hex characters, copied from the event source in the dashboard) identifies the source. A signed source must also send its signature header: Recharge sends `X-Recharge-Hmac-Sha256`; a generic signed source sends `X-iBubbl-Signature: t=<unix seconds>,v1=<hex>`, an HMAC-SHA256 of `{t}.{raw body}` with the source's signing secret, no more than 5 minutes old. A secret-URL source sends no signature and is limited to 60 requests a minute.
+
+#### Request Body
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| (the app's event) | object | Yes | The connected app's own payload, sent unchanged as JSON (or form-encoded), at most 256 KB. iBubbl doesn't require any fields; your workflow maps the ones it needs. The signature is checked against these exact bytes, so don't re-serialize the body. |
+
+#### Example Request
+```bash
+curl -X POST https://web-production-4e09a.up.railway.app/v1/events/ibev_<64 hex> \
+  -H "Content-Type: application/json" \
+  -H "X-iBubbl-Signature: t=1762354800,v1=<hex HMAC-SHA256 of '1762354800.' + body>" \
+  -d '{"topic": "order/created", "customer": {"phone": "+14155551234", "first_name": "Sam"}}'
+```
+
+#### Responses
+**200 OK**
+```json
+{
+  "received": true,
+  "runs_started": 1
+}
+```
+Every request that passes the signature check gets 200, including one that starts no run (`runs_started: 0`), so the sending app never retries or disables the hook. The reason an event started nothing is recorded on the event source.
+
+**403 Forbidden**
+```json
+{
+  "detail": {
+    "error": "invalid_signature",
+    "message": "Signature verification failed."
+  }
+}
+```
+The signature header is missing or doesn't match.
+
+**404 Not Found**
+```json
+{
+  "detail": {
+    "error": "not_found",
+    "message": "No such event source."
+  }
+}
+```
+The token is malformed, unknown or revoked.
+
+**413 Content Too Large**
+```json
+{
+  "detail": {
+    "error": "payload_too_large",
+    "message": "Request body too large."
+  }
+}
+```
+
+**429 Too Many Requests**
+```json
+{
+  "detail": {
+    "error": "rate_limited",
+    "message": "Too many events for this source; try again in a minute."
+  }
+}
+```
+Only a secret-URL source over 60 requests a minute while a workflow is listening on it. Without a listener, the extra events are dropped with 200.
