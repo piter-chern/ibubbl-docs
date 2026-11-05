@@ -23,7 +23,7 @@ Someone texts you (direct messages only)
 
 - **About 2 minutes after the text.** The wait gives your team a chance to answer first. If anyone replies in that time, from the dashboard, the API, an integration or a scheduled send, no auto-reply goes out.
 - **Checked at the moment it would reply, not when the text arrived.** A text at 8:59 AM whose reply would go out at 9:01 AM, after you've opened, gets no "we're closed" message.
-- **Once per contact every 12 hours.** Three texts in one evening get one reply. This also stops two businesses' auto-replies from answering each other all night. You can change the number of hours on the Send step, between 1 and 168, but you can't turn the limit off.
+- **Once per contact every 12 hours.** Three texts in one evening get one reply. This also stops two businesses' auto-replies from answering each other all night. You can change the number of hours on the Send step (**At most once per contact every N hours**), from 1 to 168. While the step is set to **Send right away even outside sending hours**, the limit can't be turned off: the workflow won't activate without it.
 - **Direct messages only.** Group chats never get an auto-reply. The reply would go to one person privately, not to the group.
 - **It answers even outside your [sending hours](/concepts/working-hours)**, because it is a reply to someone who just texted you. That exception applies only for **20 minutes** after their message arrived. If the reply can't go out in that time, for example because your line is offline, it is **cancelled** so that it never arrives later. A cancelled reply fires [`message.cancelled`](/webhooks/events).
 - **The `after-hours` tag** lets you filter your inbox in the morning and pick up those conversations first.
