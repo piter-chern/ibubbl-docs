@@ -6,7 +6,7 @@ description: 'How iBubbl handles opt-outs to keep you TCPA-compliant.'
 iBubbl checks opt-outs when a send is accepted. Once a contact is opted out, any new send attempt — through any API endpoint, dashboard action, or automation — fails immediately with `422 contact_opted_out`. There's no way to bypass this server-side.
 
 <Warning>
-**Messages accepted before the opt-out may still be sent.** Today the check happens when a message is accepted. A message that was already accepted and is still waiting — held for the contact's [sending hours](/concepts/working-hours) or your calendar, or queued for capacity — when the contact opts out can still go out afterwards. A fix is in progress; until it ships, if a contact opts out while you have messages waiting for them, contact support.
+**Messages accepted before the opt-out may still be sent.** Today the check happens when a message is accepted. A message that was already accepted and is still waiting — held for the contact's [sending hours](/concepts/working-hours), or queued for capacity — when the contact opts out can still go out afterwards. A fix is in progress; until it ships, if a contact opts out while you have messages waiting for them, contact support.
 </Warning>
 
 This isn't just hygiene — it's how you stay TCPA-compliant for US recipients. Opt-out enforcement is non-negotiable.

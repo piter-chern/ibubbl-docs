@@ -911,7 +911,7 @@
               }
             ],
             "title": "Held Until",
-            "description": "While a `pending` message is being held, the expected time (ISO 8601 UTC) it will go out: the next opening of the contact's working hours, or the end of a busy block on your connected calendar, whichever is later; for `hourly_limit`, an estimate of when a slot frees. Recomputed within about 10 seconds. Null when the message is not held, when `held_reason` is `working_hours` but no sending day is enabled, and when it is `hourly_limit` with no estimate.",
+            "description": "While a `pending` message is being held, the expected time (ISO 8601 UTC) it will go out: the next opening of the contact's working hours; for `hourly_limit`, an estimate of when a slot frees. Recomputed within about 10 seconds. Null when the message is not held, when `held_reason` is `working_hours` but no sending day is enabled, and when it is `hourly_limit` with no estimate.",
             "examples": [
               "2026-10-08T16:00:00+00:00"
             ]
@@ -922,7 +922,6 @@
                 "type": "string",
                 "enum": [
                   "working_hours",
-                  "busy_window",
                   "hourly_limit"
                 ]
               },
@@ -931,7 +930,7 @@
               }
             ],
             "title": "Held Reason",
-            "description": "Why a `pending` message is being held right now: `working_hours` (outside the contact's working hours), `busy_window` (your connected calendar shows you busy) or `hourly_limit` (the line has started its limit of new contacts for this hour; the message goes out by itself when a slot frees, at about `held_until`). Null when it is not held."
+            "description": "Why a `pending` message is being held right now: `working_hours` (outside the contact's working hours) or `hourly_limit` (the line has started its limit of new contacts for this hour; the message goes out by itself when a slot frees, at about `held_until`). Null when it is not held."
           }
         },
         "type": "object",

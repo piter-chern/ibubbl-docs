@@ -54,7 +54,7 @@ curl -X POST https://web-production-4e09a.up.railway.app/v1/messages \
   "held_reason": null
 }
 ```
-`status` is `pending` or `queued`. A message held by a capacity limit or an offline line is still accepted with `queued` and retried automatically. A message waiting for the contact's [working hours](/concepts/working-hours), your calendar or the line's hourly limit for new contacts is `pending`, with `held_until` and `held_reason` set. For a group send, `to` is `null` and `conversation_kind` is `"group"`; a new group's `chat_guid` is `null` until the group is created a few seconds later.
+`status` is `pending` or `queued`. A message held by a capacity limit or an offline line is still accepted with `queued` and retried automatically. A message waiting for the contact's [working hours](/concepts/working-hours) or the line's hourly limit for new contacts is `pending`, with `held_until` and `held_reason` set. For a group send, `to` is `null` and `conversation_kind` is `"group"`; a new group's `chat_guid` is `null` until the group is created a few seconds later.
 
 **401 Unauthorized**
 ```json
