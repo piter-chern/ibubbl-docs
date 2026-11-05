@@ -5,6 +5,8 @@ description: 'How iBubbl respects working hours for outbound sends.'
 
 iBubbl never sends an iMessage outside of the recipient's working hours. This protects your sender reputation and respects contact preferences — late-night blasts are the fastest way to get a phone number flagged.
 
+The one exception is an [after-hours auto-reply](/concepts/after-hours-reply): a reply to someone who texted you in the last 20 minutes can go out straight away.
+
 ## How it works
 
 Every outbound message — sent from the dashboard, `POST /v1/messages`, a workflow, a scheduled send or an integration — waits for the recipient's working hours before it leaves your device:
