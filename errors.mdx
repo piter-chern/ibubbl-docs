@@ -51,7 +51,7 @@ The `error` field is a **stable machine-readable code** — branch your integrat
 </ResponseField>
 
 <ResponseField name="daily_cap_exhausted" type="422">
-  Daily send cap reached. The send fails and is not queued; the cap resets at 3am ET, so send again after that.
+  Daily send cap reached. The send fails and is not queued; the cap resets at midnight ET (America/New_York), so send again after that.
 </ResponseField>
 
 <ResponseField name="cold_cap_exhausted" type="422">
@@ -94,13 +94,13 @@ The `error` field is a **stable machine-readable code** — branch your integrat
 | `contact_opted_out` | 422 | ❌ Cannot bypass. |
 | `invalid_timezone` | 422 | ❌ Fix the timezone. |
 | `hourly_cap_hit` | — (`202`, `queued`) | ⚠️ Not an error: iBubbl queues and retries for up to an hour. |
-| `daily_cap_exhausted` / `cold_cap_exhausted` | 422 | ⚠️ Not queued. Send again after the cap resets (3am ET). |
+| `daily_cap_exhausted` / `cold_cap_exhausted` | 422 | ⚠️ Not queued. Send again after the cap resets (midnight ET). |
 | `line_unavailable` / `line_offline` | 503 | ⚠️ iBubbl auto-queues; you should not retry. |
 | `invalid_signature` | 403 | ❌ Fix the signing secret. |
 | `payload_too_large` | 413 | ❌ Fix the payload size. |
 | `internal_error` | 500 | ✅ Retry with the same idempotency key after a short backoff. |
 
-The general rule: **don't retry 4xx**. Most 4xxes are payload-level problems that retrying won't fix. The cap-related 422s (`daily_cap_exhausted`, `cold_cap_exhausted`) are retryable only after the cap resets at 3am ET; iBubbl does not queue them for you. The hourly cap is different: those sends are queued, so retrying just creates duplicate work.
+The general rule: **don't retry 4xx**. Most 4xxes are payload-level problems that retrying won't fix. The cap-related 422s (`daily_cap_exhausted`, `cold_cap_exhausted`) are retryable only after the cap resets at midnight ET; iBubbl does not queue them for you. The hourly cap is different: those sends are queued, so retrying just creates duplicate work.
 
 ## HTTP status mapping summary
 

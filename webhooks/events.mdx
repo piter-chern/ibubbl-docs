@@ -63,13 +63,11 @@ Fired when a one-to-one message is accepted. That covers every accepted one-to-o
 }
 ```
 
-For a `queued` message, `failed_reason` names the capacity hold: `hourly_cap_hit` or `line_offline`. (Despite the name, this isn't a final failure — queued messages are retried automatically.) For a `pending` message it is `null`.
+For a `queued` message, `failed_reason` names the capacity hold: `hourly_cap_hit` or `line_offline`. (Despite the name, this isn't a final failure — queued messages are retried automatically, and one still queued after an hour becomes `status: "expired"` with a `message.failed` event.) For a `pending` message it is `null`.
 
-A `message.sent` event normally follows when the message goes out.
+A `message.sent` event follows when the queued message dispatches, or `message.cancelled` if it was stopped first.
 
-<Warning>
-**Current limitation:** a queued message can end without any further event. If it is still queued after about an hour it becomes `status: "expired"` (`failed_reason: "queue_expired"`), and if a capacity re-check fails when it is retried it becomes `status: "failed"` — neither fires a webhook today. If you rely on queued messages, poll `GET /v1/messages/{id}` for any that haven't produced `message.sent` within an hour or so.
-</Warning>
+A retried delivery of this event repeats the original payload.
 </Accordion>
 
 <Accordion title="message.sent" icon="paper-plane">
@@ -183,6 +181,29 @@ A failed message can also move back. If Apple later confirms delivery or a read 
 - `line_inactive` — the line was suspended or retired before the message went out
 
 See the [Error Reference](/errors) for the full catalog.
+</Accordion>
+
+<Accordion title="message.cancelled" icon="ban">
+Fired when a message that hadn't been sent yet is stopped in the dashboard: one waiting for the contact's [working hours](/concepts/working-hours) or your calendar, or queued by a capacity hold. iBubbl also cancels an [after-hours auto-reply](/concepts/after-hours-reply) that couldn't go out within 20 minutes of the text it answers. It will never send. This is terminal, like `message.failed`, but nothing went wrong: the message was withdrawn on purpose.
+
+```json
+{
+  "id": "evt_8b3a4e72-1c2d-4e5f-9a0b-2c3d4e5f6a7b",
+  "type": "message.cancelled",
+  "created_at": "2026-05-17T14:23:45.123Z",
+  "data": {
+    "message_id": "msg_4a5b6c7d-8e9f-0a1b-2c3d-4e5f6a7b8c9d",
+    "from_number": "+14155550100",
+    "to_number": "+14155551234",
+    "body": "Hey Sam — quick check-in about your order.",
+    "status": "cancelled",
+    "occurred_at": "2026-05-17T14:23:45.123Z",
+    "reply_to_message_id": null
+  }
+}
+```
+
+`occurred_at` is when it was cancelled. Retrying the original `POST /v1/messages` with the same `idempotency_key` returns this cancelled message; it does not send it again.
 </Accordion>
 
 <Accordion title="message.inbound" icon="envelope">
