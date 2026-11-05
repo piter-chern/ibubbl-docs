@@ -19,7 +19,7 @@ openapi: 'POST /v1/messages'
 | `chat_guid` | string | Exactly one of these four | Send into an existing group. Read it from the response to a send into the group, or from [Retrieve a message](/api-reference/messages/retrieve) for any message in it. It changes when a participant is added; an old value returns `404 group_not_found`. |
 | `participant_phones` | array of strings (E.164) | Exactly one of these four | Create a new group and send the first message. At least 2 numbers; your iBubbl line is added automatically, so don't include it. |
 | `group_name` | string, at most 80 characters | No | Display name for the new group. Only allowed with `participant_phones`. |
-| `body` | string, at least 1 character | Yes | The message text. Plain text; emoji and Unicode are supported. |
+| `body` | string, at least 1 character | Yes | The message text. Plain text; emoji and Unicode are supported. For a line break, include a newline (`\n` in the JSON string); use `\n`, not `\r\n`. A retry with the same `idempotency_key` must send the identical body, line breaks included, or it returns `409 idempotency_conflict`. |
 | `idempotency_key` | string, 1–128 characters | Yes | Your unique key for this send; a UUIDv4 is recommended. The same key with the same payload replays the original message; the same key with a different payload returns `409`. A key whose message ended `failed` or `expired` is released, and a retry sends a new message. See [Idempotency](/idempotency). |
 
 Fields not listed above are ignored without an error: the request still succeeds, and they are not stored.

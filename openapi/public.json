@@ -1114,7 +1114,7 @@
             "type": "string",
             "minLength": 1,
             "title": "Body",
-            "description": "The message text. Plain text only; emoji + Unicode are supported.",
+            "description": "The message text. Plain text only; emoji + Unicode are supported. For a line break, include a newline (`\\n` in the JSON string); use `\\n`, not `\\r\\n`. A retry with the same `idempotency_key` must send the identical body, line breaks included, or it returns `409 idempotency_conflict`.",
             "examples": [
               "Hey Sam \u2014 quick check-in about your order."
             ]
