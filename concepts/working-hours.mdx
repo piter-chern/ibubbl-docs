@@ -69,8 +69,8 @@ A message waiting for working hours is `pending`, like one that is about to go o
 }
 ```
 
-- `held_reason` — why it is waiting right now: `working_hours`, or `busy_window` when your connected calendar shows you busy.
-- `held_until` — when it is **expected** to go out: the contact's next opening, or the end of the busy block if one covers that opening. It is recomputed within about 10 seconds when your hours or calendar change, and it is `null` if no sending day is enabled.
+- `held_reason` — why it is waiting right now: `working_hours`.
+- `held_until` — when it is **expected** to go out: the contact's next opening. It is recomputed within about 10 seconds when your hours change, and it is `null` if no sending day is enabled.
 
 Both are `null` when the message is not being held. A held message is first marked within about 10 seconds of being accepted, so a `GET` immediately after `POST` may not show the hold yet. A [`message.sent`](/webhooks/events) webhook fires when it goes out.
 
