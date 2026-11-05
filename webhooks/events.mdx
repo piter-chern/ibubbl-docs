@@ -184,7 +184,7 @@ See the [Error Reference](/errors) for the full catalog.
 </Accordion>
 
 <Accordion title="message.cancelled" icon="ban">
-Fired when a message that hadn't been sent yet is stopped in the dashboard: one waiting for the contact's [working hours](/concepts/working-hours) or your calendar, or queued by a capacity hold. iBubbl also cancels an [after-hours auto-reply](/concepts/after-hours-reply) that couldn't go out within 20 minutes of the text it answers. It will never send. This is terminal, like `message.failed`, but nothing went wrong: the message was withdrawn on purpose.
+Fired when a message that hadn't been sent yet is stopped in the dashboard: one waiting for the contact's [working hours](/concepts/working-hours), or queued by a capacity hold. iBubbl also cancels an [after-hours auto-reply](/concepts/after-hours-reply) that couldn't go out within 20 minutes of the text it answers. It will never send. This is terminal, like `message.failed`, but nothing went wrong: the message was withdrawn on purpose.
 
 ```json
 {
