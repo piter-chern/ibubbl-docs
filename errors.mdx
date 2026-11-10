@@ -42,8 +42,16 @@ The `error` field is a **stable machine-readable code** — branch your integrat
   The destination contact has opted out and cannot receive new sends. iBubbl enforces this server-side; there is no programmatic way to override. See [Suppression & Opt-Outs](/concepts/suppression).
 </ResponseField>
 
+<ResponseField name="contact_blocked" type="422">
+  A one-to-one send to a contact that a rep on your account has blocked in the dashboard. Nothing was sent. The send works again once the contact is unblocked in the dashboard; there is no API endpoint for that. If a contact is both opted out and blocked, you get `contact_opted_out`.
+</ResponseField>
+
+<ResponseField name="unresponsive_contact" type="422">
+  Refused on the 7th consecutive message to a contact who has never replied: iBubbl allows 6 unanswered messages in a row, then stops. Nothing was sent. The limit lifts as soon as the contact replies; waiting does not reset it.
+</ResponseField>
+
 <ResponseField name="invalid_timezone" type="422">
-  The `timezone` field on a contact upsert is not in the supported IANA allowlist. The supported set covers US/Canada timezones plus common international zones; if you need a zone that isn't supported, contact support.
+  The `timezone` field on a contact upsert is not in the supported IANA allowlist. The supported set covers US/Canada timezones plus common international zones; if you need a zone that isn't supported, email [support@ibubbl.com](mailto:support@ibubbl.com).
 </ResponseField>
 
 <ResponseField name="invalid_email" type="422">
@@ -59,7 +67,11 @@ The `error` field is a **stable machine-readable code** — branch your integrat
 </ResponseField>
 
 <ResponseField name="hourly_cap_hit" type="queued">
-  Your line has hit its hourly send cap. This is not returned as an error: the send is accepted (`202`, `status: "queued"`) and retried every 30 seconds. If it is still queued after an hour it expires (`status: "expired"`). To raise caps, contact support.
+  Your line has hit its hourly send cap. This is not returned as an error: the send is accepted (`202`, `status: "queued"`) and retried every 30 seconds. If it is still queued after about an hour it expires (`status: "expired"`); no webhook fires for that, so poll [`GET /v1/messages/{id}`](/api-reference/messages/retrieve) if you need to know. To raise caps, email [support@ibubbl.com](mailto:support@ibubbl.com).
+</ResponseField>
+
+<ResponseField name="line_offline" type="queued">
+  Your sending line is temporarily disconnected. This is not returned as an error: a one-to-one send is accepted (`202`, `status: "queued"`) and goes out automatically when the line reconnects. If it is still queued after about an hour it expires (`status: "expired"`); no webhook fires for that, so poll [`GET /v1/messages/{id}`](/api-reference/messages/retrieve) if you need to know.
 </ResponseField>
 
 <ResponseField name="daily_cap_exhausted" type="422">
@@ -70,12 +82,24 @@ The `error` field is a **stable machine-readable code** — branch your integrat
   Cold-outreach cap reached for the day. iBubbl ramps cold-send volume during line warm-up to protect sender reputation.
 </ResponseField>
 
-<ResponseField name="line_unavailable" type="503">
-  No active sending line is available to handle this send. Usually transient — the line is briefly offline. iBubbl retries automatically; no action required.
+<ResponseField name="followup_cap_exhausted" type="422">
+  The legacy per-line daily cap on follow-ups (messages to contacts who replied before, but not in the last 24 hours) is reached. Only lines on the older per-line daily caps return it. The send fails and is not queued; the cap resets at midnight ET (America/New_York).
 </ResponseField>
 
-<ResponseField name="line_offline" type="503">
-  Your sending line is currently disconnected. A one-to-one send is normally accepted (`202`, `status: "queued"`) and goes out when the line reconnects; if it is still queued after an hour it expires (`status: "expired"`).
+<ResponseField name="no_eligible_line" type="422">
+  No line on your account can take this send right now: for example, a contact you haven't messaged before while your line is offline, or a group whose line is no longer active. Nothing was sent. Send again once your line is back online.
+</ResponseField>
+
+<ResponseField name="group_not_found" type="404">
+  The `chat_guid` doesn't match a group conversation on your account. A group's `chat_guid` can change when someone is added to it, so look up the current one. Retrying the same request won't help.
+</ResponseField>
+
+<ResponseField name="group_outbound_blocked_suppression" type="422">
+  One or more participants in the group have opted out, so iBubbl won't send to the group. When the send would create a new group, `detail` also carries a `blocked_phones` list naming them. Opt-outs are permanent, so retrying won't help; send to a group without them.
+</ResponseField>
+
+<ResponseField name="insufficient_participants" type="422">
+  The `participant_phones` resolve to fewer than 2 different people: for example, the same number written two ways. A group needs at least 2 different participants; for one person, send one-to-one.
 </ResponseField>
 
 <ResponseField name="imessage_undeliverable" type="message.failed">
@@ -83,11 +107,15 @@ The `error` field is a **stable machine-readable code** — branch your integrat
 </ResponseField>
 
 <ResponseField name="internal_error" type="500">
-  An unexpected error on iBubbl's side. These are paired with our error-tracking system; we get paged when they happen. If you see a sustained pattern, contact support with the timestamp + request body.
+  An unexpected error on iBubbl's side. These are paired with our error-tracking system; we get paged when they happen. If you see a sustained pattern, email [support@ibubbl.com](mailto:support@ibubbl.com) with the timestamp + request body.
 </ResponseField>
 
 <ResponseField name="no_owner_rep" type="500">
-  Your account has no active owner rep to send as, so `POST /v1/messages` can't send. Retrying won't help until the account has one; contact support.
+  Your account has no active owner rep to send as, so `POST /v1/messages` can't send. Retrying won't help until the account has one; email [support@ibubbl.com](mailto:support@ibubbl.com).
+</ResponseField>
+
+<ResponseField name="invalid_url" type="422">
+  A [`POST /v1/webhooks`](/api-reference/webhooks/create) `url` that doesn't start with `https://`. Webhook endpoints must use HTTPS.
 </ResponseField>
 
 <ResponseField name="invalid_signature" type="403">
@@ -98,27 +126,38 @@ The `error` field is a **stable machine-readable code** — branch your integrat
   An [inbound event](/inbound-events/overview) body exceeded 256 KB.
 </ResponseField>
 
+<ResponseField name="rate_limited" type="429">
+  `/v1/events` only: a secret-URL [inbound event](/inbound-events/overview) source received more than 60 events in 60 seconds. There is no `Retry-After` header; send again after about a minute. No other `/v1` endpoint returns this.
+</ResponseField>
+
 ## When to retry
 
 | Code | HTTP | Retryable? |
 | ---- | ---- | ---------- |
 | `unauthorized` | 401 | ❌ Fix the key. |
-| `forbidden` | 403 | ❌ Account suspended or cancelled; contact support. |
+| `forbidden` | 403 | ❌ Account suspended or cancelled; email [support@ibubbl.com](mailto:support@ibubbl.com). |
 | `not_found` | 404 | ❌ Verify the ID. |
+| `group_not_found` | 404 | ❌ Use the group's current `chat_guid`. |
 | `idempotency_conflict` | 409 | ❌ Fix the retry logic. |
 | `validation_error` | 422 | ❌ Fix the payload. |
 | `contact_opted_out` | 422 | ❌ Cannot bypass. |
+| `contact_blocked` | 422 | ❌ Not until the contact is unblocked in the dashboard. |
+| `unresponsive_contact` | 422 | ❌ Not until the contact replies. |
+| `group_outbound_blocked_suppression` | 422 | ❌ Cannot bypass; leave out the opted-out participants. |
+| `insufficient_participants` | 422 | ❌ Fix the participant list, or send one-to-one. |
+| `invalid_url` | 422 | ❌ Use an `https://` URL. |
 | `invalid_timezone` | 422 | ❌ Fix the timezone. |
 | `invalid_email` / `invalid_tag` / `duplicate_tag` | 422 | ❌ Fix the value. |
-| `hourly_cap_hit` | — (`202`, `queued`) | ⚠️ Not an error: iBubbl queues and retries for up to an hour. |
-| `daily_cap_exhausted` / `cold_cap_exhausted` | 422 | ⚠️ Not queued. Send again after the cap resets (midnight ET). |
-| `line_unavailable` / `line_offline` | 503 | ⚠️ iBubbl auto-queues; you should not retry. |
+| `hourly_cap_hit` / `line_offline` | — (`202`, `queued`) | ⚠️ Not an error: iBubbl queues and retries for up to an hour. |
+| `daily_cap_exhausted` / `cold_cap_exhausted` / `followup_cap_exhausted` | 422 | ⚠️ Not queued. Send again after the cap resets (midnight ET). |
+| `no_eligible_line` | 422 | ⚠️ Send again once your line is back online. |
+| `rate_limited` | 429 | ✅ Send again after about a minute (`/v1/events` only). |
 | `invalid_signature` | 403 | ❌ Fix the signing secret. |
 | `payload_too_large` | 413 | ❌ Fix the payload size. |
-| `no_owner_rep` | 500 | ❌ Not until your account has an active owner rep; contact support. |
+| `no_owner_rep` | 500 | ❌ Not until your account has an active owner rep; email [support@ibubbl.com](mailto:support@ibubbl.com). |
 | `internal_error` | 500 | ✅ Retry with the same idempotency key after a short backoff. |
 
-The general rule: **don't retry 4xx**. Most 4xxes are payload-level problems that retrying won't fix. The cap-related 422s (`daily_cap_exhausted`, `cold_cap_exhausted`) are retryable only after the cap resets at midnight ET; iBubbl does not queue them for you. The hourly cap is different: those sends are queued, so retrying just creates duplicate work.
+The general rule: **don't retry 4xx**. Most 4xxes are payload-level problems that retrying won't fix. The cap-related 422s (`daily_cap_exhausted`, `cold_cap_exhausted`, `followup_cap_exhausted`) are retryable only after the cap resets at midnight ET; iBubbl does not queue them for you. The hourly cap and an offline line are different: those sends are queued, so retrying just creates duplicate work. A send refused with a `404` or `422` creates no message, so its `idempotency_key` stays unused and you can reuse it when you send again.
 
 ## HTTP status mapping summary
 
@@ -127,9 +166,10 @@ The general rule: **don't retry 4xx**. Most 4xxes are payload-level problems tha
 | `200` / `201` / `202` | Success. `202` for accepted-but-queued sends; `201` for created resources; `200` everywhere else. |
 | `401` | Auth failure. |
 | `403` | Account suspended or cancelled (`forbidden`), or an inbound event's signature failed (`invalid_signature`). |
-| `404` | Resource not found (or hidden across tenants). |
+| `404` | Resource not found (or hidden across tenants), or `group_not_found`. |
 | `409` | Idempotency conflict. |
-| `422` | Validation or routing-level failure. |
-| `500` | No owner rep (`no_owner_rep`) or an unexpected iBubbl error (`internal_error`). |
 | `413` | Inbound event body over 256 KB. |
-| `503` | Send-side capacity / line offline. |
+| `422` | Validation, routing or send-limit failure. |
+| `429` | Too many inbound events for one source (`rate_limited`, `/v1/events` only). |
+| `500` | No owner rep (`no_owner_rep`) or an unexpected iBubbl error (`internal_error`). |
+| `502` / `503` | Never returned by iBubbl itself: only by the network edge during a deployment blip. Retry with the same idempotency key after a short backoff. |

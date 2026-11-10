@@ -29,7 +29,7 @@ iBubbl **may**:
 - Add new event types to the webhook catalog (filter by `event_types` if you only want a subset).
 - Add new error codes for new failure modes.
 - Add new values to an existing enum — for example a new message `status` or `failed_reason`. Handle values you don't recognise (log them, treat them as "other") instead of failing.
-- Tighten validation in ways that previously-accepted requests still pass.
+- Tighten validation. We aim to keep previously-accepted requests passing, but we have broken that once: since **2026-11-05**, the contacts endpoints (`POST /v1/contacts`, `PATCH /v1/contacts/{contact_id}`, `POST /v1/contacts/{contact_id}/tags`) reject unknown body fields with `422 validation_error` instead of ignoring them. `POST /v1/messages` still ignores unknown fields. Any future tightening will be announced in these docs before it takes effect.
 
 Treat unknown fields, enum values and event types as forward-compat. Your code should not error on an extra response field, status or event type it doesn't recognize.
 
@@ -39,7 +39,7 @@ Breaking changes ship behind a new version prefix — `/v2/` will exist alongsid
 
 When a major version ships, iBubbl will:
 
-1. Email the contact on each account at least **12 months** before `/v1/` is sunset.
+1. Announce the `/v1/` sunset date in these docs at least **12 months** before `/v1/` is sunset.
 2. Show a dashboard banner with the migration timeline.
 3. Publish a `/v2/` migration guide enumerating every change.
 4. Keep `/v1/` fully operational for the deprecation window.

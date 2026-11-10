@@ -6,7 +6,7 @@ description: 'How iBubbl handles opt-outs to keep you TCPA-compliant.'
 iBubbl checks opt-outs when a send is accepted. Once a contact is opted out, any new send attempt — through any API endpoint, dashboard action, or automation — fails immediately with `422 contact_opted_out`. There's no way to bypass this server-side.
 
 <Warning>
-**Messages accepted before the opt-out may still be sent.** Today the check happens when a message is accepted. A message that was already accepted and is still waiting — held for the contact's [sending hours](/concepts/working-hours), or queued for capacity — when the contact opts out can still go out afterwards. A fix is in progress; until it ships, if a contact opts out while you have messages waiting for them, contact support.
+**Messages accepted before the opt-out may still be sent.** The check happens when a message is accepted, and waiting messages are not withdrawn automatically today. A message that was already accepted and is still waiting — held for the contact's [sending hours](/concepts/working-hours), or queued for capacity — when the contact opts out can still go out afterwards. To stop it, cancel it in the dashboard (a [`message.cancelled`](/webhooks/events) webhook fires), or email [support@ibubbl.com](mailto:support@ibubbl.com).
 </Warning>
 
 This isn't just hygiene — it's how you stay TCPA-compliant for US recipients. Opt-out enforcement is non-negotiable.
@@ -39,7 +39,7 @@ A rep can mark a contact opted out from the dashboard's contact detail view. A [
 If your account is connected to a GoHighLevel sub-account, marking a contact Do Not Disturb there (for SMS or all channels) opts them out in iBubbl too. The webhook fires with `source: "ghl_dnd"`.
 
 <Note>
-**Programmatic opt-out is not on the v1 API.** If your integration needs to push opt-outs from an external CRM, contact support.
+**Programmatic opt-out is not on the v1 API.** If your integration needs to push opt-outs from an external CRM, email [support@ibubbl.com](mailto:support@ibubbl.com).
 </Note>
 
 ## What happens after opt-out
@@ -50,7 +50,7 @@ If your account is connected to a GoHighLevel sub-account, marking a contact Do 
 
 ## Re-opting in
 
-An opt-out can't currently be undone — not through the API and not from the dashboard. This is deliberate: accidental or automated re-opt-ins are a compliance risk. If a contact was opted out by mistake, contact support.
+An opt-out can't currently be undone — not through the API and not from the dashboard. This is deliberate: accidental or automated re-opt-ins are a compliance risk. If a contact was opted out by mistake, email [support@ibubbl.com](mailto:support@ibubbl.com).
 
 ## Detecting opt-outs in your integration
 
@@ -75,6 +75,6 @@ curl https://api.ibubbl.com/v1/contacts/c8a1f4e2-... \
 
 ## Compliance posture
 
-iBubbl's suppression is built for TCPA compliance for US recipients of iMessage. The defaults — strict STOP matching, mandatory enforcement, no re-opt-in — reflect that posture. If your use case has different jurisdictional requirements, talk to support before launching.
+iBubbl's suppression is built for TCPA compliance for US recipients of iMessage. The defaults — strict STOP matching, mandatory enforcement, no re-opt-in — reflect that posture. If your use case has different jurisdictional requirements, email [support@ibubbl.com](mailto:support@ibubbl.com) before launching.
 
 You remain the responsible party for your account's send patterns and content. iBubbl's enforcement reduces risk; it doesn't eliminate it.

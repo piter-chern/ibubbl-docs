@@ -63,7 +63,9 @@ Fired when a one-to-one message is accepted. That covers every accepted one-to-o
 }
 ```
 
-For a `queued` message, `failed_reason` names the capacity hold: `hourly_cap_hit` or `line_offline`. (Despite the name, this isn't a final failure — queued messages are retried automatically, and one still queued after an hour becomes `status: "expired"` with a `message.failed` event.) For a `pending` message it is `null`.
+For a `queued` message, `failed_reason` names the capacity hold: `hourly_cap_hit` or `line_offline`. (Despite the name, this isn't a final failure: queued messages are retried automatically. One still queued after about an hour becomes `status: "expired"` (`failed_reason: "queue_expired"`) and **no webhook fires**, so poll [`GET /v1/messages/{id}`](/api-reference/messages/retrieve) if you need to know.) For a `pending` message it is `null`.
+
+A `pending` message is different: if its line has been offline for over an hour, it moves to `failed` and fires [`message.failed`](#message-failed) with `failed_reason: "agent_offline"`.
 
 A `message.sent` event follows when the queued message dispatches, or `message.cancelled` if it was stopped first.
 
@@ -192,7 +194,7 @@ Fired when a message that hadn't been sent yet is stopped in the dashboard: one 
   "type": "message.cancelled",
   "created_at": "2026-05-17T14:23:45.123Z",
   "data": {
-    "message_id": "msg_4a5b6c7d-8e9f-0a1b-2c3d-4e5f6a7b8c9d",
+    "message_id": "4a5b6c7d-8e9f-0a1b-2c3d-4e5f6a7b8c9d",
     "from_number": "+14155550100",
     "to_number": "+14155551234",
     "body": "Hey Sam — quick check-in about your order.",

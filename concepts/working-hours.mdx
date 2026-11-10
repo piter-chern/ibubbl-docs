@@ -71,8 +71,8 @@ A message waiting for working hours is `pending`, like one that is about to go o
 }
 ```
 
-- `held_reason` — why it is waiting right now: `working_hours`.
-- `held_until` — when it is **expected** to go out: the contact's next opening. It is recomputed within about 10 seconds when your hours change, and it is `null` if no sending day is enabled.
+- `held_reason` — why it is waiting right now: `working_hours` (outside the contact's working hours) or `hourly_limit` (your line has used its hourly limit of new contacts; the message stays `pending` and goes out by itself when a slot frees).
+- `held_until` — when it is **expected** to go out. For `working_hours`, the contact's next opening: it is recomputed within about 10 seconds when your hours change, and it is `null` if no sending day is enabled. For `hourly_limit`, an estimate of when a slot frees, or `null` if there is none.
 
 Both are `null` when the message is not being held. A held message is first marked within about 10 seconds of being accepted, so a `GET` immediately after `POST` may not show the hold yet. A [`message.sent`](/webhooks/events) webhook fires when it goes out.
 
@@ -84,5 +84,7 @@ Separately from working hours, a send can be accepted but parked because of capa
 - `line_offline` — your sending line is temporarily disconnected.
 
 iBubbl re-checks queued messages automatically and sends them once the condition clears. A message still queued after about **an hour** is dropped and moves to `status: "expired"` — no webhook fires for that today, so poll `GET /v1/messages/{id}` if you need to know. Send it again (a new `idempotency_key`, or the same one: an expired message's key is released) if it still matters.
+
+A `pending` message works differently: if its line has been offline for over an hour, it is not sent late. It moves to `status: "failed"` with `failed_reason: "agent_offline"`, and a [`message.failed`](/webhooks/events) webhook fires.
 
 Daily and cold-outreach caps do **not** queue: a send over those caps fails immediately with a `422`. See [Errors](/errors).

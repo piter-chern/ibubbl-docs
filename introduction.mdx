@@ -15,12 +15,14 @@ The API is HTTPS-only, JSON-everywhere, and authenticated with a single Bearer A
 
 <Steps>
   <Step title="Sign up">
-    Create an account at [ibubbl-dashboard.vercel.app](https://ibubbl-dashboard.vercel.app/signup) and connect your iMessage line.
+    Create an account at [ibubbl-dashboard.vercel.app](https://ibubbl-dashboard.vercel.app/signup). iBubbl sets up and runs your iMessage line for you; you don't connect your own Mac or Apple ID. You need an active line from iBubbl before you can send.
   </Step>
   <Step title="Generate an API key">
     In the dashboard, open **Settings → API Access** and click **Create key**. Copy the key (format: `ib_pk_` + 64 hex characters, 70 in all). This is the only time the full secret is shown.
   </Step>
   <Step title="Send your first message">
+    Put **your own mobile number** in `to`, so your first message lands on your phone.
+
     ```bash
     curl -X POST https://api.ibubbl.com/v1/messages \
       -H "Authorization: Bearer $IB_API_KEY" \
@@ -38,6 +40,10 @@ The API is HTTPS-only, JSON-everywhere, and authenticated with a single Bearer A
     Register an HTTPS endpoint to receive events as they happen — inbound replies, delivery state changes, opt-outs. See [Webhooks Overview](/webhooks/overview).
   </Step>
 </Steps>
+
+<Note>
+**Testing safely.** There is no sandbox or test mode: every request is live, and every send delivers a real iMessage from your line. Lines are set up and managed by iBubbl, so there is no test line either. Send your first messages to your own mobile phone, not to customers, and use a dedicated API key for testing that you can revoke when you're done.
+</Note>
 
 ## What to read next
 
