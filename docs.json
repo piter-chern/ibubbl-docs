@@ -1,0 +1,120 @@
+{
+  "$schema": "https://mintlify.com/docs.json",
+  "theme": "mint",
+  "name": "iBubbl",
+  "colors": {
+    "primary": "#3B82F6",
+    "light": "#60A5FA",
+    "dark": "#2563EB"
+  },
+  "favicon": "/favicon.ico",
+  "logo": {
+    "light": "/logo/light.png",
+    "dark": "/logo/dark.png"
+  },
+  "navbar": {
+    "links": [
+      {
+        "label": "Dashboard",
+        "href": "https://ibubbl-dashboard.vercel.app"
+      }
+    ],
+    "primary": {
+      "type": "button",
+      "label": "Sign up",
+      "href": "https://ibubbl-dashboard.vercel.app/signup"
+    }
+  },
+  "contextual": {
+    "options": ["copy", "view", "chatgpt", "claude", "mcp", "cursor", "vscode"]
+  },
+  "navigation": {
+    "groups": [
+      {
+        "group": "Get started",
+        "pages": [
+          "introduction",
+          "quickstart",
+          "authentication",
+          "build-with-ai"
+        ]
+      },
+      {
+        "group": "Concepts",
+        "pages": [
+          "idempotency",
+          "concepts/working-hours",
+          "concepts/after-hours-reply",
+          "concepts/suppression",
+          "concepts/group-conversations"
+        ]
+      },
+      {
+        "group": "Guides",
+        "pages": [
+          "inbound-events/overview"
+        ]
+      },
+      {
+        "group": "Webhooks",
+        "pages": [
+          "webhooks/overview",
+          "webhooks/events",
+          "webhooks/signatures"
+        ]
+      },
+      {
+        "group": "API reference",
+        "pages": [
+          {
+            "group": "Messages",
+            "pages": [
+              "api-reference/messages/send",
+              "api-reference/messages/retrieve"
+            ]
+          },
+          {
+            "group": "Contacts",
+            "pages": [
+              "api-reference/contacts/upsert",
+              "api-reference/contacts/retrieve",
+              "api-reference/contacts/update",
+              "api-reference/contacts/add-tag",
+              "api-reference/contacts/remove-tag"
+            ]
+          },
+          {
+            "group": "Webhooks",
+            "pages": [
+              "api-reference/webhooks/create",
+              "api-reference/webhooks/list",
+              "api-reference/webhooks/retrieve",
+              "api-reference/webhooks/revoke"
+            ]
+          },
+          {
+            "group": "Inbound events",
+            "pages": [
+              "api-reference/inbound-events/receive"
+            ]
+          }
+        ]
+      },
+      {
+        "group": "Resources",
+        "pages": [
+          "errors",
+          "versioning",
+          "changelog",
+          "support"
+        ]
+      }
+    ]
+  },
+  "api": {
+    "openapi": "openapi/public.json",
+    "playground": {
+      "display": "simple"
+    }
+  }
+}

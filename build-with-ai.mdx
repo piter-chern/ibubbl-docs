@@ -1,0 +1,108 @@
+---
+title: 'Build with AI'
+description: 'Give your coding agent the iBubbl docs, the OpenAPI spec and a system prompt with the rules that matter.'
+---
+
+Coding agents write better iBubbl integrations when they read the docs instead of guessing. Everything on this site is available in forms an agent can read, and the system prompt below gives it the rules that are easy to get wrong.
+
+## Docs for agents
+
+| Resource | URL | Use it for |
+| -------- | --- | ---------- |
+| `llms.txt` | [`https://docs.ibubbl.com/llms.txt`](https://docs.ibubbl.com/llms.txt) | An index of every page, with a one-line summary and a link to its Markdown. |
+| `llms-full.txt` | [`https://docs.ibubbl.com/llms-full.txt`](https://docs.ibubbl.com/llms-full.txt) | All of these docs in one plain-text file, to paste or attach as context. |
+| Markdown pages | Add `.md` to any page URL, for example [`https://docs.ibubbl.com/api-reference/messages/send.md`](https://docs.ibubbl.com/api-reference/messages/send.md) | One page as clean Markdown. |
+| OpenAPI spec | [`https://docs.ibubbl.com/openapi/public.json`](https://docs.ibubbl.com/openapi/public.json) | The machine-readable `/v1` contract: generate a client, or import it into Postman or Insomnia. |
+| Docs MCP server | `https://docs.ibubbl.com/mcp` | Lets an agent search and read these docs while it works. |
+
+The menu at the top of each page can also copy the page as Markdown, open it in ChatGPT or Claude, or connect the MCP server to Cursor or VS Code.
+
+### Connect the docs MCP server
+
+The MCP server searches and reads these docs. It can't call the iBubbl API or send messages, and it doesn't need your API key.
+
+<CodeGroup>
+
+```bash Claude Code
+claude mcp add --transport http ibubbl-docs https://docs.ibubbl.com/mcp
+```
+
+```json Cursor
+{
+  "mcpServers": {
+    "ibubbl-docs": {
+      "url": "https://docs.ibubbl.com/mcp"
+    }
+  }
+}
+```
+
+</CodeGroup>
+
+For Cursor, add the entry to `.cursor/mcp.json` in your project, or to `~/.cursor/mcp.json` for every project.
+
+## System prompt for coding agents
+
+Copy this into your agent's instructions (for example `CLAUDE.md`, `AGENTS.md` or `.cursor/rules`) before asking it to build an iBubbl integration. Each rule prevents a mistake that sends duplicate messages, messages people who opted out, or creates a reply loop.
+
+```text
+You are building an integration with the iBubbl API, which sends iMessages
+(with a fallback to SMS) from a line that iBubbl runs for the customer.
+Follow these rules exactly.
+
+REFERENCE
+- Base URL: https://api.ibubbl.com. Every endpoint is under /v1.
+- Docs: https://docs.ibubbl.com. Full text: https://docs.ibubbl.com/llms-full.txt.
+  OpenAPI: https://docs.ibubbl.com/openapi/public.json. Read them before using
+  an endpoint or field; never guess names, fields or values.
+- Auth: send "Authorization: Bearer <key>". Read the key from the
+  IBUBBL_API_KEY environment variable. Never hard-code, log or print it, and
+  never put it in browser or mobile code.
+- Every request is live. There is no sandbox or test mode. While testing,
+  send only to the developer's own phone number.
+
+SENDING (POST /v1/messages)
+- Exactly one of: to (E.164, e.g. +14155551234), contact_id, chat_guid,
+  participant_phones. Plus body and idempotency_key, both required.
+- Generate ONE idempotency_key (a UUIDv4) per logical message, before the
+  first attempt, and store it with the message. Reuse the same key and the
+  identical payload on every retry. Never generate the key inside a retry
+  loop. A new key with the same body sends a second, real message.
+- 202 means accepted, not delivered. Track the outcome with webhooks or
+  GET /v1/messages/{id}. A message outside the contact's sending hours stays
+  "pending" with held_reason and held_until set; that is normal, not an error.
+- Read the message's channel before assuming iMessage-only behaviour:
+  "imessage" or "sms" (RCS also reports as "sms"); null until it is sent.
+
+RETRIES AND ERRORS
+- Branch on detail.error (the stable code), never on detail.message.
+- Network error, timeout or 5xx: retry with the SAME idempotency_key and
+  the same payload, with exponential backoff (1 s, 2 s, 4 s) and a small cap
+  on attempts. Exception: 500 no_owner_rep will not succeed on retry.
+- Never retry a 4xx automatically. Fix the request instead.
+- 422 unresponsive_contact: the contact has not replied to 6 messages in a
+  row. Stop messaging them until they reply.
+- 422 contact_opted_out: final. Never message this contact again, and never
+  work around it (another number format, a group, another key or account).
+- 422 daily_cap_exhausted or cold_cap_exhausted: not queued. Do not send
+  again before midnight ET.
+
+WEBHOOKS
+- Verify the X-iBubbl-Signature header on every request before trusting the
+  body: HMAC-SHA256 of "{t}.{raw body bytes}" keyed with the whsec_ secret,
+  compared in constant time; reject if t is more than 300 seconds old. Read
+  the header name case-insensitively. Details:
+  https://docs.ibubbl.com/webhooks/signatures
+- Return a 2xx within 10 seconds and do the work asynchronously.
+- Delivery is at least once and in no guaranteed order. Deduplicate on the
+  event id (evt_...) before doing anything.
+- Only message.inbound may trigger an automated send. Never send in response
+  to message.queued, message.sent, message.delivered, message.read,
+  message.failed, message.cancelled, message.edited or a reaction event, or
+  to any event about your own outbound messages: that creates a loop.
+- contact.opted_out: mark the contact do-not-contact in your own system.
+- Return a 2xx for event types and enum values you don't recognise; iBubbl
+  adds new ones over time.
+```
+
+The rules come from these pages, which have the details: [Idempotency](/idempotency), [Errors](/errors), [Working hours](/concepts/working-hours), [Suppression and opt-outs](/concepts/suppression), [Webhook events](/webhooks/events) and [Signature verification](/webhooks/signatures).

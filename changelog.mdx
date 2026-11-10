@@ -1,0 +1,35 @@
+---
+title: 'Changelog'
+description: 'Changes to the iBubbl API and these docs, newest first.'
+---
+
+**Type** says what changed: **New** is a new API capability, **Changed** is a change in how the API behaves, **Correction** means the docs were wrong and now match the API, and **Docs** is new or reorganised documentation with no API change.
+
+| Date | Change | Type |
+| ---- | ------ | ---- |
+| 2026-11-10 | The docs are reorganised into Get started, Concepts, Guides, Webhooks, API reference and Resources. New pages: [Quickstart](/quickstart), [Build with AI](/build-with-ai) (with a system prompt for coding agents), [Support](/support) and this changelog. No page moved, so existing links keep working. | Docs |
+| 2026-11-10 | The [error catalog](/errors) now lists every code `/v1` returns, including `contact_blocked`, `no_eligible_line`, `unresponsive_contact`, `group_not_found` and `rate_limited`. Removed the `503` entries, which iBubbl never returns. Also corrected: a queued message that expires fires no webhook; `held_reason` can be `hourly_limit`; the unanswered limit is 6 in a row. | Correction |
+| 2026-11-10 | The API is at `https://api.ibubbl.com` and these docs at `https://docs.ibubbl.com`. The previous hosts keep working. | Changed |
+| 2026-11-05 | Contacts: create and upsert take `email`, `city`, `state` and `tags`; new endpoints to [update a contact](/api-reference/contacts/update), [add a tag](/api-reference/contacts/add-tag) and [remove a tag](/api-reference/contacts/remove-tag). The contacts endpoints now reject unknown body fields with `422 validation_error`. | New |
+| 2026-11-05 | A busy calendar no longer holds sends. `held_reason` is `working_hours` or `hourly_limit`. | Changed |
+| 2026-11-05 | Every API reference page now shows each status code it can return, with a real example. `403 forbidden` means a suspended or cancelled account; `500 no_owner_rep` is documented. | Docs |
+| 2026-11-05 | New page: [After-hours auto-reply](/concepts/after-hours-reply). | Docs |
+| 2026-11-04 | Line breaks in a message `body`: send `\n`, not `\r\n`. A retry with the same `idempotency_key` must send the identical body. | Changed |
+| 2026-10-23 | Daily send caps reset at midnight ET (America/New_York). | Changed |
+| 2026-10-20 | The webhook catalog is complete: `message.delivered` and `message.read`, ordering and duplicates, inbound attachments. The reference signature verifiers no longer crash on a missing or malformed header. | Correction |
+| 2026-10-20 | API keys are `ib_pk_` plus 64 hex characters. Idempotency keys never expire, and a key whose message failed or expired is released for a new send. There is no test mode. | Correction |
+| 2026-10-20 | Group conversations: get `chat_guid` from [Retrieve a message](/api-reference/messages/retrieve); it changes when someone is added to the group. | Correction |
+| 2026-10-20 | Corrections to suppression, contact timezones, inbound events and versioning. New enum values are not breaking changes. | Correction |
+| 2026-10-16 | A message that failed with an `imessage_*` reason can move to `delivered` or `read` if Apple later confirms it. | Changed |
+| 2026-10-15 | `message.failed` can follow `message.sent`. New `failed_reason` values `imessage_undeliverable` and `imessage_error:<code>`. | New |
+| 2026-10-13 | New `cancelled` status and `message.cancelled` event, for a waiting message that is cancelled before it is sent. | New |
+| 2026-10-08 | Waiting messages carry `held_until` and `held_reason`. New default sending hours: Monday to Saturday 9 AM–8 PM, Sunday 12–8 PM. A message waiting for sending hours is `pending`, not `queued`. | New |
+| 2026-10-06 | `failed_reason: mac_send_failed` also covers a send not confirmed within 10 minutes. | Changed |
+| 2026-10-05 | A contact's phone number is stored in the form it was first seen. | Correction |
+| 2026-10-03 | New `failed_reason` value `line_inactive`. | New |
+| 2026-10-01 | [Inbound events](/inbound-events/overview) from any app through a secret URL, iBubbl-signed sources, and a log of recent events. | New |
+| 2026-09-22 | [Inbound events](/inbound-events/overview): `POST /v1/events/{token}` lets a connected app, such as Recharge, start an iBubbl workflow. | New |
+| 2026-09-22 | The OpenAPI spec now includes the group-send fields. | Correction |
+| 2026-05-31 | [Group conversations](/concepts/group-conversations): send into an existing group with `chat_guid`, or start one with `participant_phones`. | New |
+| 2026-05-29 | Webhook signatures use `X-iBubbl-Signature: t=<unix>,v1=<hex>`, with a 5-minute replay window. | Changed |
+| 2026-05-17 | First public API docs: messages, contacts and webhooks. | New |

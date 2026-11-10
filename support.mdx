@@ -1,0 +1,28 @@
+---
+title: 'Support'
+description: 'How to reach iBubbl, and what to include so we can answer quickly.'
+---
+
+Email **[support@ibubbl.com](mailto:support@ibubbl.com)** with questions about the API, a request that isn't behaving as documented, a webhook that isn't arriving, or a mistake in these docs.
+
+## What to include
+
+The more of this you send, the faster we can find your request in our logs:
+
+- **When it happened**: the date and time, with the timezone (UTC is best).
+- **The endpoint**: method and path, for example `POST /v1/messages`.
+- **The IDs involved**: the message `id`, the `contact_id`, the webhook subscription `id`, or the event `id` (`evt_…`), whichever apply.
+- **The request body** you sent, and the **HTTP status and response body** you got back.
+- **The email address of your iBubbl account.**
+
+For a webhook problem, also include the endpoint URL the subscription points at, and what the dashboard's webhook log shows for the delivery.
+
+<Warning>
+**Never send us your API key or webhook signing secret**, in full or in a screenshot. Leave the `Authorization` header out of anything you paste. If you need to say which key you used, give its prefix (the first 14 characters, such as `ib_pk_a3f2c8d9`), which the dashboard shows next to each key. If a key or secret has been exposed, revoke it in the dashboard first and create a new one.
+</Warning>
+
+## Before you write
+
+- [Errors](/errors) lists every error code, what it means and whether to retry.
+- [Webhook events](/webhooks/events) describes every payload, including why events can arrive out of order or twice.
+- [Changelog](/changelog) lists recent changes to the API and these docs.

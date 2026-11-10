@@ -1,73 +1,61 @@
 ---
-title: 'Introduction'
-description: 'Build iMessage-first sales workflows with the iBubbl API.'
+title: 'Overview'
+description: 'Send iMessages from your own iBubbl line and get the replies on your server.'
 ---
 
-iBubbl is an iMessage-first sales platform. The API lets you:
+With the iBubbl API, your software sends real iMessages, the blue bubbles, from a dedicated line that iBubbl runs for you, and gets every reply pushed to your server, usually within a minute. There's no Mac, Apple ID or phone to manage on your side.
 
-- **Send messages** programmatically from your iBubbl line.
-- **Manage contacts** — create, look up, and respect opt-outs.
-- **Receive events** via webhooks — inbound replies, send results, reactions, and opt-outs delivered to your server in real time.
+- **Send messages** to one contact or to a group, from your iBubbl line. When the recipient can't be reached on iMessage, the message goes out as a text instead, and its `channel` tells you which.
+- **Receive replies and status changes** as [webhooks](/webhooks/overview): inbound messages, sent / delivered / read, reactions, edits and opt-outs.
+- **Keep contacts in sync**: create, update and tag them.
+- **Stay compliant by default**: opt-outs, each contact's sending hours and your line's send limits are enforced for you.
 
-The API is HTTPS-only, JSON-everywhere, and authenticated with a single Bearer API key. There's no SDK to install — your existing HTTP client is enough.
+The API is HTTPS and JSON, authenticated with one Bearer API key. There's no SDK to install: any HTTP client works.
 
-## Quickstart
+```bash
+curl -X POST https://api.ibubbl.com/v1/messages \
+  -H "Authorization: Bearer $IBUBBL_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "to": "+14155551234",
+    "body": "Hey Sam, quick check-in about your order.",
+    "idempotency_key": "a3f2c8d9-e0f1-4b4d-9c5a-7b8e2d1f0c4a"
+  }'
+```
 
-<Steps>
-  <Step title="Sign up">
-    Create an account at [ibubbl-dashboard.vercel.app](https://ibubbl-dashboard.vercel.app/signup). iBubbl sets up and runs your iMessage line for you; you don't connect your own Mac or Apple ID. You need an active line from iBubbl before you can send.
-  </Step>
-  <Step title="Generate an API key">
-    In the dashboard, open **Settings → API Access** and click **Create key**. Copy the key (format: `ib_pk_` + 64 hex characters, 70 in all). This is the only time the full secret is shown.
-  </Step>
-  <Step title="Send your first message">
-    Put **your own mobile number** in `to`, so your first message lands on your phone.
-
-    ```bash
-    curl -X POST https://api.ibubbl.com/v1/messages \
-      -H "Authorization: Bearer $IB_API_KEY" \
-      -H "Content-Type: application/json" \
-      -d '{
-        "to": "+14155551234",
-        "body": "Hey Sam — quick check-in about your order.",
-        "idempotency_key": "a3f2c8d9-e0f1-4b4d-9c5a-7b8e2d1f0c4a"
-      }'
-    ```
-
-    The response returns `202 Accepted` with the message's lifecycle state. See [POST /v1/messages](/api-reference/messages/send) for the full reference.
-  </Step>
-  <Step title="Subscribe to webhooks (optional)">
-    Register an HTTPS endpoint to receive events as they happen — inbound replies, delivery state changes, opt-outs. See [Webhooks Overview](/webhooks/overview).
-  </Step>
-</Steps>
+The API answers `202 Accepted` right away; the message then goes out from your line, and its progress arrives as webhook events. The [Quickstart](/quickstart) walks through it end to end, sending to your own phone.
 
 <Note>
-**Testing safely.** There is no sandbox or test mode: every request is live, and every send delivers a real iMessage from your line. Lines are set up and managed by iBubbl, so there is no test line either. Send your first messages to your own mobile phone, not to customers, and use a dedicated API key for testing that you can revoke when you're done.
+Every request is live: there is no sandbox or test mode, and a send delivers a real message. You need an active iBubbl line before you can send; iBubbl sets it up for you.
 </Note>
 
-## What to read next
-
-<CardGroup cols={2}>
-  <Card title="Authentication" icon="key" href="/authentication">
-    API key format, headers, rotation, and security practices.
-  </Card>
-  <Card title="Idempotency" icon="arrow-rotate-right" href="/idempotency">
-    Required on every send. How to retry safely.
-  </Card>
-  <Card title="Webhooks" icon="webhook" href="/webhooks/overview">
-    Push events to your server instead of polling.
-  </Card>
-  <Card title="API Reference" icon="code" href="/api-reference/messages/send">
-    Every endpoint, with request/response schemas and code samples.
-  </Card>
-</CardGroup>
-
 ## Base URL
-
-All API requests go to:
 
 ```
 https://api.ibubbl.com
 ```
 
-There is no staging endpoint or test mode at this time: every request is live, and a send delivers a real message. Your dashboard account is your only environment; use a dedicated API key for each integration so you can rotate independently.
+All endpoints are under `/v1`. See [Versioning](/versioning) for what can and can't change within it.
+
+## Where to go next
+
+<CardGroup cols={2}>
+  <Card title="Quickstart" icon="rocket" href="/quickstart">
+    Create a key, send to your own phone, check the status, receive a reply.
+  </Card>
+  <Card title="Authentication" icon="key" href="/authentication">
+    API key format, rotation and security practices.
+  </Card>
+  <Card title="Webhooks" icon="webhook" href="/webhooks/overview">
+    Get replies and status changes pushed to your server.
+  </Card>
+  <Card title="API reference" icon="code" href="/api-reference/messages/send">
+    Every endpoint, with request and response schemas.
+  </Card>
+  <Card title="Build with AI" icon="sparkles" href="/build-with-ai">
+    llms.txt, Markdown pages, the docs MCP server and a system prompt for coding agents.
+  </Card>
+  <Card title="Support" icon="life-ring" href="/support">
+    Email us, and what to include so we can answer quickly.
+  </Card>
+</CardGroup>

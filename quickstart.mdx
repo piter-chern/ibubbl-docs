@@ -1,0 +1,303 @@
+---
+title: 'Quickstart'
+description: 'Create a key, send an iMessage to your own phone, check its status and receive the reply.'
+---
+
+In about ten minutes you'll send a real iMessage from your iBubbl line to your own phone, check that it was delivered, and get your reply pushed to your server.
+
+**Before you start**
+
+- An iBubbl account with an **active line**. iBubbl sets up and runs the line for you; you don't connect a Mac or an Apple ID. [Sign up](https://ibubbl-dashboard.vercel.app/signup) if you haven't.
+- **Your own mobile number**, to send the first messages to.
+
+<Warning>
+**Every request is live.** There is no sandbox or test mode, and no test line: each send delivers a real message from your line. Send only to your own phone while you test.
+</Warning>
+
+<Steps>
+  <Step title="Create an API key">
+    In the [dashboard](https://ibubbl-dashboard.vercel.app), open **Settings → API Access** and click **Create key**. Copy the key (`ib_pk_` followed by 64 hex characters); this is the only time the full key is shown.
+
+    Keep it in an environment variable rather than in your code. The examples on this page read it from `IBUBBL_API_KEY`:
+
+    ```bash
+    export IBUBBL_API_KEY="ib_pk_..."
+    ```
+
+    See [Authentication](/authentication) for rotation and security practices.
+  </Step>
+
+  <Step title="Send a message to your own phone">
+    Put your own mobile number in `to`.
+
+    <CodeGroup>
+
+    ```bash cURL
+    # One key per message: generate it once, and reuse it if you retry.
+    IDEMPOTENCY_KEY=$(uuidgen)
+
+    curl -X POST https://api.ibubbl.com/v1/messages \
+      -H "Authorization: Bearer $IBUBBL_API_KEY" \
+      -H "Content-Type: application/json" \
+      -d "{
+        \"to\": \"+14155551234\",
+        \"body\": \"Hello from the iBubbl API\",
+        \"idempotency_key\": \"$IDEMPOTENCY_KEY\"
+      }"
+    ```
+
+    ```typescript TypeScript
+    import { randomUUID } from "node:crypto";
+
+    // One key per message: generate it once, and reuse it if you retry.
+    const idempotencyKey = randomUUID();
+
+    const res = await fetch("https://api.ibubbl.com/v1/messages", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${process.env.IBUBBL_API_KEY}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        to: "+14155551234",
+        body: "Hello from the iBubbl API",
+        idempotency_key: idempotencyKey,
+      }),
+      signal: AbortSignal.timeout(10_000),
+    });
+
+    const message = await res.json();
+    if (!res.ok) throw new Error(`${res.status} ${message.detail?.error}`);
+    console.log(message.id, message.status);
+    ```
+
+    ```python Python
+    import os
+    import uuid
+
+    import requests
+
+    # One key per message: generate it once, and reuse it if you retry.
+    idempotency_key = str(uuid.uuid4())
+
+    res = requests.post(
+        "https://api.ibubbl.com/v1/messages",
+        headers={"Authorization": f"Bearer {os.environ['IBUBBL_API_KEY']}"},
+        json={
+            "to": "+14155551234",
+            "body": "Hello from the iBubbl API",
+            "idempotency_key": idempotency_key,
+        },
+        timeout=10,
+    )
+    res.raise_for_status()
+    message = res.json()
+    print(message["id"], message["status"])
+    ```
+
+    </CodeGroup>
+
+    The response is `202 Accepted`:
+
+    ```json
+    {
+      "id": "8b3a4e72-1c2d-4e5f-9a0b-2c3d4e5f6a7b",
+      "status": "pending",
+      "to": "+14155551234",
+      "body": "Hello from the iBubbl API",
+      "contact_id": "c8a1f4e2-3b9d-4f7c-a8e5-1d2c3b4a5e6f",
+      "conversation_id": "3a4b5c6d-7e8f-9a0b-1c2d-3e4f5a6b7c8d",
+      "conversation_kind": "one_to_one",
+      "chat_guid": null,
+      "channel": null,
+      "sent_at": "2026-11-10T15:04:10.112Z",
+      "held_until": null,
+      "held_reason": null
+    }
+    ```
+
+    Save the `id`; you'll use it in the next step.
+
+    <Note>
+    **`202` means accepted, not delivered.** iBubbl has taken the message and will send it from your line; it hasn't reached the phone yet. Track it with the next step or with [webhooks](/webhooks/events).
+    </Note>
+
+    <Info>
+    **`idempotency_key` is required.** Use a new one for each message, and send the **same** key and the same payload again if a request times out or fails with a `5xx`: iBubbl returns the original message instead of sending twice. See [Idempotency](/idempotency).
+    </Info>
+
+    <Info>
+    **`to` must be in E.164 format**: `+`, the country code, then the number, with no spaces or punctuation (`+14155551234`). Anything else returns `422 validation_error`.
+    </Info>
+  </Step>
+
+  <Step title="Check the status">
+    Fetch the message by its `id`:
+
+    <CodeGroup>
+
+    ```bash cURL
+    curl https://api.ibubbl.com/v1/messages/8b3a4e72-1c2d-4e5f-9a0b-2c3d4e5f6a7b \
+      -H "Authorization: Bearer $IBUBBL_API_KEY"
+    ```
+
+    ```typescript TypeScript
+    const messageId = "8b3a4e72-1c2d-4e5f-9a0b-2c3d4e5f6a7b";
+
+    const res = await fetch(`https://api.ibubbl.com/v1/messages/${messageId}`, {
+      headers: { Authorization: `Bearer ${process.env.IBUBBL_API_KEY}` },
+      signal: AbortSignal.timeout(10_000),
+    });
+
+    const message = await res.json();
+    if (!res.ok) throw new Error(`${res.status} ${message.detail?.error}`);
+    console.log(message.status, message.channel);
+    ```
+
+    ```python Python
+    import os
+
+    import requests
+
+    message_id = "8b3a4e72-1c2d-4e5f-9a0b-2c3d4e5f6a7b"
+
+    res = requests.get(
+        f"https://api.ibubbl.com/v1/messages/{message_id}",
+        headers={"Authorization": f"Bearer {os.environ['IBUBBL_API_KEY']}"},
+        timeout=10,
+    )
+    res.raise_for_status()
+    message = res.json()
+    print(message["status"], message["channel"])
+    ```
+
+    </CodeGroup>
+
+    Once your phone has it, `status` is `delivered` (or `read`, if you have read receipts on), and `channel` says how it went out: `imessage`, or `sms` when your number couldn't be reached on iMessage.
+
+    ```json
+    {
+      "id": "8b3a4e72-1c2d-4e5f-9a0b-2c3d4e5f6a7b",
+      "status": "delivered",
+      "channel": "imessage",
+      "sent_at": "2026-11-10T15:04:12.381Z",
+      "held_until": null,
+      "held_reason": null,
+      "...": "..."
+    }
+    ```
+
+    <Note>
+    **Outside sending hours, the message waits.** iBubbl only sends during each contact's [sending hours](/concepts/working-hours) (by default Monday to Saturday 9 AM–8 PM, Sunday 12–8 PM, in the contact's timezone). If you're outside them, the message stays `pending` with `held_reason: "working_hours"`, and `held_until` says when it will go out. That's expected, not an error.
+    </Note>
+
+    In production, don't poll: subscribe to webhooks, as in the next step.
+  </Step>
+
+  <Step title="Receive a reply">
+    Register an HTTPS endpoint you control that logs the request body, subscribed to `message.inbound`. To test from your laptop, expose a local server with a tunnel such as `cloudflared tunnel --url http://localhost:8000` or `ngrok http 8000`, and use the HTTPS URL it prints.
+
+    <CodeGroup>
+
+    ```bash cURL
+    curl -X POST https://api.ibubbl.com/v1/webhooks \
+      -H "Authorization: Bearer $IBUBBL_API_KEY" \
+      -H "Content-Type: application/json" \
+      -d '{
+        "url": "https://your-endpoint.example.com/ibubbl-webhooks",
+        "event_types": ["message.inbound"]
+      }'
+    ```
+
+    ```typescript TypeScript
+    const res = await fetch("https://api.ibubbl.com/v1/webhooks", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${process.env.IBUBBL_API_KEY}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        url: "https://your-endpoint.example.com/ibubbl-webhooks",
+        event_types: ["message.inbound"],
+      }),
+      signal: AbortSignal.timeout(10_000),
+    });
+
+    const subscription = await res.json();
+    if (!res.ok) throw new Error(`${res.status} ${subscription.detail?.error}`);
+    console.log(subscription.id, subscription.secret); // store the secret now
+    ```
+
+    ```python Python
+    import os
+
+    import requests
+
+    res = requests.post(
+        "https://api.ibubbl.com/v1/webhooks",
+        headers={"Authorization": f"Bearer {os.environ['IBUBBL_API_KEY']}"},
+        json={
+            "url": "https://your-endpoint.example.com/ibubbl-webhooks",
+            "event_types": ["message.inbound"],
+        },
+        timeout=10,
+    )
+    res.raise_for_status()
+    subscription = res.json()
+    print(subscription["id"], subscription["secret"])  # store the secret now
+    ```
+
+    </CodeGroup>
+
+    The `201 Created` response includes the signing `secret` (`whsec_…`). It is shown only once: store it, because you'll need it to verify signatures.
+
+    Now reply to the message on your phone. Your endpoint receives a `POST` like this:
+
+    ```json
+    {
+      "id": "evt_8b3a4e72-1c2d-4e5f-9a0b-2c3d4e5f6a7b",
+      "type": "message.inbound",
+      "created_at": "2026-11-10T15:06:12.456Z",
+      "data": {
+        "message_id": "5b6c7d8e-9f0a-1b2c-3d4e-5f6a7b8c9d0e",
+        "from_number": "+14155551234",
+        "to_number": "+14155550100",
+        "body": "Got it!",
+        "received_at": "2026-11-10T15:06:12.456Z",
+        "attachments": [],
+        "reply_to_message_id": null,
+        "conversation_kind": "one_to_one",
+        "sender_phone": "+14155551234",
+        "participants": [
+          {"phone": "+14155551234", "first_name": null, "last_name": null}
+        ]
+      }
+    }
+    ```
+
+    Return any `2xx` within 10 seconds, or iBubbl retries the delivery.
+
+    <Warning>
+    **Before you go live:** verify the `X-iBubbl-Signature` header on every request ([Signature verification](/webhooks/signatures)), de-duplicate on the event `id`, and only ever send automatically in response to `message.inbound`. Sending in response to `message.sent` or another status event of your own messages makes a loop.
+    </Warning>
+
+    Subscriptions can't be edited. When you're done testing, revoke this one with [`DELETE /v1/webhooks/{subscription_id}`](/api-reference/webhooks/revoke) and create your production subscription.
+  </Step>
+</Steps>
+
+## Next steps
+
+<CardGroup cols={2}>
+  <Card title="Webhook events" icon="list" href="/webhooks/events">
+    Every event type and its payload.
+  </Card>
+  <Card title="Send a message" icon="paper-plane" href="/api-reference/messages/send">
+    All four ways to address a message, including groups.
+  </Card>
+  <Card title="Errors" icon="triangle-exclamation" href="/errors">
+    Every error code, and which ones to retry.
+  </Card>
+  <Card title="Build with AI" icon="sparkles" href="/build-with-ai">
+    Hand these docs and a ready-made system prompt to your coding agent.
+  </Card>
+</CardGroup>
