@@ -102,6 +102,18 @@ The `error` field is a **stable machine-readable code** — branch your integrat
   The `participant_phones` resolve to fewer than 2 different people: for example, the same number written two ways. A group needs at least 2 different participants; for one person, send one-to-one.
 </ResponseField>
 
+<ResponseField name="reply_target_not_found" type="422">
+  `POST /v1/messages` only: `reply_to_message_id` doesn't name a message in the conversation you're sending to. For a `to` or `contact_id` send it must be a message with that contact, one-to-one; for a `chat_guid` send, a message in that group. A message from another account is answered the same way. Check the ID and the addressing field. See [Reply and send with effects](/guides/send-messages#reply-to-a-message-and-send-with-effects).
+</ResponseField>
+
+<ResponseField name="reply_target_unsent" type="422">
+  `POST /v1/messages` only: the contact unsent the message `reply_to_message_id` points to, so it can't be quoted. Send without `reply_to_message_id`.
+</ResponseField>
+
+<ResponseField name="reply_target_partly_unsent" type="422">
+  `POST /v1/messages` only: the contact unsent part of the message `reply_to_message_id` points to, and your line can't quote what's left. Send without `reply_to_message_id`.
+</ResponseField>
+
 <ResponseField name="imessage_undeliverable" type="message.failed">
   Not an API error: it appears only as `failed_reason` on a failed message and its [`message.failed`](/webhooks/events) webhook. iMessage couldn't deliver the message to this number because the number isn't reachable on iMessage. Resending fails the same way, so reach the contact another way. Other iMessage failures appear as `imessage_error:<code>`.
 </ResponseField>
@@ -147,6 +159,8 @@ The `error` field is a **stable machine-readable code** — branch your integrat
 | `unresponsive_contact` | 422 | ❌ Not until the contact replies. |
 | `group_outbound_blocked_suppression` | 422 | ❌ Cannot bypass; leave out the opted-out participants. |
 | `insufficient_participants` | 422 | ❌ Fix the participant list, or send one-to-one. |
+| `reply_target_not_found` | 422 | ❌ Fix `reply_to_message_id`, or the addressing field. |
+| `reply_target_unsent` / `reply_target_partly_unsent` | 422 | ❌ Send without `reply_to_message_id`. |
 | `invalid_url` | 422 | ❌ Use an `https://` URL. |
 | `invalid_timezone` | 422 | ❌ Fix the timezone. |
 | `invalid_email` / `invalid_tag` / `duplicate_tag` | 422 | ❌ Fix the value. |

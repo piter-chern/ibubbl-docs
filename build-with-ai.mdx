@@ -80,6 +80,11 @@ SENDING (POST /v1/messages)
   or line_id are ignored without an error; each contact sticks to one line.
 - Read the message's channel before assuming iMessage-only behaviour:
   "imessage" or "sms" (RCS also reports as "sms"); null until it is sent.
+- Optional reply_to_message_id (an inline quote) and effect (one of 13
+  iMessage effects, e.g. "confetti") are iMessage only: on SMS the message
+  goes out as plain text without them. reply_to_message_id must be a message
+  in the same conversation (the same contact, or the same group), else 422
+  reply_target_not_found. Neither is allowed with participant_phones.
 
 LIMITS (per line; https://docs.ibubbl.com/concepts/limits)
 - 50 new contacts a day (resets at midnight America/New_York); the 51st gets

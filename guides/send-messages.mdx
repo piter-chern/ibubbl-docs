@@ -329,6 +329,140 @@ Every request also needs `body` and an `idempotency_key`. Generate the key **onc
   </Tab>
 </Tabs>
 
+## Reply to a message and send with effects
+
+Two optional fields make a send look like one typed in Messages:
+
+- `reply_to_message_id` sends the message as an **inline reply** that quotes an earlier message. Pass a message `id`, or the `message_id` from a [`message.inbound`](/webhooks/events) webhook to reply to something the contact sent.
+- `effect` adds an **iMessage effect**, such as confetti or a slam. The values are in the table below.
+
+Use either or both, with `to`, `contact_id` or `chat_guid`. This example replies to an inbound message with confetti:
+
+<CodeGroup>
+
+```bash cURL
+# One key per message: generate it once, and reuse it if you retry.
+IDEMPOTENCY_KEY=$(uuidgen)
+
+# The message_id from the message.inbound webhook you're replying to.
+REPLY_TO="5f6a7b8c-9d0e-4f1a-8b2c-3d4e5f6a7b8c"
+
+curl -X POST https://api.ibubbl.com/v1/messages \
+  -H "Authorization: Bearer $IBUBBL_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d "{
+    \"to\": \"+14155551234\",
+    \"body\": \"Congrats on the new place, Sam!\",
+    \"reply_to_message_id\": \"$REPLY_TO\",
+    \"effect\": \"confetti\",
+    \"idempotency_key\": \"$IDEMPOTENCY_KEY\"
+  }"
+```
+
+```typescript TypeScript
+import { randomUUID } from "node:crypto";
+
+// One key per message: generate it once, and reuse it if you retry.
+const idempotencyKey = randomUUID();
+
+// The message_id from the message.inbound webhook you're replying to.
+const replyTo = "5f6a7b8c-9d0e-4f1a-8b2c-3d4e5f6a7b8c";
+
+const res = await fetch("https://api.ibubbl.com/v1/messages", {
+  method: "POST",
+  headers: {
+    Authorization: `Bearer ${process.env.IBUBBL_API_KEY}`,
+    "Content-Type": "application/json",
+  },
+  body: JSON.stringify({
+    to: "+14155551234",
+    body: "Congrats on the new place, Sam!",
+    reply_to_message_id: replyTo,
+    effect: "confetti",
+    idempotency_key: idempotencyKey,
+  }),
+  signal: AbortSignal.timeout(10_000),
+});
+
+const data = await res.json();
+if (!res.ok) throw new Error(`${res.status} ${data.detail?.error}`);
+console.log(data.id, data.status, data.effect, data.reply_to_message_id);
+```
+
+```python Python
+import os
+import uuid
+
+import requests
+
+API_KEY = os.environ["IBUBBL_API_KEY"]
+
+# One key per message: generate it once, and reuse it if you retry.
+idempotency_key = str(uuid.uuid4())
+
+# The message_id from the message.inbound webhook you're replying to.
+reply_to = "5f6a7b8c-9d0e-4f1a-8b2c-3d4e5f6a7b8c"
+
+res = requests.post(
+    "https://api.ibubbl.com/v1/messages",
+    headers={"Authorization": f"Bearer {API_KEY}"},
+    json={
+        "to": "+14155551234",
+        "body": "Congrats on the new place, Sam!",
+        "reply_to_message_id": reply_to,
+        "effect": "confetti",
+        "idempotency_key": idempotency_key,
+    },
+    timeout=10,
+)
+data = res.json()
+if not res.ok:
+    raise RuntimeError(f"{res.status_code} {data['detail']['error']}")
+print(data["id"], data["status"], data["effect"], data["reply_to_message_id"])
+```
+
+</CodeGroup>
+
+The `202` response echoes both fields; they are `null` on a send without them.
+
+### Effects
+
+Send the value in the `effect` column. Values are lowercase and exact: anything else returns `422 validation_error`.
+
+| `effect` | In Messages | Kind |
+| -------- | ----------- | ---- |
+| `slam` | Slam | Bubble |
+| `loud` | Loud | Bubble |
+| `gentle` | Gentle | Bubble |
+| `invisible` | Invisible Ink | Bubble |
+| `echo` | Echo | Screen |
+| `spotlight` | Spotlight | Screen |
+| `balloons` | Balloons | Screen |
+| `confetti` | Confetti | Screen |
+| `love` | Love | Screen |
+| `lasers` | Lasers | Screen |
+| `fireworks` | Fireworks | Screen |
+| `shooting_star` | Shooting Star | Screen |
+| `celebration` | Celebration | Screen |
+
+A bubble effect animates the message bubble; a screen effect fills the recipient's screen.
+
+<Warning>
+**iMessage only.** If the message goes out as SMS (RCS included), it is sent as plain text: the quote and the effect are dropped, and the API doesn't refuse the send. After `message.sent`, read `channel` (`imessage` or `sms`) from [`GET /v1/messages/{id}`](/api-reference/messages/retrieve) to see which way it went. See [Lines and routing](/concepts/lines-and-routing).
+</Warning>
+
+<Note>
+**The reply must be in the same conversation.** For a `to` or `contact_id` send, `reply_to_message_id` must be a message in your one-to-one conversation with that contact; for a `chat_guid` send, a message in that group. Anything else, including an ID from another account, returns `422 reply_target_not_found`. A message the contact unsent returns `422 reply_target_unsent`, and one they unsent part of returns `422 reply_target_partly_unsent`.
+</Note>
+
+<Note>
+**Not when creating a group.** Neither field is allowed with `participant_phones` (`422 validation_error`): a new group has nothing to reply to. Send them on a later message to the group's `chat_guid`.
+</Note>
+
+<Note>
+**Both fields are part of the idempotency payload when you set them.** A retry with the same `idempotency_key` must send the same `effect` and `reply_to_message_id`, or it returns `409 idempotency_conflict`. See [Idempotency](/idempotency).
+</Note>
+
 ## Read the `202` response
 
 ```json
@@ -344,7 +478,9 @@ Every request also needs `body` and an `idempotency_key`. Generate the key **onc
   "channel": null,
   "sent_at": "2026-11-10T15:04:10.112Z",
   "held_until": null,
-  "held_reason": null
+  "held_reason": null,
+  "effect": null,
+  "reply_to_message_id": null
 }
 ```
 
@@ -374,7 +510,7 @@ A refused send creates no message, so its `idempotency_key` stays unused and you
 
 | `detail.error` | HTTP | What to do |
 | -------------- | ---- | ---------- |
-| `validation_error` | 422 | Fix the request: zero or two addressing fields, a number not in E.164, an empty `body`, `group_name` without `participant_phones`, fewer than 2 `participant_phones`. |
+| `validation_error` | 422 | Fix the request: zero or two addressing fields, a number not in E.164, an empty `body`, `group_name` without `participant_phones`, fewer than 2 `participant_phones`, an unknown `effect`, a `reply_to_message_id` that isn't a UUID, or either of those with `participant_phones`. |
 | `not_found` | 404 | The `contact_id` doesn't exist on this account. |
 | `group_not_found` | 404 | No group with that `chat_guid`. It may have changed when someone joined: read it again from `GET /v1/messages/{id}`. |
 | `idempotency_conflict` | 409 | You reused a key with a different payload. Send the original payload, or use a new key for a new message. |
@@ -386,6 +522,8 @@ A refused send creates no message, so its `idempotency_key` stays unused and you
 | `no_eligible_line` | 422 | No line can take a new contact right now (for example, its Mac is offline). |
 | `group_outbound_blocked_suppression` | 422 | Someone in the group has opted out; a new-group send also lists them in `blocked_phones`. |
 | `insufficient_participants` | 422 | The new group names fewer than 2 different people. |
+| `reply_target_not_found` | 422 | `reply_to_message_id` isn't a message in this conversation. Check the ID, and that you're sending to the same contact or group. |
+| `reply_target_unsent` / `reply_target_partly_unsent` | 422 | The contact unsent the message (or part of it). Send without `reply_to_message_id`. |
 | `internal_error` | 500 | Retry with the **same** `idempotency_key` and payload, with backoff. |
 
 `401`, `403` and `500 no_owner_rep` are account problems, not send problems; see [Errors](/errors).

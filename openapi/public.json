@@ -66,7 +66,7 @@
             }
           },
           "422": {
-            "description": "Request rejected; see `detail.error`. `validation_error` (bad request shape), `contact_opted_out`, `contact_blocked`, `no_eligible_line`, `unresponsive_contact`, `cold_cap_exhausted`, `followup_cap_exhausted`, `daily_cap_exhausted`, `group_outbound_blocked_suppression`, or `insufficient_participants`.",
+            "description": "Request rejected; see `detail.error`. `validation_error` (bad request shape), `contact_opted_out`, `contact_blocked`, `no_eligible_line`, `unresponsive_contact`, `cold_cap_exhausted`, `followup_cap_exhausted`, `daily_cap_exhausted`, `group_outbound_blocked_suppression`, `insufficient_participants`, `reply_target_not_found`, `reply_target_unsent`, or `reply_target_partly_unsent`.",
             "content": {
               "application/json": {
                 "schema": {
@@ -1235,6 +1235,45 @@
             ],
             "title": "Held Reason",
             "description": "Why a `pending` message is being held right now: `working_hours` (outside the contact's working hours) or `hourly_limit` (the line has started its limit of new contacts for this hour; the message goes out by itself when a slot frees, at about `held_until`). Null when it is not held."
+          },
+          "effect": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "slam",
+                  "loud",
+                  "gentle",
+                  "invisible",
+                  "echo",
+                  "spotlight",
+                  "balloons",
+                  "confetti",
+                  "love",
+                  "lasers",
+                  "fireworks",
+                  "celebration",
+                  "shooting_star"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Effect",
+            "description": "The iMessage send effect requested for this message, or null. It shows on the recipient's device only when `channel` is `imessage`."
+          },
+          "reply_to_message_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reply To Message Id",
+            "description": "The ID of the message this one quotes as an inline reply, or null. The quote shows on the recipient's device only when `channel` is `imessage`."
           }
         },
         "type": "object",
@@ -1604,12 +1643,57 @@
               "Hey Sam \u2014 quick check-in about your order."
             ]
           },
+          "reply_to_message_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reply To Message Id",
+            "description": "Send as an inline reply that quotes an earlier message (a UUID: the `id` of a message, or the `message_id` of a `message.inbound` event). The message must be in the conversation you are sending to: the same contact for a 1:1 send, the same group for a `chat_guid` send; otherwise `422 reply_target_not_found`. A message the contact unsent returns `422 reply_target_unsent`, and one they unsent part of `422 reply_target_partly_unsent`. iMessage only: when the message goes out as SMS (see `channel`) it is sent as plain text, without the quote. Not allowed with `participant_phones`.",
+            "examples": [
+              "8b3a4e72-1c2d-4e5f-9a0b-2c3d4e5f6a7b"
+            ]
+          },
+          "effect": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "slam",
+                  "loud",
+                  "gentle",
+                  "invisible",
+                  "echo",
+                  "spotlight",
+                  "balloons",
+                  "confetti",
+                  "love",
+                  "lasers",
+                  "fireworks",
+                  "celebration",
+                  "shooting_star"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Effect",
+            "description": "An iMessage send effect. Bubble effects: `slam`, `loud`, `gentle`, `invisible` (Invisible Ink). Screen effects: `echo`, `spotlight`, `balloons`, `confetti`, `love`, `lasers`, `fireworks`, `celebration`, `shooting_star`. iMessage only: when the message goes out as SMS (see `channel`) it is sent without the effect. Not allowed with `participant_phones`.",
+            "examples": [
+              "confetti"
+            ]
+          },
           "idempotency_key": {
             "type": "string",
             "maxLength": 128,
             "minLength": 1,
             "title": "Idempotency Key",
-            "description": "Client-supplied unique key per logical send. Keys never expire: reusing a key with the same payload replays the original message, however long ago it was sent, and the same key with a different payload returns `409 idempotency_conflict`. The one exception is a message that ended `failed` or `expired`: its key is released and the retry is sent as a new message. The payload compared is the routing field exactly as sent (`to`, `contact_id`, `chat_guid`, or the sorted `participant_phones` plus `group_name`) and `body`, so a retry that switches from `to` to the same contact's `contact_id` is a 409. Generate a new UUIDv4 for every distinct message.",
+            "description": "Client-supplied unique key per logical send. Keys never expire: reusing a key with the same payload replays the original message, however long ago it was sent, and the same key with a different payload returns `409 idempotency_conflict`. The one exception is a message that ended `failed` or `expired`: its key is released and the retry is sent as a new message. The payload compared is the routing field exactly as sent (`to`, `contact_id`, `chat_guid`, or the sorted `participant_phones` plus `group_name`), `body`, and `effect` and `reply_to_message_id` when set, so a retry that switches from `to` to the same contact's `contact_id` is a 409. Generate a new UUIDv4 for every distinct message.",
             "examples": [
               "a3f2c8d9-e0f1-4b4d-9c5a-7b8e2d1f0c4a"
             ]

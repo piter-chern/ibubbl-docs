@@ -20,9 +20,13 @@ openapi: 'POST /v1/messages'
 | `participant_phones` | array of strings (E.164) | Exactly one of these four | Create a new group and send the first message. At least 2 numbers; your iBubbl line is added automatically, so don't include it. |
 | `group_name` | string, at most 80 characters | No | Display name for the new group. Only allowed with `participant_phones`. |
 | `body` | string, at least 1 character | Yes | The message text. Plain text; emoji and Unicode are supported. For a line break, include a newline (`\n` in the JSON string); use `\n`, not `\r\n`. A retry with the same `idempotency_key` must send the identical body, line breaks included, or it returns `409 idempotency_conflict`. |
+| `reply_to_message_id` | string (UUID) | No | Send as an inline reply that quotes an earlier message: a message `id`, or the `message_id` of a [`message.inbound`](/webhooks/events) event. It must be in the conversation you're sending to (the same contact, or the same group); otherwise `422 reply_target_not_found`. iMessage only. Not allowed with `participant_phones`. See [Reply and send with effects](/guides/send-messages#reply-to-a-message-and-send-with-effects). |
+| `effect` | string | No | An iMessage effect: `slam`, `loud`, `gentle`, `invisible`, `echo`, `spotlight`, `balloons`, `confetti`, `love`, `lasers`, `fireworks`, `celebration` or `shooting_star`. iMessage only. Not allowed with `participant_phones`. |
 | `idempotency_key` | string, 1–128 characters | Yes | Your unique key for this send; a UUIDv4 is recommended. The same key with the same payload replays the original message; the same key with a different payload returns `409`. A key whose message ended `failed` or `expired` is released, and a retry sends a new message. See [Idempotency](/idempotency). |
 
 Fields not listed above are ignored without an error: the request still succeeds, and they are not stored.
+
+`reply_to_message_id` and `effect` only show on iMessage. If the message goes out as SMS (RCS included), it is sent as plain text without the quote or the effect, and the API doesn't refuse it. `channel` on [Retrieve a message](/api-reference/messages/retrieve) tells you which way it went. Both fields count toward the [idempotency](/idempotency) payload when set.
 
 <RequestExample>
 
@@ -36,6 +40,8 @@ curl -X POST https://api.ibubbl.com/v1/messages \
   -d "{
     \"to\": \"+14155551234\",
     \"body\": \"Hey Sam — quick check-in about your order.\",
+    \"reply_to_message_id\": \"5f6a7b8c-9d0e-4f1a-8b2c-3d4e5f6a7b8c\",
+    \"effect\": \"confetti\",
     \"idempotency_key\": \"$IDEMPOTENCY_KEY\"
   }"
 ```
@@ -55,6 +61,9 @@ const res = await fetch("https://api.ibubbl.com/v1/messages", {
   body: JSON.stringify({
     to: "+14155551234",
     body: "Hey Sam — quick check-in about your order.",
+    // Optional: quote an earlier message, and add an iMessage effect.
+    reply_to_message_id: "5f6a7b8c-9d0e-4f1a-8b2c-3d4e5f6a7b8c",
+    effect: "confetti",
     idempotency_key: idempotencyKey,
   }),
   signal: AbortSignal.timeout(10_000),
@@ -82,6 +91,9 @@ res = requests.post(
     json={
         "to": "+14155551234",
         "body": "Hey Sam — quick check-in about your order.",
+        # Optional: quote an earlier message, and add an iMessage effect.
+        "reply_to_message_id": "5f6a7b8c-9d0e-4f1a-8b2c-3d4e5f6a7b8c",
+        "effect": "confetti",
         "idempotency_key": idempotency_key,
     },
     timeout=10,
@@ -109,7 +121,9 @@ print(data["id"], data["status"])
   "channel": null,
   "sent_at": "2026-11-05T15:04:10.112Z",
   "held_until": null,
-  "held_reason": null
+  "held_reason": null,
+  "effect": "confetti",
+  "reply_to_message_id": "5f6a7b8c-9d0e-4f1a-8b2c-3d4e5f6a7b8c"
 }
 ```
 
@@ -139,10 +153,12 @@ print(data["id"], data["status"])
   "channel": null,
   "sent_at": "2026-11-05T15:04:10.112Z",
   "held_until": null,
-  "held_reason": null
+  "held_reason": null,
+  "effect": null,
+  "reply_to_message_id": null
 }
 ```
-`status` is `pending` or `queued`. A message held by a capacity limit or an offline line is still accepted with `queued` and retried automatically. A message waiting for the contact's [working hours](/concepts/working-hours) or the line's hourly limit for new contacts is `pending`, with `held_until` and `held_reason` set. For a group send, `to` is `null` and `conversation_kind` is `"group"`; a new group's `chat_guid` is `null` until the group is created a few seconds later.
+`status` is `pending` or `queued`. A message held by a capacity limit or an offline line is still accepted with `queued` and retried automatically. A message waiting for the contact's [working hours](/concepts/working-hours) or the line's hourly limit for new contacts is `pending`, with `held_until` and `held_reason` set. For a group send, `to` is `null` and `conversation_kind` is `"group"`; a new group's `chat_guid` is `null` until the group is created a few seconds later. `effect` and `reply_to_message_id` echo what you sent, or `null`.
 
 **401 Unauthorized**
 ```json
@@ -196,7 +212,7 @@ Other `error` value: `group_not_found` (no group with that `chat_guid` on your a
   }
 }
 ```
-Other `error` values: `contact_opted_out`, `contact_blocked`, `no_eligible_line`, `unresponsive_contact`, `cold_cap_exhausted`, `daily_cap_exhausted`, `followup_cap_exhausted`, `group_outbound_blocked_suppression` (with a `blocked_phones` list), `insufficient_participants`. See [Errors](/errors).
+Other `error` values: `contact_opted_out`, `contact_blocked`, `no_eligible_line`, `unresponsive_contact`, `cold_cap_exhausted`, `daily_cap_exhausted`, `followup_cap_exhausted`, `group_outbound_blocked_suppression` (with a `blocked_phones` list), `insufficient_participants`, `reply_target_not_found`, `reply_target_unsent`, `reply_target_partly_unsent`. See [Errors](/errors).
 
 **500 Internal Server Error**
 ```json
