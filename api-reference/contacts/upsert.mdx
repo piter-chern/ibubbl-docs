@@ -25,10 +25,11 @@ openapi: 'POST /v1/contacts'
 
 Fields not listed above are rejected with `422 validation_error`, and the message names the field. Every value is checked before anything is saved, so a rejected call changes nothing.
 
-#### Example Request
-```bash
+<RequestExample>
+
+```bash cURL
 curl -X POST https://api.ibubbl.com/v1/contacts \
-  -H "Authorization: Bearer $IB_API_KEY" \
+  -H "Authorization: Bearer $IBUBBL_API_KEY" \
   -H "Content-Type: application/json" \
   -d '{
     "phone": "+14155551234",
@@ -41,6 +42,96 @@ curl -X POST https://api.ibubbl.com/v1/contacts \
     "tags": ["VIP", "Spring promo"]
   }'
 ```
+
+```typescript TypeScript
+const res = await fetch("https://api.ibubbl.com/v1/contacts", {
+  method: "POST",
+  headers: {
+    Authorization: `Bearer ${process.env.IBUBBL_API_KEY}`,
+    "Content-Type": "application/json",
+  },
+  body: JSON.stringify({
+    phone: "+14155551234",
+    first_name: "Sam",
+    last_name: "Rivera",
+    email: "sam@example.com",
+    city: "Brooklyn",
+    state: "ny",
+    timezone: "America/New_York",
+    tags: ["VIP", "Spring promo"],
+  }),
+  signal: AbortSignal.timeout(10_000),
+});
+
+const data = await res.json();
+if (!res.ok) throw new Error(`${res.status} ${data.detail?.error}`);
+// 201: a new contact was created; 200: an existing one matched.
+console.log(res.status, data.id, data.tags);
+```
+
+```python Python
+import os
+
+import requests
+
+API_KEY = os.environ["IBUBBL_API_KEY"]
+
+res = requests.post(
+    "https://api.ibubbl.com/v1/contacts",
+    headers={"Authorization": f"Bearer {API_KEY}"},
+    json={
+        "phone": "+14155551234",
+        "first_name": "Sam",
+        "last_name": "Rivera",
+        "email": "sam@example.com",
+        "city": "Brooklyn",
+        "state": "ny",
+        "timezone": "America/New_York",
+        "tags": ["VIP", "Spring promo"],
+    },
+    timeout=10,
+)
+data = res.json()
+if not res.ok:
+    raise RuntimeError(f"{res.status_code} {data['detail']['error']}")
+# 201: a new contact was created; 200: an existing one matched.
+print(res.status_code, data["id"], data["tags"])
+```
+
+</RequestExample>
+
+<ResponseExample>
+
+```json 201 Created
+{
+  "id": "c8a1f4e2-3b9d-4f7c-a8e5-1d2c3b4a5e6f",
+  "phone": "+14155551234",
+  "first_name": "Sam",
+  "last_name": "Rivera",
+  "email": "sam@example.com",
+  "city": "Brooklyn",
+  "state": "NY",
+  "timezone": "America/New_York",
+  "tags": [
+    "Spring promo",
+    "VIP"
+  ],
+  "opted_out": false,
+  "opted_out_at": null,
+  "created_at": "2026-11-05T00:00:00+00:00"
+}
+```
+
+```json 422 Unprocessable Entity
+{
+  "detail": {
+    "error": "validation_error",
+    "message": "company: Extra inputs are not permitted"
+  }
+}
+```
+
+</ResponseExample>
 
 #### Responses
 **201 Created**

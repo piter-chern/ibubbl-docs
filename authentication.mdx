@@ -28,6 +28,56 @@ The token always starts with the literal prefix `ib_pk_` followed by 64 lowercas
 
 The dashboard displays the key's prefix (first 14 characters, e.g. `ib_pk_a3f2c8d9`) on the list view so you can identify which key is which without revealing the full secret.
 
+## Make an authenticated request
+
+Keep the key in the `IBUBBL_API_KEY` environment variable; every example in these docs reads it from there.
+
+```bash
+export IBUBBL_API_KEY="ib_pk_..."
+```
+
+Listing your webhook subscriptions is a safe first call: it only reads, and sends nothing. A `200` with a list (`[]` if you have none) means the key works.
+
+<CodeGroup>
+
+```bash cURL
+curl https://api.ibubbl.com/v1/webhooks \
+  -H "Authorization: Bearer $IBUBBL_API_KEY"
+```
+
+```typescript TypeScript
+const res = await fetch("https://api.ibubbl.com/v1/webhooks", {
+  headers: { Authorization: `Bearer ${process.env.IBUBBL_API_KEY}` },
+  signal: AbortSignal.timeout(10_000),
+});
+
+const data = await res.json();
+if (!res.ok) throw new Error(`${res.status} ${data.detail?.error}`);
+console.log(`key works: ${data.length} subscription(s)`);
+```
+
+```python Python
+import os
+
+import requests
+
+API_KEY = os.environ["IBUBBL_API_KEY"]
+
+res = requests.get(
+    "https://api.ibubbl.com/v1/webhooks",
+    headers={"Authorization": f"Bearer {API_KEY}"},
+    timeout=10,
+)
+data = res.json()
+if not res.ok:
+    raise RuntimeError(f"{res.status_code} {data['detail']['error']}")
+print(f"key works: {len(data)} subscription(s)")
+```
+
+</CodeGroup>
+
+To explore the API in Postman or Insomnia instead, import the OpenAPI file: see [OpenAPI, Postman and Insomnia](/openapi).
+
 ## Revocation and rotation
 
 To revoke a key, click **Revoke** next to it in the dashboard. Revocation is immediate — subsequent requests with that key return `401 unauthorized`.

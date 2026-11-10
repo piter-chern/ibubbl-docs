@@ -62,9 +62,9 @@ Every request also needs `body` and an `idempotency_key`. Generate the key **onc
       signal: AbortSignal.timeout(10_000),
     });
 
-    const message = await res.json();
-    if (!res.ok) throw new Error(`${res.status} ${message.detail?.error}`);
-    console.log(message.id, message.status);
+    const data = await res.json();
+    if (!res.ok) throw new Error(`${res.status} ${data.detail?.error}`);
+    console.log(data.id, data.status);
     ```
 
     ```python Python
@@ -73,12 +73,14 @@ Every request also needs `body` and an `idempotency_key`. Generate the key **onc
 
     import requests
 
+    API_KEY = os.environ["IBUBBL_API_KEY"]
+
     # One key per message: generate it once, and reuse it if you retry.
     idempotency_key = str(uuid.uuid4())
 
     res = requests.post(
         "https://api.ibubbl.com/v1/messages",
-        headers={"Authorization": f"Bearer {os.environ['IBUBBL_API_KEY']}"},
+        headers={"Authorization": f"Bearer {API_KEY}"},
         json={
             "to": "+14155551234",
             "body": "Hi Sam, your order shipped today.",
@@ -86,9 +88,10 @@ Every request also needs `body` and an `idempotency_key`. Generate the key **onc
         },
         timeout=10,
     )
-    res.raise_for_status()
-    message = res.json()
-    print(message["id"], message["status"])
+    data = res.json()
+    if not res.ok:
+        raise RuntimeError(f"{res.status_code} {data['detail']['error']}")
+    print(data["id"], data["status"])
     ```
 
     </CodeGroup>
@@ -133,9 +136,9 @@ Every request also needs `body` and an `idempotency_key`. Generate the key **onc
       signal: AbortSignal.timeout(10_000),
     });
 
-    const message = await res.json();
-    if (!res.ok) throw new Error(`${res.status} ${message.detail?.error}`);
-    console.log(message.id, message.status);
+    const data = await res.json();
+    if (!res.ok) throw new Error(`${res.status} ${data.detail?.error}`);
+    console.log(data.id, data.status);
     ```
 
     ```python Python
@@ -144,12 +147,14 @@ Every request also needs `body` and an `idempotency_key`. Generate the key **onc
 
     import requests
 
+    API_KEY = os.environ["IBUBBL_API_KEY"]
+
     # One key per message: generate it once, and reuse it if you retry.
     idempotency_key = str(uuid.uuid4())
 
     res = requests.post(
         "https://api.ibubbl.com/v1/messages",
-        headers={"Authorization": f"Bearer {os.environ['IBUBBL_API_KEY']}"},
+        headers={"Authorization": f"Bearer {API_KEY}"},
         json={
             "contact_id": "c8a1f4e2-3b9d-4f7c-a8e5-1d2c3b4a5e6f",
             "body": "Hi Sam, your order shipped today.",
@@ -157,9 +162,10 @@ Every request also needs `body` and an `idempotency_key`. Generate the key **onc
         },
         timeout=10,
     )
-    res.raise_for_status()
-    message = res.json()
-    print(message["id"], message["status"])
+    data = res.json()
+    if not res.ok:
+        raise RuntimeError(f"{res.status_code} {data['detail']['error']}")
+    print(data["id"], data["status"])
     ```
 
     </CodeGroup>
@@ -204,9 +210,9 @@ Every request also needs `body` and an `idempotency_key`. Generate the key **onc
       signal: AbortSignal.timeout(10_000),
     });
 
-    const message = await res.json();
-    if (!res.ok) throw new Error(`${res.status} ${message.detail?.error}`);
-    console.log(message.id, message.status);
+    const data = await res.json();
+    if (!res.ok) throw new Error(`${res.status} ${data.detail?.error}`);
+    console.log(data.id, data.status);
     ```
 
     ```python Python
@@ -215,12 +221,14 @@ Every request also needs `body` and an `idempotency_key`. Generate the key **onc
 
     import requests
 
+    API_KEY = os.environ["IBUBBL_API_KEY"]
+
     # One key per message: generate it once, and reuse it if you retry.
     idempotency_key = str(uuid.uuid4())
 
     res = requests.post(
         "https://api.ibubbl.com/v1/messages",
-        headers={"Authorization": f"Bearer {os.environ['IBUBBL_API_KEY']}"},
+        headers={"Authorization": f"Bearer {API_KEY}"},
         json={
             "chat_guid": "any;+;067ace6caf6c43aaa2f7d643975e15ea",
             "body": "Works for everyone? See you at 3.",
@@ -228,9 +236,10 @@ Every request also needs `body` and an `idempotency_key`. Generate the key **onc
         },
         timeout=10,
     )
-    res.raise_for_status()
-    message = res.json()
-    print(message["id"], message["status"])
+    data = res.json()
+    if not res.ok:
+        raise RuntimeError(f"{res.status_code} {data['detail']['error']}")
+    print(data["id"], data["status"])
     ```
 
     </CodeGroup>
@@ -277,9 +286,9 @@ Every request also needs `body` and an `idempotency_key`. Generate the key **onc
       signal: AbortSignal.timeout(10_000),
     });
 
-    const message = await res.json();
-    if (!res.ok) throw new Error(`${res.status} ${message.detail?.error}`);
-    console.log(message.id, message.status, message.chat_guid); // chat_guid is null at first
+    const data = await res.json();
+    if (!res.ok) throw new Error(`${res.status} ${data.detail?.error}`);
+    console.log(data.id, data.status, data.chat_guid); // chat_guid is null at first
     ```
 
     ```python Python
@@ -288,12 +297,14 @@ Every request also needs `body` and an `idempotency_key`. Generate the key **onc
 
     import requests
 
+    API_KEY = os.environ["IBUBBL_API_KEY"]
+
     # One key per message: generate it once, and reuse it if you retry.
     idempotency_key = str(uuid.uuid4())
 
     res = requests.post(
         "https://api.ibubbl.com/v1/messages",
-        headers={"Authorization": f"Bearer {os.environ['IBUBBL_API_KEY']}"},
+        headers={"Authorization": f"Bearer {API_KEY}"},
         json={
             "participant_phones": ["+14155551234", "+14155557654"],
             "group_name": "Kitchen remodel",
@@ -302,9 +313,10 @@ Every request also needs `body` and an `idempotency_key`. Generate the key **onc
         },
         timeout=10,
     )
-    res.raise_for_status()
-    message = res.json()
-    print(message["id"], message["status"], message["chat_guid"])  # chat_guid is None at first
+    data = res.json()
+    if not res.ok:
+        raise RuntimeError(f"{res.status_code} {data['detail']['error']}")
+    print(data["id"], data["status"], data["chat_guid"])  # chat_guid is None at first
     ```
 
     </CodeGroup>

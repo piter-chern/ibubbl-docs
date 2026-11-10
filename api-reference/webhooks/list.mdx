@@ -14,11 +14,75 @@ openapi: 'GET /v1/webhooks'
 #### Request Body
 None.
 
-#### Example Request
-```bash
+<RequestExample>
+
+```bash cURL
 curl https://api.ibubbl.com/v1/webhooks \
-  -H "Authorization: Bearer $IB_API_KEY"
+  -H "Authorization: Bearer $IBUBBL_API_KEY"
 ```
+
+```typescript TypeScript
+const res = await fetch("https://api.ibubbl.com/v1/webhooks", {
+  headers: { Authorization: `Bearer ${process.env.IBUBBL_API_KEY}` },
+  signal: AbortSignal.timeout(10_000),
+});
+
+const data = await res.json();
+if (!res.ok) throw new Error(`${res.status} ${data.detail?.error}`);
+for (const sub of data) console.log(sub.id, sub.url, sub.event_types);
+```
+
+```python Python
+import os
+
+import requests
+
+API_KEY = os.environ["IBUBBL_API_KEY"]
+
+res = requests.get(
+    "https://api.ibubbl.com/v1/webhooks",
+    headers={"Authorization": f"Bearer {API_KEY}"},
+    timeout=10,
+)
+data = res.json()
+if not res.ok:
+    raise RuntimeError(f"{res.status_code} {data['detail']['error']}")
+for sub in data:
+    print(sub["id"], sub["url"], sub["event_types"])
+```
+
+</RequestExample>
+
+<ResponseExample>
+
+```json 200 OK
+[
+  {
+    "id": "4a5b6c7d-8e9f-0a1b-2c3d-4e5f6a7b8c9d",
+    "url": "https://api.example.com/ibubbl-webhooks",
+    "secret_prefix": "whsec_a3f2c8d9",
+    "event_types": [
+      "message.sent",
+      "message.failed",
+      "message.inbound"
+    ],
+    "created_at": "2026-11-05T14:23:45.123Z",
+    "last_delivered_at": "2026-11-05T15:01:12.456Z",
+    "revoked_at": null
+  }
+]
+```
+
+```json 401 Unauthorized
+{
+  "detail": {
+    "error": "unauthorized",
+    "message": "Invalid or revoked API key"
+  }
+}
+```
+
+</ResponseExample>
 
 #### Responses
 **200 OK**

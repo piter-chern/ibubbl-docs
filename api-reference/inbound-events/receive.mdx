@@ -16,13 +16,105 @@ openapi: 'POST /v1/events/{token}'
 |-------|------|----------|-------------|
 | (the app's event) | object | Yes | The connected app's own payload, sent unchanged as JSON (or form-encoded), at most 256 KB. iBubbl doesn't require any fields; your workflow maps the ones it needs. The signature is checked against these exact bytes, so don't re-serialize the body. |
 
-#### Example Request
-```bash
-curl -X POST https://api.ibubbl.com/v1/events/ibev_<64 hex> \
+<RequestExample>
+
+```bash cURL
+# No API key: the token in the URL identifies the source.
+# Sign the exact bytes you send, with the source's signing secret.
+BODY='{"topic": "order/created", "customer": {"phone": "+14155551234", "first_name": "Sam"}}'
+T=$(date +%s)
+SIG=$(printf '%s' "$T.$BODY" | openssl dgst -sha256 -hmac "$IBUBBL_EVENT_SECRET" | awk '{print $NF}')
+
+curl -X POST "https://api.ibubbl.com/v1/events/$IBUBBL_EVENT_SOURCE_TOKEN" \
   -H "Content-Type: application/json" \
-  -H "X-iBubbl-Signature: t=1762354800,v1=<hex HMAC-SHA256 of '1762354800.' + body>" \
-  -d '{"topic": "order/created", "customer": {"phone": "+14155551234", "first_name": "Sam"}}'
+  -H "X-iBubbl-Signature: t=$T,v1=$SIG" \
+  --data-raw "$BODY"
 ```
+
+```typescript TypeScript
+import { createHmac } from "node:crypto";
+
+// No API key: the token in the URL identifies the source.
+const token = process.env.IBUBBL_EVENT_SOURCE_TOKEN;
+const secret = process.env.IBUBBL_EVENT_SECRET ?? "";
+
+// Serialize once, then sign and send that same string.
+const body = JSON.stringify({
+  topic: "order/created",
+  customer: { phone: "+14155551234", first_name: "Sam" },
+});
+const t = Math.floor(Date.now() / 1000);
+const v1 = createHmac("sha256", secret).update(`${t}.${body}`).digest("hex");
+
+const res = await fetch(`https://api.ibubbl.com/v1/events/${token}`, {
+  method: "POST",
+  headers: {
+    "Content-Type": "application/json",
+    "X-iBubbl-Signature": `t=${t},v1=${v1}`,
+  },
+  body,
+  signal: AbortSignal.timeout(10_000),
+});
+
+const data = await res.json();
+if (!res.ok) throw new Error(`${res.status} ${data.detail?.error}`);
+console.log(data.runs_started);
+```
+
+```python Python
+import hashlib
+import hmac
+import json
+import os
+import time
+
+import requests
+
+# No API key: the token in the URL identifies the source.
+TOKEN = os.environ["IBUBBL_EVENT_SOURCE_TOKEN"]
+SECRET = os.environ["IBUBBL_EVENT_SECRET"]
+
+# Serialize once, then sign and send those same bytes.
+body = json.dumps({
+    "topic": "order/created",
+    "customer": {"phone": "+14155551234", "first_name": "Sam"},
+}).encode()
+t = str(int(time.time()))
+v1 = hmac.new(SECRET.encode(), f"{t}.".encode() + body, hashlib.sha256).hexdigest()
+
+res = requests.post(
+    f"https://api.ibubbl.com/v1/events/{TOKEN}",
+    headers={"Content-Type": "application/json", "X-iBubbl-Signature": f"t={t},v1={v1}"},
+    data=body,
+    timeout=10,
+)
+data = res.json()
+if not res.ok:
+    raise RuntimeError(f"{res.status_code} {data['detail']['error']}")
+print(data["runs_started"])
+```
+
+</RequestExample>
+
+<ResponseExample>
+
+```json 200 OK
+{
+  "received": true,
+  "runs_started": 1
+}
+```
+
+```json 403 Forbidden
+{
+  "detail": {
+    "error": "invalid_signature",
+    "message": "Signature verification failed."
+  }
+}
+```
+
+</ResponseExample>
 
 #### Responses
 **200 OK**

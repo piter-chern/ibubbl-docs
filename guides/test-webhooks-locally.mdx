@@ -57,9 +57,9 @@ const res = await fetch("https://api.ibubbl.com/v1/webhooks", {
   signal: AbortSignal.timeout(10_000),
 });
 
-const subscription = await res.json();
-if (!res.ok) throw new Error(`${res.status} ${subscription.detail?.error}`);
-console.log(subscription.id, subscription.secret); // the secret is shown only now
+const data = await res.json();
+if (!res.ok) throw new Error(`${res.status} ${data.detail?.error}`);
+console.log(data.id, data.secret); // the secret is shown only now
 ```
 
 ```python Python
@@ -67,15 +67,18 @@ import os
 
 import requests
 
+API_KEY = os.environ["IBUBBL_API_KEY"]
+
 res = requests.post(
     "https://api.ibubbl.com/v1/webhooks",
-    headers={"Authorization": f"Bearer {os.environ['IBUBBL_API_KEY']}"},
+    headers={"Authorization": f"Bearer {API_KEY}"},
     json={"url": "https://your-tunnel.trycloudflare.com/ibubbl-webhooks"},
     timeout=10,
 )
-res.raise_for_status()
-subscription = res.json()
-print(subscription["id"], subscription["secret"])  # the secret is shown only now
+data = res.json()
+if not res.ok:
+    raise RuntimeError(f"{res.status_code} {data['detail']['error']}")
+print(data["id"], data["secret"])  # the secret is shown only now
 ```
 
 </CodeGroup>
@@ -144,7 +147,10 @@ const res = await fetch(`https://api.ibubbl.com/v1/webhooks/${subscriptionId}`, 
   headers: { Authorization: `Bearer ${process.env.IBUBBL_API_KEY}` },
   signal: AbortSignal.timeout(10_000),
 });
-if (!res.ok) throw new Error(`${res.status}`);
+
+const data = await res.json();
+if (!res.ok) throw new Error(`${res.status} ${data.detail?.error}`);
+console.log(data.status); // "revoked" or "already_revoked"
 ```
 
 ```python Python
@@ -152,14 +158,19 @@ import os
 
 import requests
 
+API_KEY = os.environ["IBUBBL_API_KEY"]
+
 subscription_id = "4a5b6c7d-8e9f-0a1b-2c3d-4e5f6a7b8c9d"
 
 res = requests.delete(
     f"https://api.ibubbl.com/v1/webhooks/{subscription_id}",
-    headers={"Authorization": f"Bearer {os.environ['IBUBBL_API_KEY']}"},
+    headers={"Authorization": f"Bearer {API_KEY}"},
     timeout=10,
 )
-res.raise_for_status()
+data = res.json()
+if not res.ok:
+    raise RuntimeError(f"{res.status_code} {data['detail']['error']}")
+print(data["status"])  # "revoked" or "already_revoked"
 ```
 
 </CodeGroup>

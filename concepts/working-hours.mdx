@@ -43,15 +43,60 @@ The local time check uses the **contact's timezone**, not your account's. iBubbl
 
 To set a contact's timezone yourself, pass it on contact upsert **before you send to them**:
 
-```bash
+<CodeGroup>
+
+```bash cURL
 curl -X POST https://api.ibubbl.com/v1/contacts \
-  -H "Authorization: Bearer $IB_API_KEY" \
+  -H "Authorization: Bearer $IBUBBL_API_KEY" \
   -H "Content-Type: application/json" \
   -d '{
     "phone": "+14155551234",
     "timezone": "America/New_York"
   }'
 ```
+
+```typescript TypeScript
+const res = await fetch("https://api.ibubbl.com/v1/contacts", {
+  method: "POST",
+  headers: {
+    Authorization: `Bearer ${process.env.IBUBBL_API_KEY}`,
+    "Content-Type": "application/json",
+  },
+  body: JSON.stringify({
+    phone: "+14155551234",
+    timezone: "America/New_York",
+  }),
+  signal: AbortSignal.timeout(10_000),
+});
+
+const data = await res.json();
+if (!res.ok) throw new Error(`${res.status} ${data.detail?.error}`);
+console.log(data.id, data.timezone);
+```
+
+```python Python
+import os
+
+import requests
+
+API_KEY = os.environ["IBUBBL_API_KEY"]
+
+res = requests.post(
+    "https://api.ibubbl.com/v1/contacts",
+    headers={"Authorization": f"Bearer {API_KEY}"},
+    json={
+        "phone": "+14155551234",
+        "timezone": "America/New_York",
+    },
+    timeout=10,
+)
+data = res.json()
+if not res.ok:
+    raise RuntimeError(f"{res.status_code} {data['detail']['error']}")
+print(data["id"], data["timezone"])
+```
+
+</CodeGroup>
 
 Once a contact has a timezone, an upsert never changes it. That includes the inferred one: the area-code guess is saved on the contact when their first message is processed, so a `timezone` sent on a later upsert is ignored. Upsert first, then send.
 

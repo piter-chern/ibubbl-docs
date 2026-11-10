@@ -92,11 +92,55 @@ rate limited.
 
 For example:
 
-```bash
-curl -X POST https://api.ibubbl.com/v1/events/ibev_... \
+<CodeGroup>
+
+```bash cURL
+# No API key: the source's token in the URL is the credential.
+curl -X POST "https://api.ibubbl.com/v1/events/$IBUBBL_EVENT_SOURCE_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{"type": "lead.created", "lead": {"id": "evt_1", "phone": "3103843698", "first_name": "Ana"}}'
 ```
+
+```typescript TypeScript
+// No API key: the source's token in the URL is the credential.
+const res = await fetch(`https://api.ibubbl.com/v1/events/${process.env.IBUBBL_EVENT_SOURCE_TOKEN}`, {
+  method: "POST",
+  headers: { "Content-Type": "application/json" },
+  body: JSON.stringify({
+    type: "lead.created",
+    lead: { id: "evt_1", phone: "3103843698", first_name: "Ana" },
+  }),
+  signal: AbortSignal.timeout(10_000),
+});
+
+const data = await res.json();
+if (!res.ok) throw new Error(`${res.status} ${data.detail?.error}`);
+console.log(data.runs_started);
+```
+
+```python Python
+import os
+
+import requests
+
+# No API key: the source's token in the URL is the credential.
+TOKEN = os.environ["IBUBBL_EVENT_SOURCE_TOKEN"]
+
+res = requests.post(
+    f"https://api.ibubbl.com/v1/events/{TOKEN}",
+    json={
+        "type": "lead.created",
+        "lead": {"id": "evt_1", "phone": "3103843698", "first_name": "Ana"},
+    },
+    timeout=10,
+)
+data = res.json()
+if not res.ok:
+    raise RuntimeError(f"{res.status_code} {data['detail']['error']}")
+print(data["runs_started"])
+```
+
+</CodeGroup>
 
 **Event name.** iBubbl reads it from an `X-Event-Topic` or `X-iBubbl-Topic`
 header, or a top-level `topic`, `type`, `event` or `event_type` field. If the

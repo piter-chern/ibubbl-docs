@@ -1,0 +1,40 @@
+---
+title: 'OpenAPI, Postman and Insomnia'
+description: 'Import the iBubbl OpenAPI spec into Postman or Insomnia and authenticate with your API key.'
+---
+
+The whole `/v1` API is described in one OpenAPI file:
+
+```text
+https://docs.ibubbl.com/openapi/public.json
+```
+
+It is OpenAPI 3.1. It sets the server to `https://api.ibubbl.com` and declares a `BearerAuth` scheme (`Authorization: Bearer ib_pk_…`) on every endpoint except [`POST /v1/events/{token}`](/api-reference/inbound-events/receive), which is authenticated by the token in its URL. It is the same file the API reference pages are built from, so it always matches them. You can also hand it to a code generator, or to a coding agent (see [Build with AI](/build-with-ai)).
+
+<Warning>
+**Every request is live.** There is no sandbox or test mode: sending a request from Postman or Insomnia delivers a real message from your line. Send only to your own phone while you explore.
+</Warning>
+
+## Postman
+
+1. In Postman, select **Import**, and paste the link above.
+2. When Postman asks how to import the OpenAPI file, choose **Postman Collection**, then select **Import**. You get a collection of folders and requests, one request per endpoint.
+3. Create an environment for iBubbl (**Environments**, then the add icon) and add a variable named `IBUBBL_API_KEY` whose value is your key. Mark it secure (secret), so the value is masked. Select the environment in the environment selector at the top right.
+4. Open the collection's **Authorization** tab, choose **Bearer Token** as the **Auth Type**, and enter `{{IBUBBL_API_KEY}}` in **Token**. Requests that inherit auth from the collection now send `Authorization: Bearer <your key>`. If a request has its own auth set, switch it to inherit from the collection.
+5. Send **Retrieve a message** or **List webhook subscriptions** first: they only read. Before sending **Send a message**, replace the example body: put your own number in `to`, and a new `idempotency_key` for every message (a UUID; Postman's `{{$guid}}` generates one).
+
+The **Receive an event** request needs no key: replace `{token}` with an event source's token (`ibev_…`).
+
+## Insomnia
+
+1. In your workspace, select **Import**, choose **URL** as the source, and enter the link above.
+2. Select **Scan**, review the resources, and select **Import**. Insomnia creates an API collection with the spec in its **Spec** tab. To get requests you can send, select **Generate** on the Spec tab and choose requests.
+3. Open **Environments** and add your key as a variable in JSON, for example `{ "IBUBBL_API_KEY": "ib_pk_..." }`.
+4. Insomnia has no collection-level auth, so set it on a folder (or on each request): on the **Auth** tab choose **Bearer Token**, and in the token field press `Control+Space` and pick `IBUBBL_API_KEY` from the list.
+5. As in Postman, start with a read-only request, and give every send your own number and a new `idempotency_key`.
+
+## Keep your key safe
+
+- Keep the key in an environment variable, not in a request. If you share a collection or workspace, or sync it to the cloud, check that the key's value isn't included.
+- If a key leaks, revoke it in the dashboard under **Settings → API Access** and create a new one. See [Authentication](/authentication).
+- The spec updates when the API does. Postman and Insomnia copy it on import, so re-import after a change listed in the [changelog](/changelog).

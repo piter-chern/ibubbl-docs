@@ -111,6 +111,7 @@
         "group": "Resources",
         "pages": [
           "errors",
+          "openapi",
           "versioning",
           "changelog",
           "support"
@@ -122,6 +123,9 @@
     "openapi": "openapi/public.json",
     "playground": {
       "display": "simple"
+    },
+    "examples": {
+      "languages": ["curl", "typescript", "python"]
     }
   },
   "redirects": [

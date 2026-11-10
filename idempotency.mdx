@@ -26,83 +26,95 @@ Use a new UUIDv4 for every logical send. Generate it **once per message**, befor
 
 <CodeGroup>
 
-```python Python
-import time
-import uuid
-
-import requests
-
-API_URL = "https://api.ibubbl.com/v1/messages"
-
-
-def send_with_retry(to: str, body: str, max_attempts: int = 3) -> dict:
-    # One key per message: generated here, outside the retry loop.
-    idempotency_key = str(uuid.uuid4())
-    for attempt in range(max_attempts):
-        try:
-            response = requests.post(
-                API_URL,
-                headers={"Authorization": f"Bearer {API_KEY}"},
-                json={
-                    "to": to,
-                    "body": body,
-                    "idempotency_key": idempotency_key,  # SAME key on every retry
-                },
-                timeout=10,
-            )
-            if response.status_code < 500:
-                return response.json()
-        except requests.RequestException:
-            if attempt == max_attempts - 1:
-                raise
-        time.sleep(2 ** attempt)  # back off before retrying a 5xx or network error
-    raise RuntimeError("all retries failed")
-```
-
-```javascript Node
-import crypto from 'node:crypto';
-
-const API_URL = 'https://api.ibubbl.com/v1/messages';
-
-async function sendWithRetry(to, body, maxAttempts = 3) {
-  // One key per message: generated here, outside the retry loop.
-  const idempotencyKey = crypto.randomUUID();
-  for (let attempt = 0; attempt < maxAttempts; attempt++) {
-    try {
-      const res = await fetch(API_URL, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${API_KEY}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          to,
-          body,
-          idempotency_key: idempotencyKey, // SAME key on every retry
-        }),
-      });
-      if (res.status < 500) return await res.json();
-    } catch (err) {
-      if (attempt === maxAttempts - 1) throw err;
-    }
-    await new Promise((r) => setTimeout(r, 1000 * 2 ** attempt)); // back off
-  }
-  throw new Error('all retries failed');
-}
-```
-
-```bash curl
-# Generate once per message, reuse on retry:
+```bash cURL
+# One key per message: generate it once, and reuse it if you retry.
 IDEMPOTENCY_KEY=$(uuidgen)
 
+# Run this same command again to retry: the key and the payload stay identical.
 curl -X POST https://api.ibubbl.com/v1/messages \
-  -H "Authorization: Bearer $IB_API_KEY" \
+  -H "Authorization: Bearer $IBUBBL_API_KEY" \
   -H "Content-Type: application/json" \
   -d "{
     \"to\": \"+14155551234\",
     \"body\": \"Hey Sam — quick check-in.\",
     \"idempotency_key\": \"$IDEMPOTENCY_KEY\"
   }"
+```
+
+```typescript TypeScript
+import { randomUUID } from "node:crypto";
+
+async function sendWithRetry(to: string, body: string, maxAttempts = 3) {
+  // One key per message: generate it once, and reuse it if you retry.
+  const idempotencyKey = randomUUID();
+  for (let attempt = 0; attempt < maxAttempts; attempt++) {
+    let res: Response;
+    try {
+      res = await fetch("https://api.ibubbl.com/v1/messages", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${process.env.IBUBBL_API_KEY}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          to,
+          body,
+          idempotency_key: idempotencyKey, // the SAME key on every retry
+        }),
+        signal: AbortSignal.timeout(10_000),
+      });
+    } catch (err) {
+      if (attempt === maxAttempts - 1) throw err; // a timeout or network error: retry
+      await new Promise((r) => setTimeout(r, 1000 * 2 ** attempt));
+      continue;
+    }
+    if (res.status < 500) {
+      const data = await res.json();
+      if (!res.ok) throw new Error(`${res.status} ${data.detail?.error}`); // 4xx: final, never retry
+      return data;
+    }
+    await new Promise((r) => setTimeout(r, 1000 * 2 ** attempt)); // 5xx: back off, retry
+  }
+  throw new Error("all retries failed");
+}
+```
+
+```python Python
+import os
+import time
+import uuid
+
+import requests
+
+API_KEY = os.environ["IBUBBL_API_KEY"]
+
+
+def send_with_retry(to: str, body: str, max_attempts: int = 3) -> dict:
+    # One key per message: generate it once, and reuse it if you retry.
+    idempotency_key = str(uuid.uuid4())
+    for attempt in range(max_attempts):
+        try:
+            res = requests.post(
+                "https://api.ibubbl.com/v1/messages",
+                headers={"Authorization": f"Bearer {API_KEY}"},
+                json={
+                    "to": to,
+                    "body": body,
+                    "idempotency_key": idempotency_key,  # the SAME key on every retry
+                },
+                timeout=10,
+            )
+        except requests.RequestException:  # a timeout or network error: retry
+            if attempt == max_attempts - 1:
+                raise
+        else:
+            if res.status_code < 500:
+                data = res.json()
+                if not res.ok:  # 4xx: final, never retry
+                    raise RuntimeError(f"{res.status_code} {data['detail']['error']}")
+                return data
+        time.sleep(2 ** attempt)  # back off before retrying
+    raise RuntimeError("all retries failed")
 ```
 
 </CodeGroup>

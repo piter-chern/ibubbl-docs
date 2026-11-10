@@ -91,7 +91,9 @@ It also resolves where to reply with `GET /v1/messages/{id}`, so an Apple ID ema
 
 ```typescript TypeScript (Express)
 import express from "express";
+import { Pool } from "pg";
 import { verifySignature } from "./verify-signature"; // the verifier from the Signature verification guide
+import { isFirstDelivery } from "./webhook-dedup"; // from the Retries and deduplication guide
 
 const API = "https://api.ibubbl.com";
 const HEADERS = {
@@ -101,15 +103,14 @@ const HEADERS = {
 const AUTO_REPLY = "Thanks for your message! We'll get back to you shortly.";
 const COOLDOWN_MS = 60 * 60 * 1000; // one auto-reply per conversation per hour
 
-// In-memory for the example. In production, use your database: a table with a
-// unique constraint on the event id, shared by every instance of your app.
-const seenEventIds = new Set<string>();
+const db = new Pool({ connectionString: process.env.DATABASE_URL });
+// Per instance, for the example. With several instances, keep it in the database too.
 const lastAutoReplyAt = new Map<string, number>(); // conversation_id -> ms
 
 const app = express();
 
 // express.raw keeps the exact bytes iBubbl signed; express.json would not.
-app.post("/ibubbl-webhooks", express.raw({ type: "application/json" }), (req, res) => {
+app.post("/ibubbl-webhooks", express.raw({ type: "application/json" }), async (req, res) => {
   // Node lower-cases header names: req.headers["X-iBubbl-Signature"] is undefined.
   const signature = req.headers["x-ibubbl-signature"];
   if (!verifySignature(req.body, signature, process.env.IBUBBL_WEBHOOK_SECRET!)) {
@@ -118,9 +119,9 @@ app.post("/ibubbl-webhooks", express.raw({ type: "application/json" }), (req, re
 
   const event = JSON.parse(req.body.toString("utf-8"));
 
-  // At-least-once delivery: handle each event id once.
-  if (seenEventIds.has(event.id)) return res.sendStatus(200);
-  seenEventIds.add(event.id);
+  // At-least-once delivery: a unique constraint in your database lets each
+  // event id through once, across every instance of your app.
+  if (!(await isFirstDelivery(db, event))) return res.sendStatus(200);
 
   // Acknowledge now; do the work after the response.
   res.sendStatus(200);
@@ -138,8 +139,8 @@ async function autoReply(inboundMessageId: string): Promise<void> {
     headers: HEADERS,
     signal: AbortSignal.timeout(10_000),
   });
-  if (!lookup.ok) throw new Error(`lookup ${lookup.status}`);
   const inbound = await lookup.json();
+  if (!lookup.ok) throw new Error(`lookup ${lookup.status} ${inbound.detail?.error}`);
 
   // Cooldown per conversation, claimed before sending.
   const last = lastAutoReplyAt.get(inbound.conversation_id) ?? 0;
@@ -190,19 +191,21 @@ import json
 import os
 import time
 
+import psycopg
 import requests
 from fastapi import BackgroundTasks, FastAPI, HTTPException, Request
 
 from verify_signature import verify_signature  # the verifier from the Signature verification guide
+from webhook_dedup import is_first_delivery  # from the Retries and deduplication guide
 
 API = "https://api.ibubbl.com"
-HEADERS = {"Authorization": f"Bearer {os.environ['IBUBBL_API_KEY']}"}
+API_KEY = os.environ["IBUBBL_API_KEY"]
+HEADERS = {"Authorization": f"Bearer {API_KEY}"}
 AUTO_REPLY = "Thanks for your message! We'll get back to you shortly."
 COOLDOWN_SECONDS = 60 * 60  # one auto-reply per conversation per hour
 
-# In-memory for the example. In production, use your database: a table with a
-# unique constraint on the event id, shared by every instance of your app.
-seen_event_ids: set[str] = set()
+db = psycopg.connect(os.environ["DATABASE_URL"])
+# Per instance, for the example. With several instances, keep it in the database too.
 last_auto_reply_at: dict[str, float] = {}  # conversation_id -> unix time
 
 app = FastAPI()
@@ -219,10 +222,10 @@ async def receive(request: Request, background: BackgroundTasks):
 
     event = json.loads(body)
 
-    # At-least-once delivery: handle each event id once.
-    if event["id"] in seen_event_ids:
+    # At-least-once delivery: a unique constraint in your database lets each
+    # event id through once, across every instance of your app.
+    if not is_first_delivery(db, event):
         return {"ok": True}
-    seen_event_ids.add(event["id"])
 
     # Only a contact's message may trigger a send. Never react to
     # message.sent / delivered / read / failed: that loops.
@@ -237,8 +240,9 @@ def auto_reply(inbound_message_id: str) -> None:
     lookup = requests.get(
         f"{API}/v1/messages/{inbound_message_id}", headers=HEADERS, timeout=10,
     )
-    lookup.raise_for_status()
     inbound = lookup.json()
+    if not lookup.ok:
+        raise RuntimeError(f"lookup {lookup.status_code} {inbound['detail']['error']}")
 
     # Cooldown per conversation, claimed before sending.
     conversation_id = inbound["conversation_id"]

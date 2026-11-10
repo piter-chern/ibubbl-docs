@@ -66,9 +66,9 @@ In about ten minutes you'll send a real iMessage from your iBubbl line to your o
       signal: AbortSignal.timeout(10_000),
     });
 
-    const message = await res.json();
-    if (!res.ok) throw new Error(`${res.status} ${message.detail?.error}`);
-    console.log(message.id, message.status);
+    const data = await res.json();
+    if (!res.ok) throw new Error(`${res.status} ${data.detail?.error}`);
+    console.log(data.id, data.status);
     ```
 
     ```python Python
@@ -77,12 +77,14 @@ In about ten minutes you'll send a real iMessage from your iBubbl line to your o
 
     import requests
 
+    API_KEY = os.environ["IBUBBL_API_KEY"]
+
     # One key per message: generate it once, and reuse it if you retry.
     idempotency_key = str(uuid.uuid4())
 
     res = requests.post(
         "https://api.ibubbl.com/v1/messages",
-        headers={"Authorization": f"Bearer {os.environ['IBUBBL_API_KEY']}"},
+        headers={"Authorization": f"Bearer {API_KEY}"},
         json={
             "to": "+14155551234",
             "body": "Hello from the iBubbl API",
@@ -90,9 +92,10 @@ In about ten minutes you'll send a real iMessage from your iBubbl line to your o
         },
         timeout=10,
     )
-    res.raise_for_status()
-    message = res.json()
-    print(message["id"], message["status"])
+    data = res.json()
+    if not res.ok:
+        raise RuntimeError(f"{res.status_code} {data['detail']['error']}")
+    print(data["id"], data["status"])
     ```
 
     </CodeGroup>
@@ -149,9 +152,9 @@ In about ten minutes you'll send a real iMessage from your iBubbl line to your o
       signal: AbortSignal.timeout(10_000),
     });
 
-    const message = await res.json();
-    if (!res.ok) throw new Error(`${res.status} ${message.detail?.error}`);
-    console.log(message.status, message.channel);
+    const data = await res.json();
+    if (!res.ok) throw new Error(`${res.status} ${data.detail?.error}`);
+    console.log(data.status, data.channel);
     ```
 
     ```python Python
@@ -159,16 +162,19 @@ In about ten minutes you'll send a real iMessage from your iBubbl line to your o
 
     import requests
 
+    API_KEY = os.environ["IBUBBL_API_KEY"]
+
     message_id = "8b3a4e72-1c2d-4e5f-9a0b-2c3d4e5f6a7b"
 
     res = requests.get(
         f"https://api.ibubbl.com/v1/messages/{message_id}",
-        headers={"Authorization": f"Bearer {os.environ['IBUBBL_API_KEY']}"},
+        headers={"Authorization": f"Bearer {API_KEY}"},
         timeout=10,
     )
-    res.raise_for_status()
-    message = res.json()
-    print(message["status"], message["channel"])
+    data = res.json()
+    if not res.ok:
+        raise RuntimeError(f"{res.status_code} {data['detail']['error']}")
+    print(data["status"], data["channel"])
     ```
 
     </CodeGroup>
@@ -223,9 +229,9 @@ In about ten minutes you'll send a real iMessage from your iBubbl line to your o
       signal: AbortSignal.timeout(10_000),
     });
 
-    const subscription = await res.json();
-    if (!res.ok) throw new Error(`${res.status} ${subscription.detail?.error}`);
-    console.log(subscription.id, subscription.secret); // store the secret now
+    const data = await res.json();
+    if (!res.ok) throw new Error(`${res.status} ${data.detail?.error}`);
+    console.log(data.id, data.secret); // store the secret now
     ```
 
     ```python Python
@@ -233,18 +239,21 @@ In about ten minutes you'll send a real iMessage from your iBubbl line to your o
 
     import requests
 
+    API_KEY = os.environ["IBUBBL_API_KEY"]
+
     res = requests.post(
         "https://api.ibubbl.com/v1/webhooks",
-        headers={"Authorization": f"Bearer {os.environ['IBUBBL_API_KEY']}"},
+        headers={"Authorization": f"Bearer {API_KEY}"},
         json={
             "url": "https://your-endpoint.example.com/ibubbl-webhooks",
             "event_types": ["message.inbound"],
         },
         timeout=10,
     )
-    res.raise_for_status()
-    subscription = res.json()
-    print(subscription["id"], subscription["secret"])  # store the secret now
+    data = res.json()
+    if not res.ok:
+        raise RuntimeError(f"{res.status_code} {data['detail']['error']}")
+    print(data["id"], data["secret"])  # store the secret now
     ```
 
     </CodeGroup>

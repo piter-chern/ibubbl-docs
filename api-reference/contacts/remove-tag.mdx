@@ -14,11 +14,84 @@ openapi: 'DELETE /v1/contacts/{contact_id}/tags/{name}'
 #### Request Body
 None. The path parameters are `contact_id`, the contact's ID (a UUID), and `name`, the tag name, URL-encoded (`Spring%20promo`). If two tags differ only by case (`VIP` and `vip`), both come off.
 
-#### Example Request
-```bash
+<RequestExample>
+
+```bash cURL
+# URL-encode the tag name: "Spring promo" becomes Spring%20promo.
 curl -X DELETE https://api.ibubbl.com/v1/contacts/c8a1f4e2-3b9d-4f7c-a8e5-1d2c3b4a5e6f/tags/vip \
-  -H "Authorization: Bearer $IB_API_KEY"
+  -H "Authorization: Bearer $IBUBBL_API_KEY"
 ```
+
+```typescript TypeScript
+const contactId = "c8a1f4e2-3b9d-4f7c-a8e5-1d2c3b4a5e6f";
+const tag = "vip";
+
+const res = await fetch(`https://api.ibubbl.com/v1/contacts/${contactId}/tags/${encodeURIComponent(tag)}`, {
+  method: "DELETE",
+  headers: { Authorization: `Bearer ${process.env.IBUBBL_API_KEY}` },
+  signal: AbortSignal.timeout(10_000),
+});
+
+const data = await res.json();
+if (!res.ok) throw new Error(`${res.status} ${data.detail?.error}`);
+console.log(data.tags);
+```
+
+```python Python
+import os
+from urllib.parse import quote
+
+import requests
+
+API_KEY = os.environ["IBUBBL_API_KEY"]
+
+contact_id = "c8a1f4e2-3b9d-4f7c-a8e5-1d2c3b4a5e6f"
+tag = "vip"
+
+res = requests.delete(
+    f"https://api.ibubbl.com/v1/contacts/{contact_id}/tags/{quote(tag, safe='')}",
+    headers={"Authorization": f"Bearer {API_KEY}"},
+    timeout=10,
+)
+data = res.json()
+if not res.ok:
+    raise RuntimeError(f"{res.status_code} {data['detail']['error']}")
+print(data["tags"])
+```
+
+</RequestExample>
+
+<ResponseExample>
+
+```json 200 OK
+{
+  "id": "c8a1f4e2-3b9d-4f7c-a8e5-1d2c3b4a5e6f",
+  "phone": "+14155551234",
+  "first_name": "Sam",
+  "last_name": "Rivera",
+  "email": "sam@example.com",
+  "city": "Brooklyn",
+  "state": "NY",
+  "timezone": "America/New_York",
+  "tags": [
+    "Spring promo"
+  ],
+  "opted_out": false,
+  "opted_out_at": null,
+  "created_at": "2026-11-05T14:23:45.123Z"
+}
+```
+
+```json 404 Not Found
+{
+  "detail": {
+    "error": "not_found",
+    "message": "Contact not found"
+  }
+}
+```
+
+</ResponseExample>
 
 #### Responses
 **200 OK**
