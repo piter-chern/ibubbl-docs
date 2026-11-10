@@ -58,12 +58,12 @@ Fired when a one-to-one message is accepted. That covers every accepted one-to-o
     "body": "Hey Sam — quick check-in about your order.",
     "classification": "cold",
     "line_id": "2c3d4e5f-6a7b-8c9d-0e1f-2a3b4c5d6e7f",
-    "failed_reason": "hourly_cap_hit"
+    "failed_reason": "line_offline"
   }
 }
 ```
 
-For a `queued` message, `failed_reason` names the capacity hold: `hourly_cap_hit` or `line_offline`. (Despite the name, this isn't a final failure: queued messages are retried automatically. One still queued after about an hour becomes `status: "expired"` (`failed_reason: "queue_expired"`) and **no webhook fires**, so poll [`GET /v1/messages/{id}`](/api-reference/messages/retrieve) if you need to know.) For a `pending` message it is `null`.
+For a `queued` message, `failed_reason` names the capacity hold: today always `line_offline` (`hourly_cap_hit` is a legacy reason no current line uses; see [Limits and queues](/concepts/limits)). (Despite the name, this isn't a final failure: queued messages are retried automatically. One still queued 60–65 minutes after it was accepted becomes `status: "expired"` (`failed_reason: "queue_expired"`) and **no webhook fires**, so poll [`GET /v1/messages/{id}`](/api-reference/messages/retrieve) if you need to know.) For a `pending` message it is `null`.
 
 A `pending` message is different: if its line has been offline for over an hour, it moves to `failed` and fires [`message.failed`](#message-failed) with `failed_reason: "agent_offline"`.
 

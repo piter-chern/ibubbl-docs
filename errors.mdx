@@ -47,7 +47,7 @@ The `error` field is a **stable machine-readable code** — branch your integrat
 </ResponseField>
 
 <ResponseField name="unresponsive_contact" type="422">
-  Refused on the 7th consecutive message to a contact who has never replied: iBubbl allows 6 unanswered messages in a row, then stops. Nothing was sent. The limit lifts as soon as the contact replies; waiting does not reset it.
+  Refused on the 7th consecutive message to a contact who has never replied: iBubbl allows 6 unanswered messages in a row, then stops. Messages still waiting to go out (`pending` or `queued`) count toward the 6. Nothing was sent. The limit lifts as soon as the contact replies; waiting does not reset it.
 </ResponseField>
 
 <ResponseField name="invalid_timezone" type="422">
@@ -66,24 +66,24 @@ The `error` field is a **stable machine-readable code** — branch your integrat
   A tag name collides with an existing tag in a way iBubbl can't resolve. Rare: choose a different name.
 </ResponseField>
 
-<ResponseField name="hourly_cap_hit" type="queued">
-  Your line has hit its hourly send cap. This is not returned as an error: the send is accepted (`202`, `status: "queued"`) and retried every 30 seconds. If it is still queued after about an hour it expires (`status: "expired"`); no webhook fires for that, so poll [`GET /v1/messages/{id}`](/api-reference/messages/retrieve) if you need to know. To raise caps, email [support@ibubbl.com](mailto:support@ibubbl.com).
-</ResponseField>
-
 <ResponseField name="line_offline" type="queued">
-  Your sending line is temporarily disconnected. This is not returned as an error: a one-to-one send is accepted (`202`, `status: "queued"`) and goes out automatically when the line reconnects. If it is still queued after about an hour it expires (`status: "expired"`); no webhook fires for that, so poll [`GET /v1/messages/{id}`](/api-reference/messages/retrieve) if you need to know.
+  Your line's Mac is offline. This is not returned as an error: a one-to-one send to a contact your line has messaged before is accepted (`202`, `status: "queued"`) and goes out automatically when the Mac reconnects. The reason appears only as `failed_reason` on the [`message.queued`](/webhooks/events) webhook, not in the API response. If it is still queued 60–65 minutes after it was accepted it expires (`status: "expired"`); no webhook fires for that, so poll [`GET /v1/messages/{id}`](/api-reference/messages/retrieve) if you need to know. A contact with no line yet gets `no_eligible_line` instead. See [Limits and queues](/concepts/limits#offline-lines).
 </ResponseField>
 
 <ResponseField name="daily_cap_exhausted" type="422">
-  Daily send cap reached. The send fails and is not queued; the cap resets at midnight ET (America/New_York), so send again after that.
+  The line has sent 1,000 messages today, its daily ceiling. Every outbound message counts: new contacts, replies, follow-ups, groups, messages still waiting and failed ones. The send fails and is not queued; the count resets at midnight ET (America/New_York), so send again after that. See [Limits and queues](/concepts/limits).
 </ResponseField>
 
 <ResponseField name="cold_cap_exhausted" type="422">
-  Cold-outreach cap reached for the day. iBubbl ramps cold-send volume during line warm-up to protect sender reputation.
+  The line has messaged 50 new contacts today (contacts your account has no history with). The send fails and is not queued. Messages to contacts already counted today, and to anyone you've messaged before, still go out. The count resets at midnight ET (America/New_York). See [Limits and queues](/concepts/limits).
+</ResponseField>
+
+<ResponseField name="hourly_cap_hit" type="queued">
+  Legacy: not used on any current line. The hourly limit on new contacts is a hold instead: the message stays `pending` with `held_reason: "hourly_limit"` and goes out by itself. See [Limits and queues](/concepts/limits).
 </ResponseField>
 
 <ResponseField name="followup_cap_exhausted" type="422">
-  The legacy per-line daily cap on follow-ups (messages to contacts who replied before, but not in the last 24 hours) is reached. Only lines on the older per-line daily caps return it. The send fails and is not queued; the cap resets at midnight ET (America/New_York).
+  Legacy: not used on any current line. It was a daily cap on follow-ups under the older per-line caps.
 </ResponseField>
 
 <ResponseField name="no_eligible_line" type="422">
@@ -108,6 +108,8 @@ The `error` field is a **stable machine-readable code** — branch your integrat
 
 <ResponseField name="internal_error" type="500">
   An unexpected error on iBubbl's side. These are paired with our error-tracking system; we get paged when they happen. If you see a sustained pattern, email [support@ibubbl.com](mailto:support@ibubbl.com) with the timestamp + request body.
+
+  One known cause: two `POST /v1/messages` requests with the same `idempotency_key` arriving at the same moment. Only one message is created, and the other request gets this `500`. Retrying it with the same key returns the `202` replay. See [Duplicates and retries](/concepts/message-lifecycle#duplicates-and-retries).
 </ResponseField>
 
 <ResponseField name="no_owner_rep" type="500">
@@ -148,8 +150,9 @@ The `error` field is a **stable machine-readable code** — branch your integrat
 | `invalid_url` | 422 | ❌ Use an `https://` URL. |
 | `invalid_timezone` | 422 | ❌ Fix the timezone. |
 | `invalid_email` / `invalid_tag` / `duplicate_tag` | 422 | ❌ Fix the value. |
-| `hourly_cap_hit` / `line_offline` | — (`202`, `queued`) | ⚠️ Not an error: iBubbl queues and retries for up to an hour. |
-| `daily_cap_exhausted` / `cold_cap_exhausted` / `followup_cap_exhausted` | 422 | ⚠️ Not queued. Send again after the cap resets (midnight ET). |
+| `line_offline` | — (`202`, `queued`) | ⚠️ Not an error: iBubbl queues and retries for up to an hour. Don't resend. |
+| `daily_cap_exhausted` / `cold_cap_exhausted` | 422 | ⚠️ Not queued. Send again after the limit resets (midnight ET). |
+| `hourly_cap_hit` / `followup_cap_exhausted` | — | Legacy: not used on any current line. |
 | `no_eligible_line` | 422 | ⚠️ Send again once your line is back online. |
 | `rate_limited` | 429 | ✅ Send again after about a minute (`/v1/events` only). |
 | `invalid_signature` | 403 | ❌ Fix the signing secret. |
@@ -157,7 +160,7 @@ The `error` field is a **stable machine-readable code** — branch your integrat
 | `no_owner_rep` | 500 | ❌ Not until your account has an active owner rep; email [support@ibubbl.com](mailto:support@ibubbl.com). |
 | `internal_error` | 500 | ✅ Retry with the same idempotency key after a short backoff. |
 
-The general rule: **don't retry 4xx**. Most 4xxes are payload-level problems that retrying won't fix. The cap-related 422s (`daily_cap_exhausted`, `cold_cap_exhausted`, `followup_cap_exhausted`) are retryable only after the cap resets at midnight ET; iBubbl does not queue them for you. The hourly cap and an offline line are different: those sends are queued, so retrying just creates duplicate work. A send refused with a `404` or `422` creates no message, so its `idempotency_key` stays unused and you can reuse it when you send again.
+The general rule: **don't retry 4xx**. Most 4xxes are payload-level problems that retrying won't fix. The limit 422s (`daily_cap_exhausted`, `cold_cap_exhausted`) are retryable only after the limit resets at midnight ET; iBubbl does not queue them for you. The hourly new-contact limit and an offline line are different: those sends are accepted and wait (`pending` with `held_reason: "hourly_limit"`, or `queued`), so resending just creates a duplicate. The numbers are on [Limits and queues](/concepts/limits). A send refused with a `404` or `422` creates no message, so its `idempotency_key` stays unused and you can reuse it when you send again.
 
 ## HTTP status mapping summary
 

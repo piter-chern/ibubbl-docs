@@ -67,12 +67,35 @@ SENDING (POST /v1/messages)
 - Generate ONE idempotency_key (a UUIDv4) per logical message, before the
   first attempt, and store it with the message. Reuse the same key and the
   identical payload on every retry. Never generate the key inside a retry
-  loop. A new key with the same body sends a second, real message.
+  loop. A new key with the same body sends a second, real message: iBubbl
+  never deduplicates by content.
+- After a timeout, resend with the same key and body: you get the original
+  message back if it was accepted, so the contact gets exactly one. Exception:
+  never auto-retry a timed-out participant_phones send (it can create a second
+  group); wait for its message.sent webhook first.
 - 202 means accepted, not delivered. Track the outcome with webhooks or
   GET /v1/messages/{id}. A message outside the contact's sending hours stays
   "pending" with held_reason and held_until set; that is normal, not an error.
+- The request has no field for the sending line. Unknown fields such as from
+  or line_id are ignored without an error; each contact sticks to one line.
 - Read the message's channel before assuming iMessage-only behaviour:
   "imessage" or "sms" (RCS also reports as "sms"); null until it is sent.
+
+LIMITS (per line; https://docs.ibubbl.com/concepts/limits)
+- 50 new contacts a day (resets at midnight America/New_York); the 51st gets
+  422 cold_cap_exhausted.
+- 30 new contacts per rolling 60 minutes; extra ones stay "pending" with
+  held_reason "hourly_limit" and go out by themselves. Do not resend them.
+- 1,000 outbound messages a day, every kind counted; then 422
+  daily_cap_exhausted.
+- 6 unanswered messages in a row to a contact who never replied; the 7th gets
+  422 unresponsive_contact.
+- No HTTP rate limit on POST /v1/messages, but a line sends one message at a
+  time (about one a second). Send one request at a time per line; bursts only
+  build a queue. Pace outreach to new contacts at about one every 2 minutes
+  per line.
+- A "queued" message (line offline) that expires after about an hour fires NO
+  webhook. Poll GET /v1/messages/{id} for messages still queued after an hour.
 
 RETRIES AND ERRORS
 - Branch on detail.error (the stable code), never on detail.message.
@@ -105,4 +128,4 @@ WEBHOOKS
   adds new ones over time.
 ```
 
-The rules come from these pages, which have the details: [Idempotency](/idempotency), [Errors](/errors), [Working hours](/concepts/working-hours), [Suppression and opt-outs](/concepts/suppression), [Webhook events](/webhooks/events) and [Signature verification](/webhooks/signatures).
+The rules come from these pages, which have the details: [Message lifecycle](/concepts/message-lifecycle), [Limits and queues](/concepts/limits), [Lines and routing](/concepts/lines-and-routing), [Idempotency](/idempotency), [Errors](/errors), [Working hours](/concepts/working-hours), [Suppression and opt-outs](/concepts/suppression), [Webhook events](/webhooks/events) and [Signature verification](/webhooks/signatures).

@@ -71,20 +71,17 @@ A message waiting for working hours is `pending`, like one that is about to go o
 }
 ```
 
-- `held_reason` — why it is waiting right now: `working_hours` (outside the contact's working hours) or `hourly_limit` (your line has used its hourly limit of new contacts; the message stays `pending` and goes out by itself when a slot frees).
+- `held_reason` — why it is waiting right now: `working_hours` (outside the contact's working hours) or `hourly_limit` (your line has messaged 30 new contacts in the last 60 minutes; the message stays `pending` and goes out by itself when a slot frees — see [Limits and queues](/concepts/limits)).
 - `held_until` — when it is **expected** to go out. For `working_hours`, the contact's next opening: it is recomputed within about 10 seconds when your hours change, and it is `null` if no sending day is enabled. For `hourly_limit`, an estimate of when a slot frees, or `null` if there is none.
 
 Both are `null` when the message is not being held. A held message is first marked within about 10 seconds of being accepted, so a `GET` immediately after `POST` may not show the hold yet. A [`message.sent`](/webhooks/events) webhook fires when it goes out.
 
 ## Capacity holds (`status: "queued"`)
 
-Separately from working hours, a send can be accepted but parked because of capacity. The response is still `202 Accepted`, with `status: "queued"`, and the reason is in the `failed_reason` field of the [`message.queued`](/webhooks/events) webhook:
+Separately from working hours, a one-to-one send can be accepted but parked. The response is still `202 Accepted`, with `status: "queued"`. Today the only reason is `line_offline`: your line's Mac is offline. The reason is in the `failed_reason` field of the [`message.queued`](/webhooks/events) webhook, not in the API response. (`hourly_cap_hit` is a legacy reason that no current line uses; the hourly new-contact limit holds messages as `pending` instead.)
 
-- `hourly_cap_hit` — your line hit its hourly send cap.
-- `line_offline` — your sending line is temporarily disconnected.
-
-iBubbl re-checks queued messages automatically and sends them once the condition clears. A message still queued after about **an hour** is dropped and moves to `status: "expired"` — no webhook fires for that today, so poll `GET /v1/messages/{id}` if you need to know. Send it again (a new `idempotency_key`, or the same one: an expired message's key is released) if it still matters.
+iBubbl re-checks queued messages every 30 seconds and sends them once the Mac is back. A message still queued 60–65 minutes after it was accepted is dropped and moves to `status: "expired"` — no webhook fires for that today, so poll `GET /v1/messages/{id}` if you need to know. Send it again (a new `idempotency_key`, or the same one: an expired message's key is released) if it still matters.
 
 A `pending` message works differently: if its line has been offline for over an hour, it is not sent late. It moves to `status: "failed"` with `failed_reason: "agent_offline"`, and a [`message.failed`](/webhooks/events) webhook fires.
 
-Daily and cold-outreach caps do **not** queue: a send over those caps fails immediately with a `422`. See [Errors](/errors).
+The daily limits do **not** queue: a send over 50 new contacts or 1,000 messages a day fails immediately with a `422`. See [Limits and queues](/concepts/limits) for every limit and [Errors](/errors) for the codes.

@@ -1,0 +1,97 @@
+---
+title: 'Limits and queues'
+description: 'The exact send limits on every iBubbl line, what happens when you reach them, and how fast a line can send.'
+---
+
+Every iBubbl line is a real phone number on a real Mac. Carriers and Apple flag numbers that message too many strangers too quickly, so iBubbl enforces a few limits per line. They protect your number. This page gives the exact numbers.
+
+Two kinds of limit apply:
+
+- **Holds.** The send is accepted (`202`) and waits as `pending` until it can go. You don't need to do anything.
+- **Refusals.** The send is rejected with a `422` and nothing is created. You need to wait for the limit to reset, or stop messaging that contact.
+
+## The four limits
+
+These limits apply to every line, as of 2026-11-10.
+
+| Limit | Per line | What counts | Over the limit |
+| ----- | -------- | ----------- | -------------- |
+| **New contacts per day** | **50**, resetting at midnight America/New_York | Each [new contact](#what-counts-as-a-new-contact) once a day, however many messages you send them | The 51st new contact gets `422 cold_cap_exhausted`. More messages to the 50 already counted today still go out. |
+| **New contacts per hour** | **30** in any rolling 60 minutes | New contacts, counted when the message goes out | A hold, not a refusal: the message stays `pending` with `held_reason: "hourly_limit"`. A slot frees 60 minutes after each send, and the message goes out by itself. |
+| **Messages per day** | **1,000**, resetting at midnight America/New_York | Every outbound message: new contacts, replies, follow-ups, group messages, messages still waiting, and messages that failed. Not `cancelled` or `expired` ones. | The 1,001st message gets `422 daily_cap_exhausted`. |
+| **Unanswered in a row** | **6** to one contact who has never replied | Messages to that contact, including ones still waiting to go out (`pending` or `queued`) | The 7th gets `422 unresponsive_contact`. The limit lifts for good as soon as the contact replies; waiting doesn't reset it. |
+
+A refused send creates no message, so its `idempotency_key` stays unused. Codes and retry advice: [Errors](/errors).
+
+<Note>
+iBubbl can temporarily set a line's limits lower than these, for example while a new line builds its reputation. These numbers are never exceeded. To discuss your limits, email [support@ibubbl.com](mailto:support@ibubbl.com).
+</Note>
+
+### What counts as a new contact
+
+A contact is **new** if your account has no history with them:
+
+- they have never texted, called or booked with you, on any of your lines, and
+- no one-to-one message to them has gone out.
+
+Once one message to them goes out, they stop being new, and replies and follow-ups to them never count toward the new-contact limits. Only the 1,000-a-day limit counts those.
+
+- **A new group** counts as one new contact, whoever is in it. Sending into an existing group counts as none.
+- **A message iMessage refused** (`failed` with an `imessage_*` reason, such as `imessage_undeliverable`) uses no new-contact slot, and the contact stays new. It still counts toward the 1,000 a day.
+
+## Holds, queues and refusals
+
+| What you see | Why | What happens next |
+| ------------ | --- | ----------------- |
+| `202`, `status: "pending"`, `held_reason: "working_hours"` | Outside the contact's [sending hours](/concepts/working-hours) | Goes out when the window opens |
+| `202`, `status: "pending"`, `held_reason: "hourly_limit"` | The line has messaged 30 new contacts in the last 60 minutes | Goes out when a slot frees |
+| `202`, `status: "queued"` | Your line's Mac is offline (`line_offline` in the [`message.queued`](/webhooks/events) webhook) | Goes out when the Mac reconnects, or [expires](#offline-lines) after an hour |
+| `422 cold_cap_exhausted` | 50 new contacts today | Send to new contacts again after midnight ET |
+| `422 daily_cap_exhausted` | 1,000 messages today | Send again after midnight ET |
+| `422 unresponsive_contact` | 6 unanswered messages to this contact | Wait for the contact to reply |
+
+`held_reason` and `held_until` appear on [`GET /v1/messages/{id}`](/api-reference/messages/retrieve) within about 10 seconds of acceptance. See [Message lifecycle](/concepts/message-lifecycle#held-messages).
+
+## Offline lines
+
+Your line sends from a Mac. If that Mac hasn't checked in for 2 minutes, it counts as offline:
+
+- **A contact your line has messaged before** is accepted as `202` with `status: "queued"`. It goes out when the Mac is back. A message still `queued` 60–65 minutes after it was accepted becomes `expired`, and **no webhook fires** for that. Poll `GET /v1/messages/{id}` for messages that stay `queued`.
+- **A contact with no line yet** (someone your account has never messaged) gets `422 no_eligible_line`, because iBubbl only gives new contacts to a line whose Mac is online. Nothing is created. Send again once the line is back.
+
+A message that is already `pending` when the Mac goes offline waits for it. If the Mac stays offline for more than an hour, the message becomes `failed` with `failed_reason: "agent_offline"`, and `message.failed` fires.
+
+## Rate limits
+
+- **`POST /v1/messages` has no HTTP rate limit.** iBubbl never answers `429` to a send.
+- **`POST /v1/events/{token}`** accepts up to 60 events per 60 seconds for each secret-URL [inbound event source](/inbound-events/overview). Over that, it answers `429 rate_limited` while a workflow listens to that source. If no workflow listens, it answers `200` with `runs_started: 0` and the event is dropped. Signed sources, such as Recharge, have no limit.
+
+## Throughput and pacing
+
+No rate limit doesn't mean unlimited speed. Each line is one Mac, and it sends **one message at a time**:
+
+- The Mac checks for new messages every 2 seconds, then sends them in order with a 1-second pause after each one. So one line sends **at most about one message per second**.
+- Before the first text to a new US or Canadian number, the Mac asks Apple whether the number uses iMessage (see [Lines and routing](/concepts/lines-and-routing)). These checks are spaced 5 to 10 seconds apart.
+- The hourly and daily limits above apply on top.
+
+So a burst gains nothing. If you send 500 messages in one second, iBubbl accepts them all quickly, and then they wait as `pending` in your line's queue and go out one by one. New contacts past 30 wait an hour or more, and past 50 or 1,000 the sends are refused with `422`.
+
+**How to pace your sends:**
+
+- **Send one message at a time per line**, or keep only a few requests in flight. Faster sending only builds a longer queue.
+- **For outreach to new contacts, plan for 30 an hour and 50 a day per line.** One new contact every 2 minutes, spread over the contact's sending hours, stays inside both limits.
+- **Stop on a cap.** After `cold_cap_exhausted` or `daily_cap_exhausted`, stop that kind of send until midnight ET, instead of trying every remaining contact.
+- **Follow webhooks rather than polling.** If you must poll `GET /v1/messages/{id}`, poll each message at most every 30 seconds.
+
+## Duplicates and retries
+
+- **Duplicates count against every limit.** iBubbl doesn't detect identical messages. A send repeated with a new `idempotency_key` is a second real message: it uses a slot in the 1,000 a day, and it counts as another unanswered message to that contact. Reuse the key on retries. See [Message lifecycle](/concepts/message-lifecycle#duplicates-and-retries).
+- **A retry with the same key never counts twice.** It returns the original message, so it uses no extra slot.
+- **Don't retry a cap `422` with a new key.** The answer is the same until the limit resets, and nothing was sent.
+- **Don't resend a held or queued message.** It is already waiting and will go out by itself. A second send creates a duplicate.
+
+## Next
+
+- [Message lifecycle](/concepts/message-lifecycle): what each status means, and which webhook fires.
+- [Lines and routing](/concepts/lines-and-routing): how a contact gets a line, and iMessage versus SMS.
+- [Errors](/errors): every error code and whether to retry it.

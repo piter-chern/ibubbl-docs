@@ -11,10 +11,14 @@ Sending the same message twice — because of a network retry, a request timeout
 
 When you send with a key that your account has used before:
 
-- **Same key + same payload** → iBubbl returns the original message (HTTP `202`, the same message ID, its current `status`). Nothing is sent again — however long ago the original was sent.
-- **Same key + different payload** → `409 idempotency_conflict`. This usually means your code generated one key for two genuinely different messages.
-- **Same key, and the original message ended `failed` or `expired`** → the key is released and the request is sent as a new message. This is the one case where reusing a key sends again, so retrying a failed send with its original key is safe.
+- **Same key + same payload** → iBubbl returns the original message (HTTP `202`, the same message ID). The response shows the message's **current** state, for example `delivered`, not the state it had when you first sent it. Nothing is sent again — however long ago the original was sent.
+- **Same key + different payload** → `409 idempotency_conflict`, whatever the original message's status. This usually means your code generated one key for two genuinely different messages.
+- **Same key + same payload, and the original message ended `failed` or `expired`** → the key is released and the request is sent as a new message, with a new ID. This is the one case where reusing a key sends again, so retrying a failed send with its original key is safe. A `cancelled` message does **not** release its key: the request returns the cancelled message.
 - **New key** → treated as a fresh request.
+
+<Warning>
+**The key is the only duplicate protection.** iBubbl never compares message bodies. A new key with an identical body sends a second, real message, even milliseconds after the first. See [Duplicates and retries](/concepts/message-lifecycle#duplicates-and-retries), including two edge cases: simultaneous requests with one key, and timed-out sends that create a group.
+</Warning>
 
 ## Generating keys
 

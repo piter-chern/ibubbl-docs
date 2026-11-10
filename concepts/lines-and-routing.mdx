@@ -1,0 +1,68 @@
+---
+title: 'Lines and routing'
+description: 'Which of your lines sends to a contact, and how iBubbl decides between iMessage and SMS.'
+---
+
+A **line** is a phone number iBubbl runs for you on a dedicated Mac. Your account can have one line or several. This page explains which line a message goes out on, and whether it goes as an iMessage or a text.
+
+## Each contact sticks to one line
+
+The first time your account messages a contact, iBubbl assigns the contact to one of your lines. After that, every message to that contact goes out on the same line, so they always see the same number. The assignment never expires.
+
+It changes in only two cases:
+
+- **The line is no longer active.** The next message to the contact moves them to another of your lines.
+- **The contact texts one of your other lines.** Their next message from you comes from the line they texted. Messages in a group don't move anyone.
+
+A line whose Mac is temporarily offline keeps its contacts. Their messages wait as `queued` until it is back. See [Limits and queues](/concepts/limits#offline-lines).
+
+### How a new contact gets a line
+
+For a contact with no line yet, iBubbl picks among your lines that are active and whose Mac is online. It prefers a line that still has room for new contacts today, then the one that has messaged the fewest new contacts this hour, then today. If none of your lines' Macs is online, the send gets `422 no_eligible_line`.
+
+### You can't choose the line
+
+`POST /v1/messages` has no field for the sending line or number. Fields it doesn't know, such as `from` or `line_id`, are **ignored without an error**: the request succeeds and the line is chosen as above.
+
+To find out which line sent a message, read `from_number` on its [`message.sent`](/webhooks/events) webhook (and on `message.delivered`, `message.read`, `message.failed` and `message.cancelled`). On [`message.inbound`](/webhooks/events), the line that received the message is `to_number`. The send and retrieve responses don't include the line.
+
+## iMessage or SMS
+
+For each one-to-one text message to a US or Canadian number (`+1`), iBubbl decides whether to send it as an iMessage or as a text message (SMS). It goes down this list and stops at the first step that gives an answer:
+
+1. **The number recently failed on iMessage.** An earlier message to this number failed with iMessage error 22 (not reachable on iMessage) in the last 30 days, and no iMessage to the number has been delivered since. **→ SMS.**
+2. **An iMessage reached the number recently.** An iMessage from your account to this contact was delivered in the last 30 days. **→ iMessage.**
+3. **Apple answered recently.** iBubbl asked Apple whether the number uses iMessage less than 30 days ago. **→ That answer.**
+4. **Ask Apple now.** Your line's Mac asks Apple whether the number uses iMessage. Yes **→ iMessage.** No, or no answer within 5 seconds **→ SMS.**
+
+The message that failed with error 22 is not resent automatically: it stays `failed` with `failed_reason: "imessage_undeliverable"`. Step 1 makes sure your *next* message to that number goes as SMS. Send it again yourself if it still matters.
+
+### What isn't routed
+
+- **Numbers outside `+1`** always go as iMessage. If the recipient isn't on iMessage, the message fails with `imessage_undeliverable`; iBubbl never falls back to SMS for them.
+- **Group messages** always go as iMessage.
+- **Attachments** aren't part of the public API yet. Messages with files sent from the dashboard or a workflow can go by SMS or MMS on some lines, and as iMessage otherwise.
+
+Routing is on for every line, for one-to-one text messages to `+1` numbers, as of 2026-11-10.
+
+## Which channel a message used
+
+[`GET /v1/messages/{id}`](/api-reference/messages/retrieve) returns `channel`:
+
+| Value | Meaning |
+| ----- | ------- |
+| `imessage` | Sent as an iMessage. |
+| `sms` | Sent as a text message. **RCS counts as `sms` too**: iBubbl doesn't tell SMS and RCS apart in the API. |
+| `null` | Not sent yet, or, rarely, iBubbl couldn't tell how it went out. |
+
+Some behaviour depends on the channel. For example, a plain SMS never reports `read`. Check `channel` before assuming iMessage-only behaviour.
+
+<Note>
+No webhook carries the channel yet. Call `GET /v1/messages/{id}` after `message.sent` if you need it.
+</Note>
+
+## Next
+
+- [Limits and queues](/concepts/limits): the per-line limits and how fast a line sends.
+- [Message lifecycle](/concepts/message-lifecycle): every status, and which webhook fires for each.
+- [Group conversations](/concepts/group-conversations): how groups are addressed.
