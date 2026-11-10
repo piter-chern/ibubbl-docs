@@ -558,7 +558,7 @@
           "Webhooks"
         ],
         "summary": "Create a webhook subscription",
-        "description": "Register an HTTPS endpoint to receive events. The response includes the signing secret **once** \u2014 store it immediately; it cannot be retrieved again. Use the secret to verify incoming webhook signatures (see [Signature Verification](/webhooks/signatures)).\n\nIf `event_types` is omitted, the subscription receives all event types. You can register multiple subscriptions per account (e.g., one for production, one for staging).\n\nDelivery is at-least-once with exponential backoff. Customer endpoints should be idempotent based on the event `id`.",
+        "description": "Register an HTTPS endpoint to receive events. The response includes the signing secret **once** \u2014 store it immediately; it cannot be retrieved again. Use the secret to verify incoming webhook signatures (see [Signature verification](/guides/webhook-signatures)).\n\nIf `event_types` is omitted, the subscription receives all event types. You can register multiple subscriptions per account (e.g., one for production, one for staging).\n\nDelivery is at-least-once with exponential backoff. Customer endpoints should be idempotent based on the event `id`.",
         "operationId": "v1_create_webhook_v1_webhooks_post",
         "requestBody": {
           "required": true,
@@ -1869,7 +1869,7 @@
           "secret": {
             "type": "string",
             "title": "Secret",
-            "description": "Full signing secret. **Save it now** \u2014 this is the only time it is returned. Use it to verify the `X-iBubbl-Signature` header on incoming webhook POSTs (HMAC-SHA256 over `{t}.{raw request body}`, keyed with this whole string). See [Signature Verification](/webhooks/signatures).",
+            "description": "Full signing secret. **Save it now** \u2014 this is the only time it is returned. Use it to verify the `X-iBubbl-Signature` header on incoming webhook POSTs (HMAC-SHA256 over `{t}.{raw request body}`, keyed with this whole string). See [Signature verification](/guides/webhook-signatures).",
             "examples": [
               "whsec_a3f2c8d9e0f1b4d52c8a1f4e23b9d4f7ca8e51d2c3b4a5e6f7a8b9c0d1e2f3a4"
             ]
