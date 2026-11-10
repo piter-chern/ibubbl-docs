@@ -1,0 +1,178 @@
+---
+title: 'Test webhooks locally'
+description: 'Receive real iBubbl events on your laptop through a tunnel, and watch every delivery in the dashboard.'
+---
+
+iBubbl only delivers webhooks to public `https://` URLs, so to receive them on your laptop you expose a local server through a tunnel. You then trigger real events from your own phone and watch each delivery attempt in the dashboard.
+
+<Note>
+**There is no "send test event" button or endpoint.** The only events are real ones: a message to or from your line. This guide uses your own phone to create them. To test your signature code without any events, use the [test vector](/guides/webhook-signatures#test-vector).
+</Note>
+
+## 1. Run a receiver on port 8000
+
+Any server that verifies the signature, logs the body and returns `200` will do. The receiver in [Receive messages](/guides/receive-messages) listens on port 8000. Start it with an empty `IBUBBL_WEBHOOK_SECRET` for now; you'll get the real secret in step 3.
+
+## 2. Open a tunnel
+
+Pick one. Each prints a public HTTPS URL that forwards to `http://localhost:8000`.
+
+<CodeGroup>
+
+```bash cloudflared
+# No account needed. Prints https://<random-words>.trycloudflare.com
+cloudflared tunnel --url http://localhost:8000
+```
+
+```bash ngrok
+# Needs a free ngrok account and authtoken. Prints a Forwarding https://… URL.
+ngrok http 8000
+```
+
+</CodeGroup>
+
+Leave the tunnel running. A quick tunnel gets a **new URL every time it starts**, and webhook subscriptions can't be edited, so after a restart you create a new subscription (step 3) and revoke the old one (step 6).
+
+## 3. Register the tunnel URL
+
+Create a subscription for the tunnel's URL plus your route's path. Leave out `event_types` to receive every event while you test.
+
+<CodeGroup>
+
+```bash cURL
+curl -X POST https://api.ibubbl.com/v1/webhooks \
+  -H "Authorization: Bearer $IBUBBL_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"url": "https://your-tunnel.trycloudflare.com/ibubbl-webhooks"}'
+```
+
+```typescript TypeScript
+const res = await fetch("https://api.ibubbl.com/v1/webhooks", {
+  method: "POST",
+  headers: {
+    Authorization: `Bearer ${process.env.IBUBBL_API_KEY}`,
+    "Content-Type": "application/json",
+  },
+  body: JSON.stringify({ url: "https://your-tunnel.trycloudflare.com/ibubbl-webhooks" }),
+  signal: AbortSignal.timeout(10_000),
+});
+
+const subscription = await res.json();
+if (!res.ok) throw new Error(`${res.status} ${subscription.detail?.error}`);
+console.log(subscription.id, subscription.secret); // the secret is shown only now
+```
+
+```python Python
+import os
+
+import requests
+
+res = requests.post(
+    "https://api.ibubbl.com/v1/webhooks",
+    headers={"Authorization": f"Bearer {os.environ['IBUBBL_API_KEY']}"},
+    json={"url": "https://your-tunnel.trycloudflare.com/ibubbl-webhooks"},
+    timeout=10,
+)
+res.raise_for_status()
+subscription = res.json()
+print(subscription["id"], subscription["secret"])  # the secret is shown only now
+```
+
+</CodeGroup>
+
+The response includes the subscription `id` and its signing `secret` (`whsec_…`), shown only this once. Restart your receiver with `IBUBBL_WEBHOOK_SECRET` set to that secret. A URL that doesn't start with `https://` returns `422 invalid_url`.
+
+You can also add the endpoint in the dashboard under **Settings → Webhooks → Add endpoint**; it's the same subscription either way.
+
+## 4. Trigger events from your phone
+
+- **Inbound:** text your iBubbl line from your own phone. Your receiver gets `message.inbound`.
+- **Outbound:** send a message to your own phone with [`POST /v1/messages`](/guides/send-messages). You get `message.queued`, then `message.sent`, then `message.delivered` and `message.read` if your phone reports them. Reply to it to get another `message.inbound`.
+- **Reactions and edits:** tap back on, or edit, a message in that thread for `message.reaction.added` and `message.edited`.
+
+The first delivery usually arrives within about 30 seconds of the event.
+
+<Warning>
+**Don't text STOP (or `unsubscribe`, `cancel`, `end`, `quit`, `stopall`) to test opt-outs.** It opts your own number out for good: an opt-out can't be undone from the API or the dashboard. See [Suppression and opt-outs](/concepts/suppression).
+</Warning>
+
+<Warning>
+**Test events are real events.** Every active subscription on your account whose filter matches receives them, including production ones. If production has an auto-reply, your test texts will get one too.
+</Warning>
+
+## 5. Watch the deliveries
+
+In the [dashboard](https://ibubbl-dashboard.vercel.app), open **Settings → Webhooks**. **Recent deliveries** lists every attempt to reach your endpoints, newest first, across all your subscriptions:
+
+| Column | What it shows |
+| ------ | ------------- |
+| Status | **Delivered** (your endpoint returned `2xx`), **Pending** (waiting for its next retry) or **Dead** (5 attempts failed; no more retries). |
+| Event | The event type, such as `message.inbound`. |
+| Code | The HTTP status your endpoint returned on the last attempt. `0` means no response: a timeout after 10 seconds, or the connection failed. Hover over the code to see the error. |
+| Attempt | How many attempts so far, out of 5. |
+| Endpoint | The subscription's URL. |
+| Time | When it was delivered, or when it was last tried. |
+
+What common codes mean while testing:
+
+| Code | Usual cause |
+| ---- | ----------- |
+| `0` | The tunnel isn't running, or your handler took longer than 10 seconds. |
+| `401` | Your signature check failed: check the raw body, the secret from step 3 and the header name's case. See [Signature verification](/guides/webhook-signatures). |
+| `404` | The path in the subscription URL doesn't match your route. |
+| `3xx` | Redirects aren't followed and count as failures; register the final URL. |
+| `502` or `530` | The tunnel is up but nothing is listening on port 8000. |
+
+A failed delivery is retried for about 37 minutes; see [Retries and deduplication](/guides/webhook-retries). Fix your receiver and the next retry gets through. A delivery that went dead isn't resent.
+
+## 6. Clean up
+
+When you're done, revoke the test subscription. Revoking also stops any retries still pending for it. If you don't have its `id`, [`GET /v1/webhooks`](/api-reference/webhooks/list) lists your subscriptions.
+
+<CodeGroup>
+
+```bash cURL
+curl -X DELETE https://api.ibubbl.com/v1/webhooks/4a5b6c7d-8e9f-0a1b-2c3d-4e5f6a7b8c9d \
+  -H "Authorization: Bearer $IBUBBL_API_KEY"
+```
+
+```typescript TypeScript
+const subscriptionId = "4a5b6c7d-8e9f-0a1b-2c3d-4e5f6a7b8c9d";
+
+const res = await fetch(`https://api.ibubbl.com/v1/webhooks/${subscriptionId}`, {
+  method: "DELETE",
+  headers: { Authorization: `Bearer ${process.env.IBUBBL_API_KEY}` },
+  signal: AbortSignal.timeout(10_000),
+});
+if (!res.ok) throw new Error(`${res.status}`);
+```
+
+```python Python
+import os
+
+import requests
+
+subscription_id = "4a5b6c7d-8e9f-0a1b-2c3d-4e5f6a7b8c9d"
+
+res = requests.delete(
+    f"https://api.ibubbl.com/v1/webhooks/{subscription_id}",
+    headers={"Authorization": f"Bearer {os.environ['IBUBBL_API_KEY']}"},
+    timeout=10,
+)
+res.raise_for_status()
+```
+
+</CodeGroup>
+
+Then stop the tunnel. Its URL stops working, so a forgotten subscription would only fail; revoking keeps your delivery log clean.
+
+## Next
+
+<CardGroup cols={2}>
+  <Card title="Retries and deduplication" icon="rotate" href="/guides/webhook-retries">
+    What happens when your endpoint fails.
+  </Card>
+  <Card title="Webhook events" icon="list" href="/webhooks/events">
+    Every event type and its payload.
+  </Card>
+</CardGroup>

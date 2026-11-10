@@ -1,0 +1,321 @@
+---
+title: 'Signature verification'
+description: 'Verify that a webhook came from iBubbl: HMAC-SHA256 over the timestamp and raw body, with reference verifiers, framework wiring and a test vector.'
+---
+
+Every webhook iBubbl POSTs to your URL carries a signature in the `X-iBubbl-Signature` header. Verify it before you trust the body: it proves the request came from iBubbl, and its timestamp limits how long a captured request can be replayed against your endpoint.
+
+## Header format
+
+```http
+X-iBubbl-Signature: t=<unix seconds>,v1=<64 hex chars>
+```
+
+Example (from the [test vector](#test-vector) below):
+
+```http
+X-iBubbl-Signature: t=1762800000,v1=86a36838f7b5f62cda7ef2388b3f3c92de119dd521d95db76006504065bc0cff
+```
+
+`t` is the Unix time, in seconds, when iBubbl signed the request. `v1` is the HMAC-SHA256 described below. The `v1` label leaves room for a future scheme (`v2`) without a new header name.
+
+<Warning>
+**Header names are case-insensitive, and you'll usually see this one in lower case.** HTTP/2, proxies and most frameworks deliver it as `x-ibubbl-signature`. Read it case-insensitively:
+
+- **Node / Express:** `req.headers['x-ibubbl-signature']`. Node lower-cases every header name, so `req.headers['X-iBubbl-Signature']` is **`undefined`**, and a verifier given `undefined` rejects every request. (`req.get()` and `req.header()` in Express match any case.)
+- **Next.js / Fetch API:** `request.headers.get('x-ibubbl-signature')` (`Headers.get` matches any case).
+- **FastAPI / Starlette:** `request.headers.get('x-ibubbl-signature')` (matches any case).
+</Warning>
+
+## Algorithm
+
+- Function: **HMAC-SHA256**, output as lowercase hex.
+- Key: the **literal UTF-8 bytes of your whole subscription secret**, the `whsec_…` string, prefix included. Do **not** hex-decode it.
+- Message: the `t` value, a literal `.`, then the **raw request body bytes**: `{t}.{raw body}`.
+
+### What iBubbl signs
+
+The body is the exact bytes iBubbl sent: compact JSON (no spaces), keys sorted, and every non-ASCII character escaped as `\uXXXX`, so an emoji 👍 arrives as `\ud83d\udc4d`. Don't rely on that format: verify the bytes you received, and never re-serialize them. `JSON.stringify(JSON.parse(body))` turns `\ud83d\udc4d` back into 👍 and the signature no longer matches.
+
+If a delivery is retried, the retry carries the same body and the same event `id`, but a **new `t` and a new signature**: each attempt is signed when it is sent. See [Retries and deduplication](/guides/webhook-retries).
+
+## Replay protection
+
+Reject the request if `|now − t| > 300` seconds (5 minutes). Each attempt is signed fresh, so a retry is never rejected just because the original event is old.
+
+Five minutes covers normal clock drift on NTP-synced servers. If your clock can drift further, fix the clock rather than widening the window.
+
+## Reference verifiers
+
+Copy one of these. Both take the raw body bytes, the header value (or `None`/`undefined` if it's missing) and your secret, and return `false` for a missing, malformed, stale or wrong signature instead of throwing, so a bad request can't crash your handler. The optional last argument is the current time in Unix seconds; leave it out in production, and pass it only to run the [test vector](#test-vector).
+
+<CodeGroup>
+
+```python Python
+# verify_signature.py
+import hashlib
+import hmac
+import time
+
+REPLAY_TOLERANCE_SECONDS = 300
+
+
+def verify_signature(body_bytes: bytes, signature_header, secret: str, now=None) -> bool:
+    """
+    body_bytes: the raw HTTP request body as received.
+    signature_header: the X-iBubbl-Signature header value (None if missing).
+    secret: your subscription's whsec_<hex> secret.
+    now: current Unix time in seconds; leave as None except in tests.
+    Returns False for any missing, malformed, stale or wrong signature.
+    """
+    try:
+        parts = dict(p.split("=", 1) for p in (signature_header or "").split(","))
+        ts = int(parts["t"])
+        received = parts["v1"].encode("ascii")
+    except (KeyError, ValueError):
+        return False
+
+    # Reject replays.
+    now = time.time() if now is None else now
+    if abs(now - ts) > REPLAY_TOLERANCE_SECONDS:
+        return False
+
+    signed = f"{ts}.".encode("utf-8") + body_bytes
+    expected = hmac.new(
+        secret.encode("utf-8"), signed, hashlib.sha256,
+    ).hexdigest().encode("ascii")
+    return hmac.compare_digest(expected, received)
+```
+
+```javascript Node
+// verify-signature.js
+const crypto = require('crypto');
+
+const REPLAY_TOLERANCE_SECONDS = 300;
+
+function verifySignature(bodyBytes, signatureHeader, secret, nowSeconds = Date.now() / 1000) {
+  // bodyBytes: Buffer (the raw request body as received)
+  // signatureHeader: the X-iBubbl-Signature header value (undefined/null if missing)
+  // secret: your subscription's whsec_<hex> secret
+  // nowSeconds: current Unix time in seconds; leave it out except in tests
+  // Returns false for any missing, malformed, stale or wrong signature.
+  if (typeof signatureHeader !== 'string') return false;
+  const parts = {};
+  for (const part of signatureHeader.split(',')) {
+    const i = part.indexOf('=');
+    if (i > 0) parts[part.slice(0, i)] = part.slice(i + 1);
+  }
+  const ts = Number.parseInt(parts.t, 10);
+  const received = parts.v1;
+  if (!Number.isFinite(ts) || !/^[0-9a-f]{64}$/i.test(received || '')) return false;
+
+  // Reject replays.
+  if (Math.abs(nowSeconds - ts) > REPLAY_TOLERANCE_SECONDS) return false;
+
+  const signed = Buffer.concat([Buffer.from(`${ts}.`, 'utf-8'), bodyBytes]);
+  const expected = crypto.createHmac('sha256', secret).update(signed).digest();
+  // Both are 32 bytes (checked above), so timingSafeEqual can't throw.
+  return crypto.timingSafeEqual(expected, Buffer.from(received, 'hex'));
+}
+
+module.exports = { verifySignature };
+```
+
+</CodeGroup>
+
+## Test vector
+
+Use this to check your verifier without a webhook, a tunnel or a live secret. It was produced by iBubbl's own signer. The envelope is cut down (real events carry more fields, and `created_at` is an ISO 8601 string), but the bytes follow the same rules as every real delivery: compact, sorted keys, `\u` escapes.
+
+| Input | Value |
+| ----- | ----- |
+| Secret | `whsec_0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef` |
+| `t` | `1762800000` |
+| Raw body (159 bytes, one line) | `{"created_at":1762800000,"data":{"body":"Hello! \ud83d\udc4d","message_id":"00000000-0000-0000-0000-000000000001"},"id":"evt_test123","type":"message.inbound"}` |
+| Expected `v1` | `86a36838f7b5f62cda7ef2388b3f3c92de119dd521d95db76006504065bc0cff` |
+| Header | `t=1762800000,v1=86a36838f7b5f62cda7ef2388b3f3c92de119dd521d95db76006504065bc0cff` |
+
+The `\ud83d\udc4d` in the body is twelve literal characters (backslash, `u`, four hex digits, twice), not an emoji. Pass the time `t` as "now", because the vector's timestamp is long past the 5-minute window:
+
+<CodeGroup>
+
+```python Python
+from verify_signature import verify_signature
+
+SECRET = "whsec_0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+T = 1762800000
+BODY = rb'{"created_at":1762800000,"data":{"body":"Hello! \ud83d\udc4d","message_id":"00000000-0000-0000-0000-000000000001"},"id":"evt_test123","type":"message.inbound"}'
+HEADER = "t=1762800000,v1=86a36838f7b5f62cda7ef2388b3f3c92de119dd521d95db76006504065bc0cff"
+
+assert len(BODY) == 159
+assert verify_signature(BODY, HEADER, SECRET, now=T) is True
+assert verify_signature(BODY.replace(b"Hello", b"Jello"), HEADER, SECRET, now=T) is False  # one byte changed
+assert verify_signature(BODY, HEADER, SECRET, now=T + 301) is False  # outside the 5-minute window
+print("test vector OK")
+```
+
+```javascript Node
+const assert = require('assert');
+const { verifySignature } = require('./verify-signature');
+
+const SECRET = 'whsec_0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef';
+const T = 1762800000;
+// In a JavaScript string, \\u is a literal backslash followed by u.
+const BODY = Buffer.from('{"created_at":1762800000,"data":{"body":"Hello! \\ud83d\\udc4d","message_id":"00000000-0000-0000-0000-000000000001"},"id":"evt_test123","type":"message.inbound"}', 'utf-8');
+const HEADER = 't=1762800000,v1=86a36838f7b5f62cda7ef2388b3f3c92de119dd521d95db76006504065bc0cff';
+
+assert.strictEqual(BODY.length, 159);
+assert.strictEqual(verifySignature(BODY, HEADER, SECRET, T), true);
+const changed = Buffer.from(BODY);
+changed[BODY.indexOf('Hello')] = 0x4a; // 'H' -> 'J': one byte changed
+assert.strictEqual(verifySignature(changed, HEADER, SECRET, T), false);
+assert.strictEqual(verifySignature(BODY, HEADER, SECRET, T + 301), false); // outside the window
+console.log('test vector OK');
+```
+
+</CodeGroup>
+
+If the first check fails, compare the length first: a body that isn't exactly 159 bytes means the `\u` escapes were turned into an emoji, or whitespace was added along the way.
+
+## Framework integration
+
+The signature only matches the **exact bytes** iBubbl sent, so read the raw body before any JSON parsing.
+
+<AccordionGroup>
+
+<Accordion title="Express — keep the raw body" icon="node-js">
+
+`express.json()` parses the body and throws the bytes away. Either parse the webhook route with `express.raw()`:
+
+```javascript
+const express = require('express');
+const { verifySignature } = require('./verify-signature');
+
+const app = express();
+
+app.post(
+  '/ibubbl-webhooks',
+  express.raw({ type: 'application/json' }),
+  (req, res) => {
+    // Lower case: req.headers['X-iBubbl-Signature'] would be undefined.
+    const signature = req.headers['x-ibubbl-signature'];
+    if (!verifySignature(req.body, signature, process.env.IBUBBL_WEBHOOK_SECRET)) {
+      return res.status(401).send('invalid signature');
+    }
+
+    const event = JSON.parse(req.body.toString('utf-8'));
+    // de-duplicate on event.id, queue the work...
+    res.sendStatus(200);
+  },
+);
+```
+
+Or, if `express.json()` is already mounted for the whole app, keep a copy of the bytes with its `verify` hook and verify `req.rawBody`:
+
+```javascript
+app.use(express.json({
+  verify: (req, res, buf) => { req.rawBody = buf; }, // the exact bytes received
+}));
+
+app.post('/ibubbl-webhooks', (req, res) => {
+  const signature = req.headers['x-ibubbl-signature'];
+  if (!verifySignature(req.rawBody, signature, process.env.IBUBBL_WEBHOOK_SECRET)) {
+    return res.status(401).send('invalid signature');
+  }
+  const event = req.body; // already parsed; safe to use once verified
+  // de-duplicate on event.id, queue the work...
+  res.sendStatus(200);
+});
+```
+
+</Accordion>
+
+<Accordion title="FastAPI / Starlette — read the body first" icon="python">
+
+`await request.body()` returns the raw bytes. Read them before any parsing, and don't declare a Pydantic body parameter on the route.
+
+```python
+import json
+import os
+
+from fastapi import FastAPI, HTTPException, Request
+
+from verify_signature import verify_signature
+
+app = FastAPI()
+
+
+@app.post("/ibubbl-webhooks")
+async def receive_webhook(request: Request):
+    body_bytes = await request.body()
+    signature = request.headers.get("x-ibubbl-signature")  # any case matches
+
+    if not verify_signature(body_bytes, signature, os.environ["IBUBBL_WEBHOOK_SECRET"]):
+        raise HTTPException(status_code=401, detail="invalid signature")
+
+    event = json.loads(body_bytes)
+    # de-duplicate on event["id"], queue the work...
+    return {"ok": True}
+```
+
+</Accordion>
+
+<Accordion title="Next.js (App Router) — read the bytes in the route handler" icon="react">
+
+Read the body as bytes with `request.arrayBuffer()` and verify them before parsing. `await request.text()` followed by `Buffer.from(text, 'utf-8')` gives the same bytes, but reading bytes directly is the safer habit.
+
+```javascript
+// app/api/ibubbl-webhooks/route.js
+import { NextResponse } from 'next/server';
+import { verifySignature } from '@/lib/verify-signature';
+
+export const runtime = 'nodejs'; // verifySignature uses node:crypto and Buffer
+
+export async function POST(request) {
+  const bodyBytes = Buffer.from(await request.arrayBuffer());
+  const signature = request.headers.get('x-ibubbl-signature'); // any case matches
+
+  if (!verifySignature(bodyBytes, signature, process.env.IBUBBL_WEBHOOK_SECRET)) {
+    return new NextResponse('invalid signature', { status: 401 });
+  }
+
+  const event = JSON.parse(bodyBytes.toString('utf-8'));
+  // de-duplicate on event.id, queue the work...
+  return NextResponse.json({ ok: true });
+}
+```
+
+On the Pages Router, turn the built-in parser off for the route (`export const config = { api: { bodyParser: false } }`) and read the request stream into a `Buffer` yourself.
+
+</Accordion>
+
+</AccordionGroup>
+
+## Common pitfalls
+
+<Warning>
+**Don't re-serialize the body before verifying.** Any middleware that parses and re-stringifies JSON produces different bytes: spacing, key order and `\u` escapes all change. Only the raw bytes as received verify.
+</Warning>
+
+<Warning>
+**Don't hex-decode the secret.** The HMAC key is the whole string `whsec_a3f2c8d9…` encoded as UTF-8, not the decoded bytes of the hex part.
+</Warning>
+
+<Warning>
+**Don't skip the timestamp check.** The HMAC proves iBubbl sent the request; the timestamp stops a captured request from being replayed hours later. You need both.
+</Warning>
+
+- **Use a constant-time comparison:** `hmac.compare_digest` (Python) or `crypto.timingSafeEqual` (Node), never `==`.
+- **Don't skip verification "for testing."** Test shortcuts reach production. Use the [test vector](#test-vector) instead.
+- **Reject a bad signature with `401` and don't process the body.** Like any non-`2xx`, a `401` is a failed delivery: iBubbl retries it on the [normal schedule](/guides/webhook-retries) and then marks it dead. If valid deliveries are being rejected, check the raw body, the full `whsec_…` secret and the header name's case.
+
+## Next
+
+<CardGroup cols={2}>
+  <Card title="Receive messages" icon="inbox" href="/guides/receive-messages">
+    A complete receiver, including an auto-reply that can't loop.
+  </Card>
+  <Card title="Test webhooks locally" icon="laptop-code" href="/guides/test-webhooks-locally">
+    Receive real events on your laptop through a tunnel.
+  </Card>
+</CardGroup>

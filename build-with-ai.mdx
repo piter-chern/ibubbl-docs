@@ -115,7 +115,7 @@ WEBHOOKS
   body: HMAC-SHA256 of "{t}.{raw body bytes}" keyed with the whsec_ secret,
   compared in constant time; reject if t is more than 300 seconds old. Read
   the header name case-insensitively. Details:
-  https://docs.ibubbl.com/webhooks/signatures
+  https://docs.ibubbl.com/guides/webhook-signatures
 - Return a 2xx within 10 seconds and do the work asynchronously.
 - Delivery is at least once and in no guaranteed order. Deduplicate on the
   event id (evt_...) before doing anything.
@@ -128,4 +128,4 @@ WEBHOOKS
   adds new ones over time.
 ```
 
-The rules come from these pages, which have the details: [Message lifecycle](/concepts/message-lifecycle), [Limits and queues](/concepts/limits), [Lines and routing](/concepts/lines-and-routing), [Idempotency](/idempotency), [Errors](/errors), [Working hours](/concepts/working-hours), [Suppression and opt-outs](/concepts/suppression), [Webhook events](/webhooks/events) and [Signature verification](/webhooks/signatures).
+The rules come from these pages, which have the details: [Message lifecycle](/concepts/message-lifecycle), [Limits and queues](/concepts/limits), [Lines and routing](/concepts/lines-and-routing), [Idempotency](/idempotency), [Errors](/errors), [Working hours](/concepts/working-hours), [Suppression and opt-outs](/concepts/suppression), [Webhook events](/webhooks/events) and [Signature verification](/guides/webhook-signatures).

@@ -1,0 +1,302 @@
+---
+title: 'Receive messages'
+description: 'Handle replies, group messages, attachments and opt-outs, and build an auto-reply that cannot loop.'
+---
+
+When a contact texts your line, iBubbl POSTs a [`message.inbound`](/webhooks/events) event to your webhook endpoint. This guide shows what that event contains, how to handle attachments and STOP replies, and a complete auto-reply receiver that's safe to run in production.
+
+You need a webhook subscription that includes `message.inbound`. The [Quickstart](/quickstart) creates one, and [Test webhooks locally](/guides/test-webhooks-locally) shows how to point one at your laptop.
+
+## The `message.inbound` event
+
+```json
+{
+  "id": "evt_8b3a4e72-1c2d-4e5f-9a0b-2c3d4e5f6a7b",
+  "type": "message.inbound",
+  "created_at": "2026-11-10T15:06:12.456Z",
+  "data": {
+    "message_id": "5b6c7d8e-9f0a-1b2c-3d4e-5f6a7b8c9d0e",
+    "from_number": "+14155551234",
+    "to_number": "+14155550100",
+    "body": "yeah sounds good, what time?",
+    "received_at": "2026-11-10T15:06:12.456Z",
+    "attachments": [],
+    "reply_to_message_id": null,
+    "conversation_kind": "one_to_one",
+    "sender_phone": "+14155551234",
+    "participants": [
+      {"phone": "+14155551234", "first_name": "Sam", "last_name": "Lee"}
+    ]
+  }
+}
+```
+
+| Field | Meaning |
+| ----- | ------- |
+| `message_id` | The inbound message's ID. [`GET /v1/messages/{id}`](/api-reference/messages/retrieve) works with it, and returns the `contact_id` and, for a group, the `chat_guid`. |
+| `from_number` | Who sent it, exactly as iMessage reported it: usually E.164, but it can be an Apple ID email address, or a number without the leading `+` for some SMS senders. Don't pass it straight into `to`. |
+| `to_number` | Your iBubbl line that received it. |
+| `conversation_kind` | `one_to_one` or `group`. |
+| `sender_phone` | The sender. Always equal to `from_number`; in a group it tells you which participant posted. |
+| `participants` | Everyone in the conversation except your line. `first_name` and `last_name` can be `null`. |
+| `reply_to_message_id` | Set when the contact quoted one of your messages. |
+
+Only messages **from your contacts** fire `message.inbound`. Messages your line sends, whether through the API or the dashboard, fire `message.queued`, `message.sent` and the other status events instead, never `message.inbound`.
+
+### Group messages
+
+In a group, `conversation_kind` is `"group"`, `sender_phone` is the participant who posted, and `participants` lists the group. The event doesn't carry the group's `chat_guid`: to reply into the group, call [`GET /v1/messages/{message_id}`](/api-reference/messages/retrieve) with the inbound `message_id` and send with the `chat_guid` it returns. See [Group conversations](/concepts/group-conversations).
+
+### Attachments
+
+When the contact sends images, GIFs, videos, audio or files, the event fires **once**, after every attachment has been fetched, and `attachments` lists them:
+
+```json
+{
+  "id": "6c7d8e9f-0a1b-2c3d-4e5f-6a7b8c9d0e1f",
+  "kind": "image",
+  "mime_type": "image/jpeg",
+  "url": "https://…signed download URL…",
+  "expires_at": "2026-11-11T15:06:12.456Z",
+  "size_bytes": 204811,
+  "width": 1170,
+  "height": 2532
+}
+```
+
+- `url` is a signed link that **expires after 24 hours** (`expires_at`). If you need the file, download it and store it yourself as soon as the event arrives; a retried delivery carries the same URL, so a late retry may already be expired.
+- An attachment iBubbl couldn't fetch has `"unavailable": true` and no `url`. Don't treat it as an error; the text (if any) is still in `body`.
+- `kind` is `image`, `gif`, `video`, `audio` or `file`. Unsupported types are left out of the array.
+
+### STOP and opt-outs
+
+If the whole message is a STOP keyword (`stop`, `unsubscribe` and the others on [Suppression and opt-outs](/concepts/suppression)), iBubbl records the opt-out **before** it fires `message.inbound`, and fires a separate [`contact.opted_out`](/webhooks/events) event with `source: "auto_keyword"`. You receive **both** events, in either order.
+
+- Mark the contact do-not-contact in your system when `contact.opted_out` arrives.
+- Any send to them after that returns `422 contact_opted_out` (in a group, `422 group_outbound_blocked_suppression`). Treat it as final.
+
+## An auto-reply that cannot loop
+
+An auto-reply is where most messaging integrations go wrong: a reply triggers an event, which triggers a reply, and the line sends hundreds of messages. The receiver below avoids that with five rules:
+
+1. **Verify the signature on the raw body**, before parsing it. See [Signature verification](/guides/webhook-signatures).
+2. **De-duplicate on the event `id`, and acknowledge at once.** Deliveries are at-least-once; return `200` before doing slow work. See [Retries and deduplication](/guides/webhook-retries).
+3. **Act only on `message.inbound`.** Never send because of `message.sent`, `message.delivered`, `message.read`, `message.failed` or any other event about your own messages: that is the classic loop.
+4. **Use a deterministic `idempotency_key`**: `"auto-reply-" + message_id`. However many times the same inbound event reaches you, iBubbl sends that reply at most once.
+5. **Reply at most once per conversation per cooldown.** If the other side is also a bot, it answers your auto-reply and you answer back. A contact's reply resets iBubbl's [unanswered limit](/concepts/limits), so that limit won't stop a bot-to-bot exchange; your cooldown will.
+
+It also resolves where to reply with `GET /v1/messages/{id}`, so an Apple ID email in `from_number` or a group conversation never breaks the send, and it treats every `4xx` as final.
+
+<CodeGroup>
+
+```typescript TypeScript (Express)
+import express from "express";
+import { verifySignature } from "./verify-signature"; // the verifier from the Signature verification guide
+
+const API = "https://api.ibubbl.com";
+const HEADERS = {
+  Authorization: `Bearer ${process.env.IBUBBL_API_KEY}`,
+  "Content-Type": "application/json",
+};
+const AUTO_REPLY = "Thanks for your message! We'll get back to you shortly.";
+const COOLDOWN_MS = 60 * 60 * 1000; // one auto-reply per conversation per hour
+
+// In-memory for the example. In production, use your database: a table with a
+// unique constraint on the event id, shared by every instance of your app.
+const seenEventIds = new Set<string>();
+const lastAutoReplyAt = new Map<string, number>(); // conversation_id -> ms
+
+const app = express();
+
+// express.raw keeps the exact bytes iBubbl signed; express.json would not.
+app.post("/ibubbl-webhooks", express.raw({ type: "application/json" }), (req, res) => {
+  // Node lower-cases header names: req.headers["X-iBubbl-Signature"] is undefined.
+  const signature = req.headers["x-ibubbl-signature"];
+  if (!verifySignature(req.body, signature, process.env.IBUBBL_WEBHOOK_SECRET!)) {
+    return res.status(401).send("invalid signature");
+  }
+
+  const event = JSON.parse(req.body.toString("utf-8"));
+
+  // At-least-once delivery: handle each event id once.
+  if (seenEventIds.has(event.id)) return res.sendStatus(200);
+  seenEventIds.add(event.id);
+
+  // Acknowledge now; do the work after the response.
+  res.sendStatus(200);
+
+  // Only a contact's message may trigger a send. Never react to
+  // message.sent / delivered / read / failed: that loops.
+  if (event.type !== "message.inbound") return;
+
+  autoReply(event.data.message_id).catch((err) => console.error("auto-reply failed", err));
+});
+
+async function autoReply(inboundMessageId: string): Promise<void> {
+  // Where to reply: contact_id for one-to-one, chat_guid for a group.
+  const lookup = await fetch(`${API}/v1/messages/${inboundMessageId}`, {
+    headers: HEADERS,
+    signal: AbortSignal.timeout(10_000),
+  });
+  if (!lookup.ok) throw new Error(`lookup ${lookup.status}`);
+  const inbound = await lookup.json();
+
+  // Cooldown per conversation, claimed before sending.
+  const last = lastAutoReplyAt.get(inbound.conversation_id) ?? 0;
+  if (Date.now() - last < COOLDOWN_MS) return;
+  lastAutoReplyAt.set(inbound.conversation_id, Date.now());
+
+  const target =
+    inbound.conversation_kind === "group"
+      ? { chat_guid: inbound.chat_guid }
+      : { contact_id: inbound.contact_id };
+
+  // Deterministic key: a repeated event can never send a second reply.
+  const payload = JSON.stringify({
+    ...target,
+    body: AUTO_REPLY,
+    idempotency_key: `auto-reply-${inboundMessageId}`,
+  });
+
+  for (let attempt = 0; attempt < 3; attempt++) {
+    let res: Response;
+    try {
+      res = await fetch(`${API}/v1/messages`, {
+        method: "POST",
+        headers: HEADERS,
+        body: payload, // the same payload and key on every attempt
+        signal: AbortSignal.timeout(10_000),
+      });
+    } catch {
+      await new Promise((r) => setTimeout(r, 2 ** attempt * 1000)); // network error or timeout
+      continue;
+    }
+    if (res.ok) return; // 202: accepted
+    const error = (await res.json().catch(() => ({}))).detail?.error;
+    if (res.status < 500) {
+      // 4xx is final: contact_opted_out, unresponsive_contact, contact_blocked, ...
+      console.warn(`auto-reply not sent: ${res.status} ${error}`);
+      return;
+    }
+    await new Promise((r) => setTimeout(r, 2 ** attempt * 1000)); // 5xx: back off, retry
+  }
+}
+
+app.listen(8000);
+```
+
+```python Python (FastAPI)
+import json
+import os
+import time
+
+import requests
+from fastapi import BackgroundTasks, FastAPI, HTTPException, Request
+
+from verify_signature import verify_signature  # the verifier from the Signature verification guide
+
+API = "https://api.ibubbl.com"
+HEADERS = {"Authorization": f"Bearer {os.environ['IBUBBL_API_KEY']}"}
+AUTO_REPLY = "Thanks for your message! We'll get back to you shortly."
+COOLDOWN_SECONDS = 60 * 60  # one auto-reply per conversation per hour
+
+# In-memory for the example. In production, use your database: a table with a
+# unique constraint on the event id, shared by every instance of your app.
+seen_event_ids: set[str] = set()
+last_auto_reply_at: dict[str, float] = {}  # conversation_id -> unix time
+
+app = FastAPI()
+
+
+@app.post("/ibubbl-webhooks")
+async def receive(request: Request, background: BackgroundTasks):
+    # Read the raw bytes iBubbl signed, before any parsing.
+    body = await request.body()
+    # Starlette headers are case-insensitive; any spelling works.
+    signature = request.headers.get("x-ibubbl-signature")
+    if not verify_signature(body, signature, os.environ["IBUBBL_WEBHOOK_SECRET"]):
+        raise HTTPException(status_code=401, detail="invalid signature")
+
+    event = json.loads(body)
+
+    # At-least-once delivery: handle each event id once.
+    if event["id"] in seen_event_ids:
+        return {"ok": True}
+    seen_event_ids.add(event["id"])
+
+    # Only a contact's message may trigger a send. Never react to
+    # message.sent / delivered / read / failed: that loops.
+    if event["type"] == "message.inbound":
+        # Runs after the response is sent, so iBubbl gets its 200 at once.
+        background.add_task(auto_reply, event["data"]["message_id"])
+    return {"ok": True}
+
+
+def auto_reply(inbound_message_id: str) -> None:
+    # Where to reply: contact_id for one-to-one, chat_guid for a group.
+    lookup = requests.get(
+        f"{API}/v1/messages/{inbound_message_id}", headers=HEADERS, timeout=10,
+    )
+    lookup.raise_for_status()
+    inbound = lookup.json()
+
+    # Cooldown per conversation, claimed before sending.
+    conversation_id = inbound["conversation_id"]
+    if time.time() - last_auto_reply_at.get(conversation_id, 0) < COOLDOWN_SECONDS:
+        return
+    last_auto_reply_at[conversation_id] = time.time()
+
+    if inbound["conversation_kind"] == "group":
+        target = {"chat_guid": inbound["chat_guid"]}
+    else:
+        target = {"contact_id": inbound["contact_id"]}
+
+    # Deterministic key: a repeated event can never send a second reply.
+    payload = {
+        **target,
+        "body": AUTO_REPLY,
+        "idempotency_key": f"auto-reply-{inbound_message_id}",
+    }
+
+    for attempt in range(3):
+        try:
+            # The same payload and key on every attempt.
+            res = requests.post(f"{API}/v1/messages", headers=HEADERS, json=payload, timeout=10)
+        except requests.RequestException:
+            time.sleep(2 ** attempt)  # network error or timeout
+            continue
+        if res.ok:
+            return  # 202: accepted
+        if res.status_code < 500:
+            # 4xx is final: contact_opted_out, unresponsive_contact, contact_blocked, ...
+            error = res.json().get("detail", {}).get("error") if res.content else None
+            print(f"auto-reply not sent: {res.status_code} {error}")
+            return
+        time.sleep(2 ** attempt)  # 5xx: back off, retry
+```
+
+</CodeGroup>
+
+A few notes on the design:
+
+- **Why both de-duplication and a deterministic key?** The event-`id` check skips work you've already done. The key is the guarantee: even if two instances of your app process the same event at the same moment, iBubbl sends that reply once. The [Idempotency](/idempotency) page explains replays.
+- **STOP needs no special case.** The opt-out is recorded before `message.inbound` fires, so a reply to a STOP comes back `422 contact_opted_out` and the code stops.
+- **Working hours still apply.** An auto-reply sent outside the contact's [sending hours](/concepts/working-hours) waits as `pending` until they open. The one thing allowed to answer straight away outside sending hours is the built-in [after-hours auto-reply](/concepts/after-hours-reply) workflow; use it for "we're closed" replies instead of building your own.
+- **Groups.** The sample replies into groups too. Many integrations prefer to auto-reply only in `one_to_one` conversations: return early when `conversation_kind` is `"group"`.
+
+## Next
+
+<CardGroup cols={2}>
+  <Card title="Signature verification" icon="shield-check" href="/guides/webhook-signatures">
+    The `verifySignature` used above, with a test vector.
+  </Card>
+  <Card title="Test webhooks locally" icon="laptop-code" href="/guides/test-webhooks-locally">
+    Run this receiver on your laptop with a tunnel.
+  </Card>
+  <Card title="Retries and deduplication" icon="rotate" href="/guides/webhook-retries">
+    The retry schedule and why events arrive twice or out of order.
+  </Card>
+  <Card title="Webhook events" icon="list" href="/webhooks/events">
+    Every event type and its payload.
+  </Card>
+</CardGroup>

@@ -37,6 +37,7 @@ Webhook payloads identify the contact and line by **phone number** (`from_number
 
 - **Events can arrive out of order.** Retries, and events that fire close together, mean `message.read` can reach you before `message.delivered`. Order by the envelope's `created_at` (and treat `status` transitions as described below), not by arrival time.
 - **Events can arrive more than once.** Delivery is at-least-once. De-duplicate on the envelope `id`; for the rare case where the same change is recorded twice, also de-duplicate on `data.message_id` plus `type`.
+- **Failed deliveries are retried** up to 5 times over about 37 minutes. See [Retries and deduplication](/guides/webhook-retries) for the schedule and de-duplication code.
 - **A message's status can move "backwards".** `message.failed` can follow `message.sent` (and even `message.read`), and a failed message can later move to `delivered` or `read`. See [`message.failed`](#message-failed). When in doubt, `GET /v1/messages/{id}` returns the current state.
 
 ## Event types

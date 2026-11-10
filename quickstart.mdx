@@ -278,7 +278,7 @@ In about ten minutes you'll send a real iMessage from your iBubbl line to your o
     Return any `2xx` within 10 seconds, or iBubbl retries the delivery.
 
     <Warning>
-    **Before you go live:** verify the `X-iBubbl-Signature` header on every request ([Signature verification](/webhooks/signatures)), de-duplicate on the event `id`, and only ever send automatically in response to `message.inbound`. Sending in response to `message.sent` or another status event of your own messages makes a loop.
+    **Before you go live:** verify the `X-iBubbl-Signature` header on every request ([Signature verification](/guides/webhook-signatures)), de-duplicate on the event `id`, and only ever send automatically in response to `message.inbound`. Sending in response to `message.sent` or another status event of your own messages makes a loop.
     </Warning>
 
     Subscriptions can't be edited. When you're done testing, revoke this one with [`DELETE /v1/webhooks/{subscription_id}`](/api-reference/webhooks/revoke) and create your production subscription.
@@ -291,8 +291,11 @@ In about ten minutes you'll send a real iMessage from your iBubbl line to your o
   <Card title="Webhook events" icon="list" href="/webhooks/events">
     Every event type and its payload.
   </Card>
-  <Card title="Send a message" icon="paper-plane" href="/api-reference/messages/send">
+  <Card title="Send messages" icon="paper-plane" href="/guides/send-messages">
     All four ways to address a message, including groups.
+  </Card>
+  <Card title="Receive messages" icon="inbox" href="/guides/receive-messages">
+    Replies, attachments, opt-outs, and an auto-reply that can't loop.
   </Card>
   <Card title="Errors" icon="triangle-exclamation" href="/errors">
     Every error code, and which ones to retry.

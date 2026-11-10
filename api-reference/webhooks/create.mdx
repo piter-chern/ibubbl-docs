@@ -47,7 +47,7 @@ curl -X POST https://api.ibubbl.com/v1/webhooks \
   "warning": "Save this secret now — it cannot be retrieved again. Use it to verify the X-iBubbl-Signature header on incoming webhook POSTs (HMAC-SHA256 over `{t}.{raw body}`)."
 }
 ```
-Store `secret` now; later responses only show `secret_prefix`. See [Signatures](/webhooks/signatures).
+Store `secret` now; later responses only show `secret_prefix`. See [Signatures](/guides/webhook-signatures).
 
 **401 Unauthorized**
 ```json

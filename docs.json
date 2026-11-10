@@ -55,6 +55,11 @@
       {
         "group": "Guides",
         "pages": [
+          "guides/send-messages",
+          "guides/receive-messages",
+          "guides/webhook-signatures",
+          "guides/test-webhooks-locally",
+          "guides/webhook-retries",
           "inbound-events/overview"
         ]
       },
@@ -62,8 +67,7 @@
         "group": "Webhooks",
         "pages": [
           "webhooks/overview",
-          "webhooks/events",
-          "webhooks/signatures"
+          "webhooks/events"
         ]
       },
       {
@@ -119,5 +123,11 @@
     "playground": {
       "display": "simple"
     }
-  }
+  },
+  "redirects": [
+    {
+      "source": "/webhooks/signatures",
+      "destination": "/guides/webhook-signatures"
+    }
+  ]
 }

@@ -1,0 +1,123 @@
+---
+title: 'Retries and deduplication'
+description: 'When iBubbl retries a webhook, why the same event can arrive twice or out of order, and how to de-duplicate.'
+---
+
+iBubbl delivers every webhook **at least once**. If your endpoint fails, the event is retried on a fixed schedule, so your handler has to cope with the same event arriving more than once, and with events arriving out of order.
+
+## What counts as a failure
+
+A delivery succeeds only when your endpoint returns a **`2xx` within 10 seconds**. Everything else is a failure and gets retried:
+
+- any `4xx` or `5xx`, including a `401` from your own signature check;
+- any `3xx`: redirects are **not** followed, so register the final URL;
+- no response within 10 seconds, or a connection that can't be made (shown as code `0` in the dashboard).
+
+## Retry schedule
+
+| Attempt | When |
+| ------- | ---- |
+| 1 | Within about 30 seconds of the event |
+| 2 | 30 seconds after attempt 1 fails |
+| 3 | 1 minute after attempt 2 fails |
+| 4 | 5 minutes after attempt 3 fails |
+| 5 | 30 minutes after attempt 4 fails |
+
+After the 5th failed attempt the delivery is marked **dead** and never retried. From the first attempt to the last is about **37 minutes**.
+
+iBubbl sends deliveries in batches every 30 seconds, so each attempt can arrive up to 30 seconds after the time above, and a burst of events can add more delay. Don't build logic on exact timings.
+
+Every attempt carries the **same body** and the same event `id`, but a **new signature timestamp**: each attempt is signed when it is sent, so a retry always passes the 5-minute [replay check](/guides/webhook-signatures#replay-protection).
+
+### What iBubbl does not do
+
+- **No auto-disable.** However many deliveries fail, your subscription stays active, and new events keep trying. Only you can turn it off, by [revoking it](/api-reference/webhooks/revoke).
+- **No replay.** A dead delivery isn't resent, and there's no endpoint to resend it. To catch up after an outage, read the current state with [`GET /v1/messages/{id}`](/api-reference/messages/retrieve) for the messages you care about.
+- **No delivery to revoked or later subscriptions.** Revoking a subscription stops its pending retries. A subscription you create after an event doesn't receive that event.
+
+### Watching deliveries
+
+The dashboard's **Settings → Webhooks → Recent deliveries** shows every attempt: status (Delivered, Pending or Dead), event type, your response code, the attempt number out of 5, and the time. Delivery records are kept for **30 days**. [Test webhooks locally](/guides/test-webhooks-locally) explains each column.
+
+## Return `2xx` fast
+
+The 10-second timeout is firm. A slow handler fails even when it eventually succeeds, and then gets the same event again. Verify the signature, record the event, return `2xx`, and do the real work afterwards in a queue or background task.
+
+## At least once: de-duplicate
+
+The same event can reach you more than once:
+
+- your endpoint processed it but the response was lost, timed out or wasn't `2xx`;
+- you have two subscriptions that both match the event type: each gets its own delivery, with the **same** event `id`;
+- in rare cases iBubbl records the same change twice as two events (for example, the `message.sent` for a new group's first message).
+
+**De-duplicate on the envelope `id`** (`evt_…`), which is identical on every retry and across subscriptions. For the rare double-recorded change, also de-duplicate on **`data.message_id` plus `type`**. Don't de-duplicate on body content: different events can have identical payloads.
+
+<CodeGroup>
+
+```typescript TypeScript
+// A unique constraint does the de-duplication atomically, across every
+// instance of your app. Example table:
+//   CREATE TABLE processed_webhook_events (
+//     event_id text PRIMARY KEY,
+//     message_key text UNIQUE  -- data.message_id + ':' + type, when present
+//   );
+import type { Pool } from "pg";
+
+export async function isFirstDelivery(db: Pool, event: { id: string; type: string; data: { message_id?: string } }) {
+  const messageKey = event.data.message_id ? `${event.data.message_id}:${event.type}` : null;
+  const result = await db.query(
+    "INSERT INTO processed_webhook_events (event_id, message_key) VALUES ($1, $2) ON CONFLICT DO NOTHING",
+    [event.id, messageKey],
+  );
+  return result.rowCount === 1; // false: already seen, return 2xx and stop
+}
+```
+
+```python Python
+# A unique constraint does the de-duplication atomically, across every
+# instance of your app. Example table:
+#   CREATE TABLE processed_webhook_events (
+#     event_id text PRIMARY KEY,
+#     message_key text UNIQUE  -- data.message_id + ':' + type, when present
+#   );
+def is_first_delivery(conn, event: dict) -> bool:
+    message_id = event["data"].get("message_id")
+    message_key = f"{message_id}:{event['type']}" if message_id else None
+    with conn.cursor() as cur:
+        cur.execute(
+            "INSERT INTO processed_webhook_events (event_id, message_key) "
+            "VALUES (%s, %s) ON CONFLICT DO NOTHING",
+            (event["id"], message_key),
+        )
+        first = cur.rowcount == 1  # False: already seen, return 2xx and stop
+    conn.commit()
+    return first
+```
+
+</CodeGroup>
+
+Return `2xx` for a duplicate too: an error would only make iBubbl retry it again.
+
+<Note>
+The `message_key` check drops a second event of the same `type` for the same message. That's right for every `message.*` status event. For `message.edited`, a contact can edit one message up to five times, each a real, separate event, so leave `message_key` empty for edits. Reaction events carry `reaction_id` rather than `message_id`, so the event `id` alone covers them.
+</Note>
+
+## Out of order: don't trust arrival order
+
+Events can arrive in a different order than they happened: a retry of an older event can land after a newer one, and events in the same batch aren't sent in a fixed order. For example, `message.read` can arrive before `message.delivered`, and `contact.opted_out` before or after the `message.inbound` that triggered it.
+
+- Order events by the envelope's `created_at`, not by when they arrived.
+- Don't let a late event move a message backwards in your store: once you've recorded `read`, ignore a later-arriving `delivered`. A message can genuinely move from `sent` to `failed`, though; see [Statuses that move backwards](/concepts/message-lifecycle#statuses-that-move-backwards).
+- When in doubt, [`GET /v1/messages/{id}`](/api-reference/messages/retrieve) returns the current state.
+
+## Next
+
+<CardGroup cols={2}>
+  <Card title="Receive messages" icon="inbox" href="/guides/receive-messages">
+    A complete receiver, with de-duplication and a safe auto-reply.
+  </Card>
+  <Card title="Webhook events" icon="list" href="/webhooks/events">
+    Every event type and its payload.
+  </Card>
+</CardGroup>

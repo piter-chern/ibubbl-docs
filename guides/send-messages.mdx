@@ -1,0 +1,396 @@
+---
+title: 'Send messages'
+description: 'Send to a phone number, a saved contact, an existing group or a new group, then track what happened.'
+---
+
+Every send is one call to [`POST /v1/messages`](/api-reference/messages/send). It returns `202 Accepted` as soon as iBubbl has the message; your line sends it a moment later. This guide covers the four ways to address a message, what the `202` tells you, how to follow the message after that, and the errors that are specific to sending.
+
+<Warning>
+**Every request is live.** There is no sandbox: each call below sends a real message from your line. Test with your own phone number.
+</Warning>
+
+## Choose who to send to
+
+Address each message in **exactly one** of four ways. Sending two of them (or none) returns `422 validation_error`.
+
+| Field | Sends | Use it when |
+| ----- | ----- | ----------- |
+| `to` | One-to-one, by E.164 phone number | You have a number. If no contact has it yet, one is created. |
+| `contact_id` | One-to-one, to a saved contact | You stored the `contact_id` from an earlier send or from [`POST /v1/contacts`](/api-reference/contacts/upsert). |
+| `chat_guid` | Into an existing group | You're replying in a group. Webhooks don't carry it: read it from [`GET /v1/messages/{id}`](/api-reference/messages/retrieve) for any message in the group. |
+| `participant_phones` (+ `group_name`) | A new group, created by this message | You're starting a group with 2 or more people. |
+
+Every request also needs `body` and an `idempotency_key`. Generate the key **once per message**, before the first attempt, and send the same key if you retry; see [Idempotency](/idempotency).
+
+<Tabs>
+  <Tab title="To phone">
+    `to` must be E.164: `+`, the country code, then the number, with no spaces or punctuation.
+
+    <CodeGroup>
+
+    ```bash cURL
+    # One key per message: generate it once, and reuse it if you retry.
+    IDEMPOTENCY_KEY=$(uuidgen)
+
+    curl -X POST https://api.ibubbl.com/v1/messages \
+      -H "Authorization: Bearer $IBUBBL_API_KEY" \
+      -H "Content-Type: application/json" \
+      -d "{
+        \"to\": \"+14155551234\",
+        \"body\": \"Hi Sam, your order shipped today.\",
+        \"idempotency_key\": \"$IDEMPOTENCY_KEY\"
+      }"
+    ```
+
+    ```typescript TypeScript
+    import { randomUUID } from "node:crypto";
+
+    // One key per message: generate it once, and reuse it if you retry.
+    const idempotencyKey = randomUUID();
+
+    const res = await fetch("https://api.ibubbl.com/v1/messages", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${process.env.IBUBBL_API_KEY}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        to: "+14155551234",
+        body: "Hi Sam, your order shipped today.",
+        idempotency_key: idempotencyKey,
+      }),
+      signal: AbortSignal.timeout(10_000),
+    });
+
+    const message = await res.json();
+    if (!res.ok) throw new Error(`${res.status} ${message.detail?.error}`);
+    console.log(message.id, message.status);
+    ```
+
+    ```python Python
+    import os
+    import uuid
+
+    import requests
+
+    # One key per message: generate it once, and reuse it if you retry.
+    idempotency_key = str(uuid.uuid4())
+
+    res = requests.post(
+        "https://api.ibubbl.com/v1/messages",
+        headers={"Authorization": f"Bearer {os.environ['IBUBBL_API_KEY']}"},
+        json={
+            "to": "+14155551234",
+            "body": "Hi Sam, your order shipped today.",
+            "idempotency_key": idempotency_key,
+        },
+        timeout=10,
+    )
+    res.raise_for_status()
+    message = res.json()
+    print(message["id"], message["status"])
+    ```
+
+    </CodeGroup>
+  </Tab>
+
+  <Tab title="Contact ID">
+    Use the `contact_id` from an earlier `202` or from [`POST /v1/contacts`](/api-reference/contacts/upsert). An unknown ID returns `404 not_found`.
+
+    <CodeGroup>
+
+    ```bash cURL
+    # One key per message: generate it once, and reuse it if you retry.
+    IDEMPOTENCY_KEY=$(uuidgen)
+
+    curl -X POST https://api.ibubbl.com/v1/messages \
+      -H "Authorization: Bearer $IBUBBL_API_KEY" \
+      -H "Content-Type: application/json" \
+      -d "{
+        \"contact_id\": \"c8a1f4e2-3b9d-4f7c-a8e5-1d2c3b4a5e6f\",
+        \"body\": \"Hi Sam, your order shipped today.\",
+        \"idempotency_key\": \"$IDEMPOTENCY_KEY\"
+      }"
+    ```
+
+    ```typescript TypeScript
+    import { randomUUID } from "node:crypto";
+
+    // One key per message: generate it once, and reuse it if you retry.
+    const idempotencyKey = randomUUID();
+
+    const res = await fetch("https://api.ibubbl.com/v1/messages", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${process.env.IBUBBL_API_KEY}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        contact_id: "c8a1f4e2-3b9d-4f7c-a8e5-1d2c3b4a5e6f",
+        body: "Hi Sam, your order shipped today.",
+        idempotency_key: idempotencyKey,
+      }),
+      signal: AbortSignal.timeout(10_000),
+    });
+
+    const message = await res.json();
+    if (!res.ok) throw new Error(`${res.status} ${message.detail?.error}`);
+    console.log(message.id, message.status);
+    ```
+
+    ```python Python
+    import os
+    import uuid
+
+    import requests
+
+    # One key per message: generate it once, and reuse it if you retry.
+    idempotency_key = str(uuid.uuid4())
+
+    res = requests.post(
+        "https://api.ibubbl.com/v1/messages",
+        headers={"Authorization": f"Bearer {os.environ['IBUBBL_API_KEY']}"},
+        json={
+            "contact_id": "c8a1f4e2-3b9d-4f7c-a8e5-1d2c3b4a5e6f",
+            "body": "Hi Sam, your order shipped today.",
+            "idempotency_key": idempotency_key,
+        },
+        timeout=10,
+    )
+    res.raise_for_status()
+    message = res.json()
+    print(message["id"], message["status"])
+    ```
+
+    </CodeGroup>
+  </Tab>
+
+  <Tab title="Chat GUID">
+    Reply into an existing group. Get `chat_guid` from [`GET /v1/messages/{id}`](/api-reference/messages/retrieve) for any message in the group (an inbound `message_id` from a webhook works). It changes when someone is added to the group, and an old value returns `404 group_not_found`, so read it fresh rather than storing it forever. See [Group conversations](/concepts/group-conversations).
+
+    <CodeGroup>
+
+    ```bash cURL
+    # One key per message: generate it once, and reuse it if you retry.
+    IDEMPOTENCY_KEY=$(uuidgen)
+
+    curl -X POST https://api.ibubbl.com/v1/messages \
+      -H "Authorization: Bearer $IBUBBL_API_KEY" \
+      -H "Content-Type: application/json" \
+      -d "{
+        \"chat_guid\": \"any;+;067ace6caf6c43aaa2f7d643975e15ea\",
+        \"body\": \"Works for everyone? See you at 3.\",
+        \"idempotency_key\": \"$IDEMPOTENCY_KEY\"
+      }"
+    ```
+
+    ```typescript TypeScript
+    import { randomUUID } from "node:crypto";
+
+    // One key per message: generate it once, and reuse it if you retry.
+    const idempotencyKey = randomUUID();
+
+    const res = await fetch("https://api.ibubbl.com/v1/messages", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${process.env.IBUBBL_API_KEY}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        chat_guid: "any;+;067ace6caf6c43aaa2f7d643975e15ea",
+        body: "Works for everyone? See you at 3.",
+        idempotency_key: idempotencyKey,
+      }),
+      signal: AbortSignal.timeout(10_000),
+    });
+
+    const message = await res.json();
+    if (!res.ok) throw new Error(`${res.status} ${message.detail?.error}`);
+    console.log(message.id, message.status);
+    ```
+
+    ```python Python
+    import os
+    import uuid
+
+    import requests
+
+    # One key per message: generate it once, and reuse it if you retry.
+    idempotency_key = str(uuid.uuid4())
+
+    res = requests.post(
+        "https://api.ibubbl.com/v1/messages",
+        headers={"Authorization": f"Bearer {os.environ['IBUBBL_API_KEY']}"},
+        json={
+            "chat_guid": "any;+;067ace6caf6c43aaa2f7d643975e15ea",
+            "body": "Works for everyone? See you at 3.",
+            "idempotency_key": idempotency_key,
+        },
+        timeout=10,
+    )
+    res.raise_for_status()
+    message = res.json()
+    print(message["id"], message["status"])
+    ```
+
+    </CodeGroup>
+  </Tab>
+
+  <Tab title="New group">
+    List at least 2 people in E.164. Don't include your own line; iBubbl adds it. `group_name` is optional (at most 80 characters) and only allowed here. Fewer than 2 numbers returns `422 validation_error`; two forms of one person's number return `422 insufficient_participants`.
+
+    <CodeGroup>
+
+    ```bash cURL
+    # One key per message: generate it once, and reuse it if you retry.
+    IDEMPOTENCY_KEY=$(uuidgen)
+
+    curl -X POST https://api.ibubbl.com/v1/messages \
+      -H "Authorization: Bearer $IBUBBL_API_KEY" \
+      -H "Content-Type: application/json" \
+      -d "{
+        \"participant_phones\": [\"+14155551234\", \"+14155557654\"],
+        \"group_name\": \"Kitchen remodel\",
+        \"body\": \"Hi both, starting a thread for the remodel.\",
+        \"idempotency_key\": \"$IDEMPOTENCY_KEY\"
+      }"
+    ```
+
+    ```typescript TypeScript
+    import { randomUUID } from "node:crypto";
+
+    // One key per message: generate it once, and reuse it if you retry.
+    const idempotencyKey = randomUUID();
+
+    const res = await fetch("https://api.ibubbl.com/v1/messages", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${process.env.IBUBBL_API_KEY}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        participant_phones: ["+14155551234", "+14155557654"],
+        group_name: "Kitchen remodel",
+        body: "Hi both, starting a thread for the remodel.",
+        idempotency_key: idempotencyKey,
+      }),
+      signal: AbortSignal.timeout(10_000),
+    });
+
+    const message = await res.json();
+    if (!res.ok) throw new Error(`${res.status} ${message.detail?.error}`);
+    console.log(message.id, message.status, message.chat_guid); // chat_guid is null at first
+    ```
+
+    ```python Python
+    import os
+    import uuid
+
+    import requests
+
+    # One key per message: generate it once, and reuse it if you retry.
+    idempotency_key = str(uuid.uuid4())
+
+    res = requests.post(
+        "https://api.ibubbl.com/v1/messages",
+        headers={"Authorization": f"Bearer {os.environ['IBUBBL_API_KEY']}"},
+        json={
+            "participant_phones": ["+14155551234", "+14155557654"],
+            "group_name": "Kitchen remodel",
+            "body": "Hi both, starting a thread for the remodel.",
+            "idempotency_key": idempotency_key,
+        },
+        timeout=10,
+    )
+    res.raise_for_status()
+    message = res.json()
+    print(message["id"], message["status"], message["chat_guid"])  # chat_guid is None at first
+    ```
+
+    </CodeGroup>
+
+    The new group's `chat_guid` is `null` in the `202`. It fills in once the group exists in iMessage, which happens when the first message goes out; poll [`GET /v1/messages/{id}`](/api-reference/messages/retrieve) to read it.
+
+    <Warning>
+    **Don't auto-retry a timed-out new-group send.** If the request times out, a retry with the same key can create a second group. Check with [`GET /v1/messages/{id}`](/api-reference/messages/retrieve) or the dashboard first. See [Duplicates and retries](/concepts/message-lifecycle#duplicates-and-retries).
+    </Warning>
+  </Tab>
+</Tabs>
+
+## Read the `202` response
+
+```json
+{
+  "id": "8b3a4e72-1c2d-4e5f-9a0b-2c3d4e5f6a7b",
+  "status": "pending",
+  "to": "+14155551234",
+  "body": "Hi Sam, your order shipped today.",
+  "contact_id": "c8a1f4e2-3b9d-4f7c-a8e5-1d2c3b4a5e6f",
+  "conversation_id": "3a4b5c6d-7e8f-9a0b-1c2d-3e4f5a6b7c8d",
+  "conversation_kind": "one_to_one",
+  "chat_guid": null,
+  "channel": null,
+  "sent_at": "2026-11-10T15:04:10.112Z",
+  "held_until": null,
+  "held_reason": null
+}
+```
+
+`202` means **accepted, not sent**. Save the `id`. `status` is one of:
+
+| `status` | `held_reason` | What it means |
+| -------- | ------------- | ------------- |
+| `pending` | `null` | On its way: your line sends it shortly. |
+| `pending` | `working_hours` | Waiting for the contact's [sending hours](/concepts/working-hours). `held_until` says when it goes out. |
+| `pending` | `hourly_limit` | Waiting for the line's hourly limit on new contacts. `held_until` is an estimate. See [Limits and queues](/concepts/limits). |
+| `queued` | `null` | One-to-one only: the line's Mac is offline. It goes out when the Mac reconnects, or expires after about an hour. See [Offline lines](/concepts/limits#offline-lines). |
+
+A waiting message is not an error, so don't resend it: a new key would send a second message once the first goes out. For a group send, `to` is `null` and `conversation_kind` is `"group"`. `channel` stays `null` until the message is sent.
+
+## Track the message
+
+You have two ways to learn what happened next:
+
+- **Webhooks (recommended).** Subscribe to `message.sent`, `message.delivered`, `message.read`, `message.failed` and `message.cancelled`; each carries the `message_id` from the `202`. See [Webhook events](/webhooks/events) and [Receive messages](/guides/receive-messages).
+- **Polling.** [`GET /v1/messages/{id}`](/api-reference/messages/retrieve) returns the current `status`, `channel` (`imessage` or `sms`) and `held_*` fields.
+
+Use both where it matters. Some changes fire no webhook: a `queued` message that expires, for example. [Message lifecycle](/concepts/message-lifecycle) has every status, which ones are final, and which webhook each fires.
+
+## Errors when sending
+
+A refused send creates no message, so its `idempotency_key` stays unused and you can reuse it once you've fixed the request. Branch on `detail.error`, never on `detail.message`. The [Errors](/errors) page has the full catalog and the retry rules.
+
+| `detail.error` | HTTP | What to do |
+| -------------- | ---- | ---------- |
+| `validation_error` | 422 | Fix the request: zero or two addressing fields, a number not in E.164, an empty `body`, `group_name` without `participant_phones`, fewer than 2 `participant_phones`. |
+| `not_found` | 404 | The `contact_id` doesn't exist on this account. |
+| `group_not_found` | 404 | No group with that `chat_guid`. It may have changed when someone joined: read it again from `GET /v1/messages/{id}`. |
+| `idempotency_conflict` | 409 | You reused a key with a different payload. Send the original payload, or use a new key for a new message. |
+| `contact_opted_out` | 422 | Final. Never message this contact again. See [Suppression](/concepts/suppression). |
+| `contact_blocked` | 422 | The contact is blocked in your dashboard. |
+| `unresponsive_contact` | 422 | 6 messages in a row without a reply. Wait until the contact replies. |
+| `cold_cap_exhausted` | 422 | The line reached 50 new contacts today. Try again after midnight ET. |
+| `daily_cap_exhausted` | 422 | The line reached 1,000 messages today. Try again after midnight ET. |
+| `no_eligible_line` | 422 | No line can take a new contact right now (for example, its Mac is offline). |
+| `group_outbound_blocked_suppression` | 422 | Someone in the group has opted out; a new-group send also lists them in `blocked_phones`. |
+| `insufficient_participants` | 422 | The new group names fewer than 2 different people. |
+| `internal_error` | 500 | Retry with the **same** `idempotency_key` and payload, with backoff. |
+
+`401`, `403` and `500 no_owner_rep` are account problems, not send problems; see [Errors](/errors).
+
+## Next
+
+<CardGroup cols={2}>
+  <Card title="Receive messages" icon="inbox" href="/guides/receive-messages">
+    Handle replies, attachments and opt-outs, and auto-reply without loops.
+  </Card>
+  <Card title="Message lifecycle" icon="diagram-project" href="/concepts/message-lifecycle">
+    Every status, which ones are final and which webhook fires.
+  </Card>
+  <Card title="Limits and queues" icon="gauge" href="/concepts/limits">
+    The per-line limits, and how to pace sends.
+  </Card>
+  <Card title="Idempotency" icon="key" href="/idempotency">
+    Retry safely without sending twice.
+  </Card>
+</CardGroup>
