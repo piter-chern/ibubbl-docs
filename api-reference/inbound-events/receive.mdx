@@ -18,7 +18,7 @@ openapi: 'POST /v1/events/{token}'
 
 #### Example Request
 ```bash
-curl -X POST https://web-production-4e09a.up.railway.app/v1/events/ibev_<64 hex> \
+curl -X POST https://api.ibubbl.com/v1/events/ibev_<64 hex> \
   -H "Content-Type: application/json" \
   -H "X-iBubbl-Signature: t=1762354800,v1=<hex HMAC-SHA256 of '1762354800.' + body>" \
   -d '{"topic": "order/created", "customer": {"phone": "+14155551234", "first_name": "Sam"}}'

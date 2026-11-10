@@ -1915,7 +1915,7 @@
   },
   "servers": [
     {
-      "url": "https://web-production-4e09a.up.railway.app"
+      "url": "https://api.ibubbl.com"
     }
   ],
   "tags": [

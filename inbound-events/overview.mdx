@@ -35,7 +35,7 @@ finds the customer's phone number in the payload, and starts your workflow.
 ## The endpoint
 
 ```
-POST https://web-production-4e09a.up.railway.app/v1/events/<token>
+POST https://api.ibubbl.com/v1/events/<token>
 ```
 
 This is the one endpoint in the API that takes no `Authorization` header — the
@@ -93,7 +93,7 @@ rate limited.
 For example:
 
 ```bash
-curl -X POST https://web-production-4e09a.up.railway.app/v1/events/ibev_... \
+curl -X POST https://api.ibubbl.com/v1/events/ibev_... \
   -H "Content-Type: application/json" \
   -d '{"type": "lead.created", "lead": {"id": "evt_1", "phone": "3103843698", "first_name": "Ana"}}'
 ```
@@ -131,7 +131,7 @@ curl -X POST https://api.rechargeapps.com/webhooks \
   -H "X-Recharge-Access-Token: <your recharge token>" \
   -H "Content-Type: application/json" \
   -d '{
-    "address": "https://web-production-4e09a.up.railway.app/v1/events/ibev_...",
+    "address": "https://api.ibubbl.com/v1/events/ibev_...",
     "topic": "charge/failed"
   }'
 ```

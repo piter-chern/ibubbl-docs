@@ -19,7 +19,7 @@ openapi: 'POST /v1/webhooks'
 
 #### Example Request
 ```bash
-curl -X POST https://web-production-4e09a.up.railway.app/v1/webhooks \
+curl -X POST https://api.ibubbl.com/v1/webhooks \
   -H "Authorization: Bearer $IB_API_KEY" \
   -H "Content-Type: application/json" \
   -d '{
@@ -85,7 +85,7 @@ Other `error` value: `validation_error`, for example an unknown event type:
 {
   "detail": {
     "error": "validation_error",
-    "message": "event_types: unknown event type(s): message.bogus. See https://ibubbl.mintlify.app/webhooks/events"
+    "message": "event_types: unknown event type(s): message.bogus. See https://docs.ibubbl.com/webhooks/events"
   }
 }
 ```

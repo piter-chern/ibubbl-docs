@@ -28,7 +28,7 @@ import uuid
 
 import requests
 
-API_URL = "https://web-production-4e09a.up.railway.app/v1/messages"
+API_URL = "https://api.ibubbl.com/v1/messages"
 
 
 def send_with_retry(to: str, body: str, max_attempts: int = 3) -> dict:
@@ -58,7 +58,7 @@ def send_with_retry(to: str, body: str, max_attempts: int = 3) -> dict:
 ```javascript Node
 import crypto from 'node:crypto';
 
-const API_URL = 'https://web-production-4e09a.up.railway.app/v1/messages';
+const API_URL = 'https://api.ibubbl.com/v1/messages';
 
 async function sendWithRetry(to, body, maxAttempts = 3) {
   // One key per message: generated here, outside the retry loop.
@@ -91,7 +91,7 @@ async function sendWithRetry(to, body, maxAttempts = 3) {
 # Generate once per message, reuse on retry:
 IDEMPOTENCY_KEY=$(uuidgen)
 
-curl -X POST https://web-production-4e09a.up.railway.app/v1/messages \
+curl -X POST https://api.ibubbl.com/v1/messages \
   -H "Authorization: Bearer $IB_API_KEY" \
   -H "Content-Type: application/json" \
   -d "{
