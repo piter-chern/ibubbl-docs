@@ -16,7 +16,7 @@ Edit and Undo Send are iMessage features: they work on messages that went out ov
 `message_id` is the `id` from [Send a message](/api-reference/messages/send). Messages sent from the dashboard can be changed too; find them with [List messages](/api-reference/messages/list).
 
 <Note>
-**Messages sent through the API never get a link preview card.** A link in a message you send with `POST /v1/messages` goes out as part of a single text bubble, so the recipient sees the link as text. iBubbl builds a rich preview card only for a message typed in the dashboard (fetching the page for a card would count as a click on a tracked or one-time link). A dashboard message with a link is two bubbles, the text and the card: [Unsend](/api-reference/messages/unsend) takes back both, and [Edit](/api-reference/messages/edit) changes only the text before the link.
+**Messages with a link preview card are two bubbles.** A message sent with [`link_preview: true`](/guides/send-messages#send-a-link-with-a-preview-card), or typed in the dashboard, goes out as the text and then the card. An edit updates the text bubble in place and keeps the card; an unsend takes back both the text bubble and the card. A message sent through the API without `link_preview` is one plain text bubble.
 </Note>
 
 ## Edit a message
@@ -151,7 +151,7 @@ What happens next:
 The rules:
 
 - **Within 110 seconds of `sent_at`.** iMessage allows 2 minutes; iBubbl stops 10 seconds early. Then `422 unsend_window_expired`.
-- **One bubble.** A text message, or a single file on its own, is unsent whole. A message with files and text, or several files, gets `422 multi_part`: unsending part of a message is available in the dashboard only, for now. A dashboard message with a link preview is unsent text and card together.
+- **One bubble.** A text message, or a single file on its own, is unsent whole. A message with files and text, or several files, gets `422 multi_part`: unsending part of a message is available in the dashboard only, for now. A message with a link preview card (sent with `link_preview: true`, or typed in the dashboard) is unsent text and card together.
 - **Retries are safe.** Calling again while it's pending or done answers `200` and changes nothing.
 - **Not during an edit.** While an edit of the message is on its way, `409 edit_in_flight`.
 - **Opt-outs don't block it.** Undo Send only removes content, so it works for any contact.

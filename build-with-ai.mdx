@@ -216,7 +216,19 @@ EDIT, UNSEND AND CANCEL (messages you sent)
   fires, repeat calls are 200. 409 message_dispatching = too late, it goes
   out; 422 not_cancellable = already sent (unsend it instead). Edit/unsend
   of a message not sent yet is 422 not_sent_yet: cancel it instead.
-- API sends never get a link preview card; the link is plain text.
+- A message with a link preview card is two bubbles (text, then card): edit
+  changes only the text before the link; unsend takes back both.
+
+LINK PREVIEW CARDS
+- A link in POST /v1/messages arrives as plain text unless you set
+  "link_preview": true. The body must END in exactly one http(s) link with no
+  other link before it; one-to-one only; not with attachments, effect or
+  reply_to_message_id (all 422 validation_error).
+- The line fetches the page at send time to build the card: that counts as
+  a click. NEVER set link_preview on one-time links (login, password reset,
+  single-use invites or coupons) or on links whose clicks you track.
+- link_preview is part of the idempotency payload when true; the response
+  echoes it.
 
 RETRIES AND ERRORS
 - Branch on detail.error (the stable code), never on detail.message.

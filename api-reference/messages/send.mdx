@@ -23,6 +23,7 @@ openapi: 'POST /v1/messages'
 | `attachments` | array of 1–10 strings (`https` URLs) | No | Files to send: photos, GIFs, videos, PDFs or audio. iBubbl downloads each URL when the request arrives. One-to-one only (`to` or `contact_id`), and not with `effect` or `reply_to_message_id`. Types, size limits and the combinations allowed are in [Send attachments](/guides/attachments#supported-files-and-limits). Allow up to 60 seconds for the response. |
 | `reply_to_message_id` | string (UUID) | No | Send as an inline reply that quotes an earlier message: a message `id`, or the `message_id` of a [`message.inbound`](/webhooks/events) event. It must be in the conversation you're sending to (the same contact, or the same group); otherwise `422 reply_target_not_found`. iMessage only. Not allowed with `participant_phones` or `attachments`. See [Reply and send with effects](/guides/send-messages#reply-to-a-message-and-send-with-effects). |
 | `effect` | string | No | An iMessage effect: `slam`, `loud`, `gentle`, `invisible`, `echo`, `spotlight`, `balloons`, `confetti`, `love`, `lasers`, `fireworks`, `celebration` or `shooting_star`. iMessage only. Not allowed with `participant_phones` or `attachments`. |
+| `link_preview` | boolean, default `false` | No | Send the link with a preview card (the page's title and image), as when a person types it on an iPhone. Without it, a link goes out as plain text. `body` must end in exactly one `http` or `https` link, with no other link before it. One-to-one only (`to` or `contact_id`), and not with `attachments`, `effect` or `reply_to_message_id`. Anything else is refused with `422 validation_error`. See [Link preview cards](#link-preview-cards). |
 | `idempotency_key` | string, 1–128 characters | Yes | Your unique key for this send; a UUIDv4 is recommended. The same key with the same payload replays the original message; the same key with a different payload returns `409`. A key whose message ended `failed` or `expired` is released, and a retry sends a new message. See [Idempotency](/idempotency). |
 
 Fields not listed above are ignored without an error: the request still succeeds, and they are not stored.
@@ -30,6 +31,87 @@ Fields not listed above are ignored without an error: the request still succeeds
 `reply_to_message_id` and `effect` only show on iMessage. If the message goes out as SMS (RCS included), it is sent as plain text without the quote or the effect, and the API doesn't refuse it. `channel` on [Retrieve a message](/api-reference/messages/retrieve) tells you which way it went. Neither can be combined with `attachments`: that request is refused with `422 validation_error`. Both fields count toward the [idempotency](/idempotency) payload when set.
 
 `attachments` count toward the idempotency payload too, in order. A replay never downloads them again. A request whose files can't be downloaded or don't meet the limits is refused with a `422` and creates no message; see [Send attachments](/guides/attachments#errors).
+
+#### Link preview cards
+
+With `link_preview: true`, a message whose body is only a link arrives as one preview card. Text before the link arrives as its own bubble, followed by the card: two bubbles. [Edit](/api-reference/messages/edit) changes the text bubble and keeps the card; [Unsend](/api-reference/messages/unsend) takes back both. The card is built when the message goes out over iMessage, or over SMS or RCS where your line supports it. `link_preview` counts toward the idempotency payload when it's `true`, and the response echoes it.
+
+<Warning>
+**Your line opens the link when it sends the message.** To build the card, your line's Mac fetches the page at send time to read its title and image. That request counts as a visit and as a click on a tracked link. Don't set `link_preview` on one-time links: a login or password-reset link, a single-use invitation or a one-time coupon may be used up before the contact taps it.
+</Warning>
+
+<CodeGroup>
+
+```bash cURL
+# One key per message: generate it once, and reuse it if you retry.
+IDEMPOTENCY_KEY=$(uuidgen)
+
+curl -X POST https://api.ibubbl.com/v1/messages \
+  -H "Authorization: Bearer $IBUBBL_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d "{
+    \"to\": \"+14155551234\",
+    \"body\": \"Your order is on its way: https://example.com/track/1042\",
+    \"link_preview\": true,
+    \"idempotency_key\": \"$IDEMPOTENCY_KEY\"
+  }"
+```
+
+```typescript TypeScript
+import { randomUUID } from "node:crypto";
+
+// One key per message: generate it once, and reuse it if you retry.
+const idempotencyKey = randomUUID();
+
+const res = await fetch("https://api.ibubbl.com/v1/messages", {
+  method: "POST",
+  headers: {
+    Authorization: `Bearer ${process.env.IBUBBL_API_KEY}`,
+    "Content-Type": "application/json",
+  },
+  body: JSON.stringify({
+    to: "+14155551234",
+    body: "Your order is on its way: https://example.com/track/1042",
+    link_preview: true,
+    idempotency_key: idempotencyKey,
+  }),
+  signal: AbortSignal.timeout(10_000),
+});
+
+const data = await res.json();
+if (!res.ok) throw new Error(`${res.status} ${data.detail?.error}`);
+console.log(data.id, data.status, data.link_preview);
+```
+
+```python Python
+import os
+import uuid
+
+import requests
+
+API_KEY = os.environ["IBUBBL_API_KEY"]
+
+# One key per message: generate it once, and reuse it if you retry.
+idempotency_key = str(uuid.uuid4())
+
+res = requests.post(
+    "https://api.ibubbl.com/v1/messages",
+    headers={"Authorization": f"Bearer {API_KEY}"},
+    json={
+        "to": "+14155551234",
+        "body": "Your order is on its way: https://example.com/track/1042",
+        "link_preview": True,
+        "idempotency_key": idempotency_key,
+    },
+    timeout=10,
+)
+data = res.json()
+if not res.ok:
+    raise RuntimeError(f"{res.status_code} {data['detail']['error']}")
+print(data["id"], data["status"], data["link_preview"])
+```
+
+</CodeGroup>
 
 <RequestExample>
 
@@ -128,6 +210,7 @@ print(data["id"], data["status"])
   "held_until": null,
   "held_reason": null,
   "effect": "confetti",
+  "link_preview": false,
   "reply_to_message_id": "5f6a7b8c-9d0e-4f1a-8b2c-3d4e5f6a7b8c",
   "attachments": [],
   "edited_at": null,
@@ -168,6 +251,7 @@ print(data["id"], data["status"])
   "held_until": null,
   "held_reason": null,
   "effect": null,
+  "link_preview": false,
   "reply_to_message_id": null,
   "attachments": [],
   "edited_at": null,
@@ -177,7 +261,7 @@ print(data["id"], data["status"])
   "unsent_at": null
 }
 ```
-`status` is `pending` or `queued`. A message held by a capacity limit or an offline line is still accepted with `queued` and retried automatically. A message waiting for the contact's [working hours](/concepts/working-hours) or the line's hourly limit for new contacts is `pending`, with `held_until` and `held_reason` set. For a group send, `to` is `null` and `conversation_kind` is `"group"`; a new group's `chat_guid` is `null` until the group is created a few seconds later. `effect` and `reply_to_message_id` echo what you sent, or `null`. `attachments` lists the files the message carries, in your order, as `kind` (`image`, `gif`, `video`, `audio` or `file`), `mime_type` and `size_bytes`; it's `[]` for a text message. `direction` is always `outbound` here, and `created_at` is when iBubbl recorded the message; it never changes, and it's what [List messages](/api-reference/messages/list) sorts and filters by.
+`status` is `pending` or `queued`. A message held by a capacity limit or an offline line is still accepted with `queued` and retried automatically. A message waiting for the contact's [working hours](/concepts/working-hours) or the line's hourly limit for new contacts is `pending`, with `held_until` and `held_reason` set. For a group send, `to` is `null` and `conversation_kind` is `"group"`; a new group's `chat_guid` is `null` until the group is created a few seconds later. `effect` and `reply_to_message_id` echo what you sent, or `null`; `link_preview` is `true` when you asked for a [preview card](#link-preview-cards). `attachments` lists the files the message carries, in your order, as `kind` (`image`, `gif`, `video`, `audio` or `file`), `mime_type` and `size_bytes`; it's `[]` for a text message. `direction` is always `outbound` here, and `created_at` is when iBubbl recorded the message; it never changes, and it's what [List messages](/api-reference/messages/list) sorts and filters by.
 
 **401 Unauthorized**
 ```json

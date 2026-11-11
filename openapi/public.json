@@ -785,7 +785,7 @@
           "Messages"
         ],
         "summary": "Unsend a message",
-        "description": "Take back a message you sent over iMessage, within 110 seconds of `sent_at` (iMessage allows two minutes).\n\nThe Undo Send is accepted with `unsend_status: \"pending\"`, and `body` is empty at once. When it reaches the recipient, `message.unsent` fires with `direction: \"outbound\"`. If it doesn't, `message.unsend_failed` fires and `body` comes back.\n\nOn iOS 16, iPadOS 16.1, macOS 13 Ventura, visionOS 1 and later the message disappears and both sides see a note that it was unsent. On earlier versions the original stays in the conversation: never rely on Undo Send to retract sensitive information.\n\nA message that went out with a link preview is two bubbles; both are unsent. A message with files (text and files, or several files) can't be unsent through the API (`422 multi_part`).\n\nRepeating the request while the Undo Send is pending or done answers `200` and changes nothing; after `message.unsend_failed` it tries again, if it's still within the window.\n\nCounts toward the conversation-actions rate limit (300 a minute per account).",
+        "description": "Take back a message you sent over iMessage, within 110 seconds of `sent_at` (iMessage allows two minutes).\n\nThe Undo Send is accepted with `unsend_status: \"pending\"`, and `body` is empty at once. When it reaches the recipient, `message.unsent` fires with `direction: \"outbound\"`. If it doesn't, `message.unsend_failed` fires and `body` comes back.\n\nOn iOS 16, iPadOS 16.1, macOS 13 Ventura, visionOS 1 and later the message disappears and both sides see a note that it was unsent. On earlier versions the original stays in the conversation: never rely on Undo Send to retract sensitive information.\n\nA message with text and a link preview card (sent with `link_preview: true`, or typed in the dashboard) is two bubbles; both are unsent. A message with files (text and files, or several files) can't be unsent through the API (`422 multi_part`).\n\nRepeating the request while the Undo Send is pending or done answers `200` and changes nothing; after `message.unsend_failed` it tries again, if it's still within the window.\n\nCounts toward the conversation-actions rate limit (300 a minute per account).",
         "operationId": "v1_unsend_message_v1_messages__message_id__unsend_post",
         "parameters": [
           {
@@ -2889,6 +2889,12 @@
             "title": "Effect",
             "description": "The iMessage send effect requested for this message, or null. It shows on the recipient's device only when `channel` is `imessage`."
           },
+          "link_preview": {
+            "type": "boolean",
+            "title": "Link Preview",
+            "description": "`true` when the message was sent through the API with `link_preview: true`. A message typed in the dashboard gets a preview card for its link without it, and shows `false`.",
+            "default": false
+          },
           "reply_to_message_id": {
             "anyOf": [
               {
@@ -3673,6 +3679,15 @@
             "description": "An iMessage send effect. Bubble effects: `slam`, `loud`, `gentle`, `invisible` (Invisible Ink). Screen effects: `echo`, `spotlight`, `balloons`, `confetti`, `love`, `lasers`, `fireworks`, `celebration`, `shooting_star`. iMessage only: when the message goes out as SMS (see `channel`) it is sent without the effect. Not allowed with `participant_phones` or `attachments`.",
             "examples": [
               "confetti"
+            ]
+          },
+          "link_preview": {
+            "type": "boolean",
+            "title": "Link Preview",
+            "description": "Send the link with a preview card (the page's title and image), as when a person types it on an iPhone. Messages sent through the API are otherwise plain text. The body must end in exactly one http(s) link, with no other link in it; a body that is only the link is sent as the card alone, and text before the link goes as its own bubble, followed by the card. Your line opens the page to build the card when it sends the message, so a click-tracked link counts a click and a one-time link (a login or reset link, a single-use coupon) may be used up: don't set it for those. The card is built over iMessage, and over SMS or RCS where your line supports it. `to` or `contact_id` only, and not with `attachments`, `effect` or `reply_to_message_id`.",
+            "default": false,
+            "examples": [
+              true
             ]
           },
           "idempotency_key": {

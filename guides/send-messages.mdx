@@ -463,6 +463,98 @@ A bubble effect animates the message bubble; a screen effect fills the recipient
 **Both fields are part of the idempotency payload when you set them.** A retry with the same `idempotency_key` must send the same `effect` and `reply_to_message_id`, or it returns `409 idempotency_conflict`. See [Idempotency](/idempotency).
 </Note>
 
+## Send a link with a preview card
+
+A link you send through the API arrives as plain text. Add `link_preview: true` and it arrives as a **preview card**, with the page's title and image, as when a person types the link on an iPhone:
+
+- A body that is only the link arrives as **one card**.
+- Text before the link arrives as **two bubbles**: the text first, then the card right after it.
+
+<CodeGroup>
+
+```bash cURL
+# One key per message: generate it once, and reuse it if you retry.
+IDEMPOTENCY_KEY=$(uuidgen)
+
+curl -X POST https://api.ibubbl.com/v1/messages \
+  -H "Authorization: Bearer $IBUBBL_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d "{
+    \"to\": \"+14155551234\",
+    \"body\": \"Here's the new lineup: https://example.com/lineup\",
+    \"link_preview\": true,
+    \"idempotency_key\": \"$IDEMPOTENCY_KEY\"
+  }"
+```
+
+```typescript TypeScript
+import { randomUUID } from "node:crypto";
+
+// One key per message: generate it once, and reuse it if you retry.
+const idempotencyKey = randomUUID();
+
+const res = await fetch("https://api.ibubbl.com/v1/messages", {
+  method: "POST",
+  headers: {
+    Authorization: `Bearer ${process.env.IBUBBL_API_KEY}`,
+    "Content-Type": "application/json",
+  },
+  body: JSON.stringify({
+    to: "+14155551234",
+    body: "Here's the new lineup: https://example.com/lineup",
+    link_preview: true,
+    idempotency_key: idempotencyKey,
+  }),
+  signal: AbortSignal.timeout(10_000),
+});
+
+const data = await res.json();
+if (!res.ok) throw new Error(`${res.status} ${data.detail?.error}`);
+console.log(data.id, data.link_preview); // true
+```
+
+```python Python
+import os
+import uuid
+
+import requests
+
+API_KEY = os.environ["IBUBBL_API_KEY"]
+
+# One key per message: generate it once, and reuse it if you retry.
+idempotency_key = str(uuid.uuid4())
+
+res = requests.post(
+    "https://api.ibubbl.com/v1/messages",
+    headers={"Authorization": f"Bearer {API_KEY}"},
+    json={
+        "to": "+14155551234",
+        "body": "Here's the new lineup: https://example.com/lineup",
+        "link_preview": True,
+        "idempotency_key": idempotency_key,
+    },
+    timeout=10,
+)
+data = res.json()
+if not res.ok:
+    raise RuntimeError(f"{res.status_code} {data['detail']['error']}")
+print(data["id"], data["link_preview"])  # True
+```
+
+</CodeGroup>
+
+<Warning>
+**Your line opens the link when it sends the message.** To build the card, your line's Mac fetches the page at send time to read its title and image. That counts as a visit in the site's analytics and as a click on a tracked link, before the contact has seen the message. Never set `link_preview` on one-time links: a login or password-reset link, a single-use invitation or a one-time coupon may be used up by that fetch. A site that blocks automated visitors, or answers slowly, gives a plainer card; the send never waits for the page.
+</Warning>
+
+The rules:
+
+- **The body must end in exactly one link.** `http` or `https`, last, with no other link (or email address) in the text before it. A link in the middle, two links, or none gets `422 validation_error`, and nothing is sent.
+- **One-to-one only, on its own.** Not with `chat_guid` or `participant_phones`, `attachments`, `effect` or `reply_to_message_id` (`422 validation_error`).
+- **Where the card shows.** Over iMessage, and over SMS or RCS where your line supports it. `channel` on the message says how it went out.
+- **Editing and unsending.** The two bubbles are changed together: [Edit](/api-reference/messages/edit) rewrites the text bubble and keeps the card (keep the link exactly as sent, or you get `422 link_changed`), and [Unsend](/api-reference/messages/unsend) takes back both. See [Edit, Undo Send, and Cancel](/guides/editing-and-unsending).
+- **Idempotency.** `link_preview: true` is part of the request: a retry with the same `idempotency_key` must send it too, or it returns `409 idempotency_conflict`. The response, [Retrieve](/api-reference/messages/retrieve) and [List](/api-reference/messages/list) echo it as `link_preview`.
+
 ## Send files
 
 Add `attachments`, a list of up to 10 `https` URLs, to send photos, GIFs, videos, PDFs or audio to one contact. `body` becomes optional and, when set, is the caption; the first message to a contact still needs a `body`. iBubbl downloads the files before it answers, so allow 60 seconds. [Send attachments](/guides/attachments) has the examples, the types and limits, and how each route delivers them.
@@ -484,6 +576,7 @@ Add `attachments`, a list of up to 10 `https` URLs, to send photos, GIFs, videos
   "held_until": null,
   "held_reason": null,
   "effect": null,
+  "link_preview": false,
   "reply_to_message_id": null,
   "attachments": [],
   "edited_at": null,

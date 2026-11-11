@@ -29,7 +29,7 @@ The path parameter `message_id` is the `id` of a message you **sent**: from [Sen
 - **14 minutes 30 seconds, five edits.** Measured from `sent_at`. iMessage allows 15 minutes; iBubbl stops 30 seconds early so an edit never arrives too late to apply. After the fifth edit, `422 edit_limit_reached`.
 - **iMessage only.** A message that went out by SMS (`channel: "sms"`, RCS included) can't be edited: `422 sms_not_supported`. One that hasn't gone out yet gets `422 not_sent_yet`: [cancel it](/api-reference/messages/cancel) and send a new one instead.
 - **Text only.** A message's text can be edited, including the caption of a message with files. A message that is only files has nothing to edit (`422 not_editable`).
-- **Messages with a link preview.** A message typed in the dashboard with a link goes out as the text and a preview card. Only the text before the link can change: keep the link exactly as sent and at the end, or you get `422 link_changed`. Messages sent through the API never have a preview card, so this doesn't apply to them.
+- **Messages with a link preview.** A message sent with [`link_preview: true`](/guides/send-messages#send-a-link-with-a-preview-card), or typed in the dashboard, goes out as two bubbles: the text and a preview card. An edit updates the text bubble in place and keeps the card, so only the text before the link can change: keep the link exactly as sent and at the end, or you get `422 link_changed`. A message sent without `link_preview` is one bubble, and this doesn't apply.
 - **Groups work.** In a group, only members using iMessage see the edit.
 - **Blocked and opted-out contacts get none.** An edit reaches the recipient as a change, so in a one-to-one conversation a [blocked](/api-reference/contacts/block) contact gets `422 contact_blocked` and an [opted-out](/concepts/suppression) one `422 contact_opted_out`.
 
@@ -112,6 +112,7 @@ print(res.status_code, data["edit_status"], data["body"])
   "held_until": null,
   "held_reason": null,
   "effect": null,
+  "link_preview": false,
   "reply_to_message_id": null,
   "attachments": [],
   "edited_at": null,

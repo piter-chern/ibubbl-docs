@@ -30,7 +30,7 @@ None. The path parameter `message_id` is the `id` of a message you **sent**: fro
 - **Not while an edit is on its way.** `409 edit_in_flight`: wait for `message.edited` (a few seconds), then unsend.
 - **iMessage only.** A message that went out by SMS (`channel: "sms"`, RCS included) can't be unsent: `422 sms_not_supported`. One that hasn't gone out yet gets `422 not_sent_yet`: [cancel it](/api-reference/messages/cancel) instead.
 - **One bubble at a time.** A text message, or a message that is one file and nothing else, is unsent whole. A message with files and text, or several files, shows as several bubbles and gets `422 multi_part`: unsending part of a message is available in the dashboard only, for now.
-- **Messages with a link preview.** A message typed in the dashboard with a link goes out as two bubbles, the text and a preview card. Unsending it takes back both. Messages sent through the API never have a preview card, so they are one bubble.
+- **Messages with a link preview.** A message sent with [`link_preview: true`](/guides/send-messages#send-a-link-with-a-preview-card), or typed in the dashboard, goes out as two bubbles: the text and a preview card. Unsending it takes back both the text bubble and the card. A message sent without `link_preview` is one bubble.
 - **Opted-out contacts don't block it.** An Undo Send only removes content, so it works whatever the contact's opt-out or block status. Groups work too.
 
 <RequestExample>
@@ -101,6 +101,7 @@ print(res.status_code, data["unsend_status"])
   "held_until": null,
   "held_reason": null,
   "effect": null,
+  "link_preview": false,
   "reply_to_message_id": null,
   "attachments": [],
   "edited_at": null,
@@ -129,7 +130,7 @@ The Undo Send is on its way. The body is the [message](/api-reference/messages/r
 
 | Field | Description |
 |-------|-------------|
-| `body` | `""` at once (for a dashboard message with a link preview, the link alone until the card is gone too). The text comes back if the Undo Send fails. |
+| `body` | `""` at once (for a message with a link preview card, the link alone until the card is gone too). The text comes back if the Undo Send fails. |
 | `unsend_status` | `pending` now; then `unsent` when it reaches the recipient, or `failed` if it doesn't. |
 | `unsent_at` | When it was unsent (UTC); `null` until then. |
 
