@@ -44,7 +44,7 @@ Solid arrows are the normal path. Dashed arrows are the [moves that go backwards
 | `read` | The recipient read it. A read is reported only when the recipient has read receipts on, and a plain SMS never reports one. | **No.** A late iMessage error can still turn it into `failed`, if no delivery receipt was recorded. | `message.read` |
 | `failed` | It didn't go out, or iMessage reported it undeliverable. `failed_reason` says why. That includes a `queued` message the queue's retry fails. | **Usually.** A failure with an `imessage_*` reason moves to `delivered` or `read` if Apple later confirms the message. A few connection failures can move to `sent` if the Mac confirms the send late (see below). | `message.failed`, with `failed_reason` |
 | `expired` | It was still `queued` about an hour after it was accepted, so iBubbl dropped it (`failed_reason: "queue_expired"`). | **Yes** | `message.failed`, with `status: "expired"` and `failed_reason: "queue_expired"` |
-| `cancelled` | Stopped before it went out. That happens when someone on your account cancels it in the dashboard, or when an [after-hours auto-reply](/concepts/after-hours-reply) misses its window. There is no API endpoint to cancel a message. | **Almost.** It moves to `sent` only if your line had already sent it when the cancel arrived. | `message.cancelled` (it carries no reason) |
+| `cancelled` | Stopped before it went out: with [Cancel a message](/api-reference/messages/cancel), by someone on your account in the dashboard, or by iBubbl when an [after-hours auto-reply](/concepts/after-hours-reply) misses its window. | **Almost.** It moves to `sent` only if your line had already sent it when the cancel arrived. | `message.cancelled` (it carries no reason) |
 
 <Note>
 `message.queued` fires once, when a one-to-one message is accepted, whether it starts as `queued` or `pending`. It does not fire again when a `queued` message moves to `pending`. Group sends never fire it.
@@ -58,6 +58,15 @@ A `pending` message can wait before it goes out. `GET /v1/messages/{id}` shows w
 - `held_until` is when it is expected to go out. It is `null` when there is no estimate: for example, when no sending day is enabled.
 
 Both are `null` when the message isn't held. iBubbl marks holds within about 10 seconds of accepting a message, so the `202` response and an immediate `GET` usually show `null`. A held message has no separate status or webhook: you get `message.sent` when it goes out.
+
+## Edits and Undo Send
+
+[Editing](/api-reference/messages/edit) or [unsending](/api-reference/messages/unsend) a message you sent doesn't change its `status`: it stays `sent`, `delivered` or `read`. Their progress has fields of its own on the message:
+
+- `edit_status` is `pending` while an edit is on its way, then `edited` (with `edit_count` and `edited_at`) or `failed`. Events: `message.edited` and `message.edit_failed`.
+- `unsend_status` is `pending` while an Undo Send is on its way, then `unsent` (with `unsent_at`, and `body` empty), `partly_unsent` or `failed`. Events: `message.unsent` and `message.unsend_failed`.
+
+A message you received shows the contact's own edits and unsends the same way (`edited`, `unsent` or `partly_unsent`). See [Edit, Undo Send and Cancel](/guides/editing-and-unsending).
 
 ## Events that don't fire
 

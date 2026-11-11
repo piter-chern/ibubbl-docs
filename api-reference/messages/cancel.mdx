@@ -1,0 +1,178 @@
+---
+title: 'Cancel a message'
+openapi: 'POST /v1/messages/{message_id}/cancel'
+---
+
+### Cancel a message
+
+**Method:** `POST` | **Endpoint:** `/v1/messages/{message_id}/cancel`
+
+**Description:** Stop a message you sent before it goes out: one waiting for the contact's [sending hours](/concepts/working-hours) or the line's hourly limit for new contacts (`status: "pending"` with a `held_reason`), or one queued by a capacity hold (`status: "queued"`). It will never be sent. See [Edit, Undo Send and Cancel](/guides/editing-and-unsending#cancel-a-message-before-it-goes-out).
+
+**Authentication:** API key in the `Authorization` header: `Authorization: Bearer ib_pk_<64 hex>`. Create keys in the dashboard under **Settings → API access**.
+
+**Rate limit:** 300 conversation actions per 60 seconds per account (edits, unsends, cancels, tapbacks, mark read and typing together, across all your API keys). Over that, you get `429 rate_limited` with a `Retry-After` header; see [Rate limits](/concepts/limits#rate-limits).
+
+#### Request Body
+
+None. The path parameter `message_id` is the `id` from [Send a message](/api-reference/messages/send), or from [List messages](/api-reference/messages/list), where messages sent from the dashboard and by automations appear too.
+
+#### How it behaves
+
+- **It's immediate.** The answer is `200` with `status: "cancelled"`, and [`message.cancelled`](/webhooks/events#message-cancelled) fires. The message stays in the conversation history as cancelled; the contact never sees it.
+- **It's safe to call twice.** Cancelling a cancelled message answers `200` with it, and no second `message.cancelled` fires.
+- **Only while it's waiting.** A message already `sent`, `delivered`, `read`, `failed` or `expired`, or one you received, gets `422 not_cancellable`. To take back a message that already went out, [unsend it](/api-reference/messages/unsend) within 110 seconds.
+- **Not once your line has picked it up.** In the second or so before a waiting message goes out, your line takes it to send; from then on, cancelling gets `409 message_dispatching`, and the message is sent (`message.sent` fires).
+- **Retrying the send doesn't bring it back.** `POST /v1/messages` again with the same `idempotency_key` returns this cancelled message and sends nothing. To send it after all, use a new key.
+- **Any channel.** It works whether the message would have gone out by iMessage or SMS, one-to-one or to a group.
+
+<RequestExample>
+
+```bash cURL
+curl -X POST https://api.ibubbl.com/v1/messages/8b3a4e72-1c2d-4e5f-9a0b-2c3d4e5f6a7b/cancel \
+  -H "Authorization: Bearer $IBUBBL_API_KEY"
+```
+
+```typescript TypeScript
+const messageId = "8b3a4e72-1c2d-4e5f-9a0b-2c3d4e5f6a7b";
+
+const res = await fetch(
+  `https://api.ibubbl.com/v1/messages/${encodeURIComponent(messageId)}/cancel`,
+  {
+    method: "POST",
+    headers: { Authorization: `Bearer ${process.env.IBUBBL_API_KEY}` },
+    signal: AbortSignal.timeout(10_000),
+  },
+);
+
+const data = await res.json();
+if (!res.ok) throw new Error(`${res.status} ${data.detail?.error}`);
+console.log(data.status); // "cancelled"
+```
+
+```python Python
+import os
+import urllib.parse
+
+import requests
+
+API_KEY = os.environ["IBUBBL_API_KEY"]
+
+message_id = "8b3a4e72-1c2d-4e5f-9a0b-2c3d4e5f6a7b"
+
+res = requests.post(
+    f"https://api.ibubbl.com/v1/messages/{urllib.parse.quote(message_id, safe='')}/cancel",
+    headers={"Authorization": f"Bearer {API_KEY}"},
+    timeout=10,
+)
+data = res.json()
+if not res.ok:
+    raise RuntimeError(f"{res.status_code} {data['detail']['error']}")
+print(data["status"])  # "cancelled"
+```
+
+</RequestExample>
+
+<ResponseExample>
+
+```json 200 OK
+{
+  "id": "8b3a4e72-1c2d-4e5f-9a0b-2c3d4e5f6a7b",
+  "direction": "outbound",
+  "created_at": "2026-11-05T22:30:00.418221Z",
+  "status": "cancelled",
+  "to": "+14155551234",
+  "body": "Hey Sam — quick check-in about your order.",
+  "contact_id": "c8a1f4e2-3b9d-4f7c-a8e5-1d2c3b4a5e6f",
+  "conversation_id": "3a4b5c6d-7e8f-9a0b-1c2d-3e4f5a6b7c8d",
+  "conversation_kind": "one_to_one",
+  "chat_guid": null,
+  "channel": null,
+  "sent_at": "2026-11-05T22:30:00.418Z",
+  "held_until": null,
+  "held_reason": null,
+  "effect": null,
+  "reply_to_message_id": null,
+  "attachments": [],
+  "edited_at": null,
+  "edit_count": 0,
+  "edit_status": null,
+  "unsend_status": null,
+  "unsent_at": null
+}
+```
+
+```json 409 Conflict
+{
+  "detail": {
+    "error": "message_dispatching",
+    "message": "This message is already being sent and can't be changed."
+  }
+}
+```
+
+</ResponseExample>
+
+#### Responses
+**200 OK**
+
+The [message](/api-reference/messages/retrieve), now `cancelled` (or already cancelled). `held_until` and `held_reason` are `null`, and `channel` stays `null`: it never went out.
+
+**401 Unauthorized**
+```json
+{
+  "detail": {
+    "error": "unauthorized",
+    "message": "Invalid or revoked API key"
+  }
+}
+```
+Other `message` values: `Authorization Bearer token required`, `API key required (use Authorization: Bearer ib_pk_…)`, `Invalid API key format`, `Customer account not found`.
+
+**403 Forbidden**
+```json
+{
+  "detail": {
+    "error": "forbidden",
+    "message": "Account is suspended"
+  }
+}
+```
+Your iBubbl account is suspended or cancelled (`message` is then `Account is cancelled`). Every API-key endpoint returns this.
+
+**404 Not Found**
+```json
+{
+  "detail": {
+    "error": "not_found",
+    "message": "Message not found"
+  }
+}
+```
+Also returned for a malformed ID and a message that belongs to another account.
+
+**409 Conflict**
+
+`message_dispatching`: your line already has the message and will send it. Nothing changed; `message.sent` follows.
+
+**422 Unprocessable Entity**
+```json
+{
+  "detail": {
+    "error": "not_cancellable",
+    "message": "Only a message of yours that is still waiting to go out can be cancelled."
+  }
+}
+```
+`not_cancellable`: the message isn't one of yours that is still waiting to go out. It was sent, failed or expired, it's a message you received, or it's a meeting invite. Nothing changed.
+
+**429 Too Many Requests**
+```json
+{
+  "detail": {
+    "error": "rate_limited",
+    "message": "Too many conversation actions; wait 12s (limit 300 a minute per account)."
+  }
+}
+```
+Wait the `Retry-After` header's seconds, then send the same request again.

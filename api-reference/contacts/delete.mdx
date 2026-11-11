@@ -18,7 +18,7 @@ None. The path parameter `contact_id` is the contact's ID (a UUID).
 
 - **The ID stops working.** [Retrieve](/api-reference/contacts/retrieve), [Update](/api-reference/contacts/update), the tag, opt-out and block endpoints, and [Send a message](/api-reference/messages/send) with this `contact_id` all return `404 not_found`. Deleting it again also returns `404`.
 - **History stays.** Its messages and conversations are kept, and [List messages](/api-reference/messages/list) still returns them with the old `contact_id`.
-- **Waiting messages still go out.** A message already accepted for the contact and still waiting (held for [sending hours](/concepts/working-hours), or queued) is not cancelled. Cancel it in the dashboard first if it shouldn't be sent.
+- **Waiting messages still go out.** A message already accepted for the contact and still waiting (held for [sending hours](/concepts/working-hours), or queued) is not cancelled. [Cancel it](/api-reference/messages/cancel) first if it shouldn't be sent.
 - **The number can come back as a new contact.** [Creating or updating a contact](/api-reference/contacts/upsert) with the same number, sending to it with `to`, or an inbound message from it creates a **new** contact with a new `id`. Names, tags and a [block](/api-reference/contacts/block) are not carried over.
 - **An opt-out is never lost.** An [opt-out](/api-reference/contacts/opt-out) belongs to the phone number, not the contact. A new contact for an opted-out number starts with `opted_out: true`, and sends to it return `422 contact_opted_out`. Deleting a contact is not a way to message someone who opted out.
 

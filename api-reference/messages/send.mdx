@@ -129,7 +129,12 @@ print(data["id"], data["status"])
   "held_reason": null,
   "effect": "confetti",
   "reply_to_message_id": "5f6a7b8c-9d0e-4f1a-8b2c-3d4e5f6a7b8c",
-  "attachments": []
+  "attachments": [],
+  "edited_at": null,
+  "edit_count": 0,
+  "edit_status": null,
+  "unsend_status": null,
+  "unsent_at": null
 }
 ```
 
@@ -164,7 +169,12 @@ print(data["id"], data["status"])
   "held_reason": null,
   "effect": null,
   "reply_to_message_id": null,
-  "attachments": []
+  "attachments": [],
+  "edited_at": null,
+  "edit_count": 0,
+  "edit_status": null,
+  "unsend_status": null,
+  "unsent_at": null
 }
 ```
 `status` is `pending` or `queued`. A message held by a capacity limit or an offline line is still accepted with `queued` and retried automatically. A message waiting for the contact's [working hours](/concepts/working-hours) or the line's hourly limit for new contacts is `pending`, with `held_until` and `held_reason` set. For a group send, `to` is `null` and `conversation_kind` is `"group"`; a new group's `chat_guid` is `null` until the group is created a few seconds later. `effect` and `reply_to_message_id` echo what you sent, or `null`. `attachments` lists the files the message carries, in your order, as `kind` (`image`, `gif`, `video`, `audio` or `file`), `mime_type` and `size_bytes`; it's `[]` for a text message. `direction` is always `outbound` here, and `created_at` is when iBubbl recorded the message; it never changes, and it's what [List messages](/api-reference/messages/list) sorts and filters by.

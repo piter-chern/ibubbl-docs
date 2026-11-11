@@ -1,0 +1,241 @@
+---
+title: 'Edit a message'
+openapi: 'POST /v1/messages/{message_id}/edit'
+---
+
+### Edit a message
+
+**Method:** `POST` | **Endpoint:** `/v1/messages/{message_id}/edit`
+
+**Description:** Change the text of a message you sent over iMessage, the way you would on an iPhone: within 14 minutes 30 seconds of sending, up to five times. See [Edit, Undo Send and Cancel](/guides/editing-and-unsending).
+
+**Authentication:** API key in the `Authorization` header: `Authorization: Bearer ib_pk_<64 hex>`. Create keys in the dashboard under **Settings → API access**.
+
+**Rate limit:** 300 conversation actions per 60 seconds per account (edits, unsends, cancels, tapbacks, mark read and typing together, across all your API keys). Over that, you get `429 rate_limited` with a `Retry-After` header; see [Rate limits](/concepts/limits#rate-limits).
+
+#### Request Body
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `body` | string, 1–4,000 characters | Yes | The new text. It replaces the whole text of the message. Leading and trailing whitespace is trimmed. |
+
+The path parameter `message_id` is the `id` of a message you **sent**: from [Send a message](/api-reference/messages/send), or from [List messages](/api-reference/messages/list), where messages sent from the dashboard appear too. Fields not listed above are rejected with `422 validation_error`.
+
+#### How it behaves
+
+- **It's accepted first, applied second.** The answer is `202` with `edit_status: "pending"`, and `body` already shows the new text. A few seconds later the edit reaches the recipient: [`message.edited`](/webhooks/events#message-edited) fires with `direction: "outbound"`, `edit_status` becomes `edited`, and `edit_count` goes up by one.
+- **If it doesn't land, the text comes back.** [`message.edit_failed`](/webhooks/events#message-edit-failed) fires, `edit_status` becomes `failed`, and `body` goes back to the text the recipient has. You can edit again if the window is still open.
+- **One edit at a time.** While one is on its way, a different text gets `409 edit_in_flight`; wait for `message.edited` and send the next.
+- **It's safe to call twice.** Sending the text the message already has (a retry of an accepted edit included) answers `200` with the message and changes nothing. It doesn't use up one of the five edits.
+- **14 minutes 30 seconds, five edits.** Measured from `sent_at`. iMessage allows 15 minutes; iBubbl stops 30 seconds early so an edit never arrives too late to apply. After the fifth edit, `422 edit_limit_reached`.
+- **iMessage only.** A message that went out by SMS (`channel: "sms"`, RCS included) can't be edited: `422 sms_not_supported`. One that hasn't gone out yet gets `422 not_sent_yet`: [cancel it](/api-reference/messages/cancel) and send a new one instead.
+- **Text only.** A message's text can be edited, including the caption of a message with files. A message that is only files has nothing to edit (`422 not_editable`).
+- **Messages with a link preview.** A message typed in the dashboard with a link goes out as the text and a preview card. Only the text before the link can change: keep the link exactly as sent and at the end, or you get `422 link_changed`. Messages sent through the API never have a preview card, so this doesn't apply to them.
+- **Groups work.** In a group, only members using iMessage see the edit.
+- **Blocked and opted-out contacts get none.** An edit reaches the recipient as a change, so in a one-to-one conversation a [blocked](/api-reference/contacts/block) contact gets `422 contact_blocked` and an [opted-out](/concepts/suppression) one `422 contact_opted_out`.
+
+<Note>
+**What the recipient sees depends on their software.** On iOS 16, iPadOS 16.1, macOS 13 Ventura, visionOS 1 and later, the bubble changes in place and is marked **Edited**. On earlier versions they get a follow-up message starting "Edited to" with the new text in quotation marks, and the original stays. See [What the recipient sees](/guides/editing-and-unsending#what-the-recipient-sees).
+</Note>
+
+<RequestExample>
+
+```bash cURL
+curl -X POST https://api.ibubbl.com/v1/messages/8b3a4e72-1c2d-4e5f-9a0b-2c3d4e5f6a7b/edit \
+  -H "Authorization: Bearer $IBUBBL_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"body": "Hey Sam — quick check-in about your order #1042."}'
+```
+
+```typescript TypeScript
+const messageId = "8b3a4e72-1c2d-4e5f-9a0b-2c3d4e5f6a7b";
+
+const res = await fetch(
+  `https://api.ibubbl.com/v1/messages/${encodeURIComponent(messageId)}/edit`,
+  {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${process.env.IBUBBL_API_KEY}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ body: "Hey Sam — quick check-in about your order #1042." }),
+    signal: AbortSignal.timeout(10_000),
+  },
+);
+
+const data = await res.json();
+if (!res.ok) throw new Error(`${res.status} ${data.detail?.error}`);
+// 202: the edit is on its way; 200: the message already had this text.
+console.log(res.status, data.edit_status, data.body);
+```
+
+```python Python
+import os
+import urllib.parse
+
+import requests
+
+API_KEY = os.environ["IBUBBL_API_KEY"]
+
+message_id = "8b3a4e72-1c2d-4e5f-9a0b-2c3d4e5f6a7b"
+
+res = requests.post(
+    f"https://api.ibubbl.com/v1/messages/{urllib.parse.quote(message_id, safe='')}/edit",
+    headers={"Authorization": f"Bearer {API_KEY}"},
+    json={"body": "Hey Sam — quick check-in about your order #1042."},
+    timeout=10,
+)
+data = res.json()
+if not res.ok:
+    raise RuntimeError(f"{res.status_code} {data['detail']['error']}")
+# 202: the edit is on its way; 200: the message already had this text.
+print(res.status_code, data["edit_status"], data["body"])
+```
+
+</RequestExample>
+
+<ResponseExample>
+
+```json 202 Accepted
+{
+  "id": "8b3a4e72-1c2d-4e5f-9a0b-2c3d4e5f6a7b",
+  "direction": "outbound",
+  "created_at": "2026-11-05T15:04:10.112730Z",
+  "status": "read",
+  "to": "+14155551234",
+  "body": "Hey Sam — quick check-in about your order #1042.",
+  "contact_id": "c8a1f4e2-3b9d-4f7c-a8e5-1d2c3b4a5e6f",
+  "conversation_id": "3a4b5c6d-7e8f-9a0b-1c2d-3e4f5a6b7c8d",
+  "conversation_kind": "one_to_one",
+  "chat_guid": null,
+  "channel": "imessage",
+  "sent_at": "2026-11-05T15:04:12.381Z",
+  "held_until": null,
+  "held_reason": null,
+  "effect": null,
+  "reply_to_message_id": null,
+  "attachments": [],
+  "edited_at": null,
+  "edit_count": 0,
+  "edit_status": "pending",
+  "unsend_status": null,
+  "unsent_at": null
+}
+```
+
+```json 422 Unprocessable Entity
+{
+  "detail": {
+    "error": "edit_window_expired",
+    "message": "This message can no longer be edited. Send a follow-up message instead."
+  }
+}
+```
+
+</ResponseExample>
+
+#### Responses
+**202 Accepted**
+
+The edit is on its way. The body is the [message](/api-reference/messages/retrieve) with the new text and `edit_status: "pending"`. `edit_count` and `edited_at` change when the edit reaches the recipient.
+
+| Field | Description |
+|-------|-------------|
+| `body` | The new text, already. It goes back to the previous text if the edit fails. |
+| `edit_status` | `pending` now; then `edited` when it reaches the recipient, or `failed` if it doesn't. |
+| `edit_count` | Your edits that have reached the recipient, 0–5. |
+| `edited_at` | When the latest edit reached the recipient (UTC), or `null`. |
+
+**200 OK**
+
+The message already has this text. The body is the message as it is; nothing was sent and no edit was used.
+
+**401 Unauthorized**
+```json
+{
+  "detail": {
+    "error": "unauthorized",
+    "message": "Invalid or revoked API key"
+  }
+}
+```
+Other `message` values: `Authorization Bearer token required`, `API key required (use Authorization: Bearer ib_pk_…)`, `Invalid API key format`, `Customer account not found`.
+
+**403 Forbidden**
+```json
+{
+  "detail": {
+    "error": "forbidden",
+    "message": "Account is suspended"
+  }
+}
+```
+Your iBubbl account is suspended or cancelled (`message` is then `Account is cancelled`). Every API-key endpoint returns this.
+
+**404 Not Found**
+```json
+{
+  "detail": {
+    "error": "not_found",
+    "message": "Message not found"
+  }
+}
+```
+Also returned for a malformed ID and a message that belongs to another account.
+
+**409 Conflict**
+```json
+{
+  "detail": {
+    "error": "edit_in_flight",
+    "message": "An earlier edit is still being dispatched. Wait a few seconds and try again."
+  }
+}
+```
+Nothing changed. The `error` is one of:
+
+- `edit_in_flight`: your previous edit hasn't reached the recipient yet. Wait for `message.edited` (usually a few seconds), then send this one.
+- `already_unsent`: the message was unsent, so there's nothing left to edit.
+
+**422 Unprocessable Entity**
+```json
+{
+  "detail": {
+    "error": "not_sent_yet",
+    "message": "This message hasn't been sent yet, so it can't be edited. Cancel it instead."
+  }
+}
+```
+Nothing changed. The `error` is one of:
+
+- `validation_error`: no `body`, an empty one, more than 4,000 characters, or an unknown field.
+- `invalid_target`: the message is one you received. Only messages you sent can be edited.
+- `sms_not_supported`: the message went out by SMS (RCS included), where messages can't be edited.
+- `not_sent_yet`: the message is still `pending` or `queued`. [Cancel it](/api-reference/messages/cancel) and send a new one.
+- `not_editable`: the message has no text (only files), or it failed, was cancelled or expired, or iMessage never confirmed it.
+- `edit_window_expired`: more than 14 minutes 30 seconds since `sent_at`. Send a follow-up message instead.
+- `edit_limit_reached`: the message has been edited five times.
+- `link_changed`: a message sent with a link preview, where the new text moves, changes or removes the link.
+- `contact_blocked`: a one-to-one conversation with a contact you [blocked](/api-reference/contacts/block).
+- `contact_opted_out`: a one-to-one conversation with a contact who opted out.
+
+**429 Too Many Requests**
+```json
+{
+  "detail": {
+    "error": "rate_limited",
+    "message": "Too many conversation actions; wait 12s (limit 300 a minute per account)."
+  }
+}
+```
+Wait the `Retry-After` header's seconds, then send the same request again.
+
+**503 Service Unavailable**
+```json
+{
+  "detail": {
+    "error": "opt_out_check_unavailable",
+    "message": "Couldn't check the contact's opt-out. Try again."
+  }
+}
+```
+iBubbl couldn't confirm the contact hasn't opted out, so it changed nothing. Retry after a short backoff.

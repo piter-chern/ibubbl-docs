@@ -217,7 +217,7 @@ See the [Error Reference](/errors) for the full catalog.
 </Accordion>
 
 <Accordion title="message.cancelled" icon="ban">
-Fired when a message that hadn't been sent yet is stopped in the dashboard: one waiting for the contact's [working hours](/concepts/working-hours), or queued by a capacity hold. iBubbl also cancels an [after-hours auto-reply](/concepts/after-hours-reply) that couldn't go out within 20 minutes of the text it answers. It will never send. This is terminal, like `message.failed`, but nothing went wrong: the message was withdrawn on purpose.
+Fired when a message that hadn't been sent yet is stopped, with [Cancel a message](/api-reference/messages/cancel) or in the dashboard: one waiting for the contact's [working hours](/concepts/working-hours), or queued by a capacity hold. iBubbl also cancels an [after-hours auto-reply](/concepts/after-hours-reply) that couldn't go out within 20 minutes of the text it answers. It will never send. This is terminal, like `message.failed`, but nothing went wrong: the message was withdrawn on purpose.
 
 ```json
 {
@@ -333,7 +333,7 @@ If the inbound body matches a STOP-pattern keyword (see [Suppression & Opt-Outs]
 </Accordion>
 
 <Accordion title="message.edited" icon="pen-to-square">
-Fired when a contact edits a message they previously sent you (iMessage allows edits for about 15 minutes), or when a message you sent is edited from the dashboard.
+Fired when an edit reaches the other side: a contact edited a message they sent you (`direction: "inbound"`), or an edit of a message you sent reached the recipient (`direction: "outbound"`), whether you made it with [Edit a message](/api-reference/messages/edit) or in the dashboard. iMessage allows edits for 15 minutes; iBubbl's own stop after 14 minutes 30 seconds.
 
 ```json
 {
@@ -350,9 +350,83 @@ Fired when a contact edits a message they previously sent you (iMessage allows e
 }
 ```
 
-The `message_id` matches the original `message.inbound` (or outbound) message — your store can update the existing record. `direction` is `inbound` for edits the contact made to a message they sent, or `outbound` for edits to a message you sent.
+The `message_id` matches the original message (the `message.inbound` one, or the one you sent), so your store can update the existing record. `new_body` is the whole new text.
 
-When a contact unsends a message, no event fires.
+For your own edits it fires once per edit, when it reaches the recipient, and `edit_count` on [Retrieve a message](/api-reference/messages/retrieve) goes up by one. An edit that doesn't reach them fires [`message.edit_failed`](#message-edit-failed) instead. Whether the recipient sees the change in place depends on their software: see [What the recipient sees](/guides/editing-and-unsending#what-the-recipient-sees).
+
+When a message is unsent, [`message.unsent`](#message-unsent) fires.
+</Accordion>
+
+<Accordion title="message.edit_failed" icon="circle-exclamation">
+Fired when an edit of a message you sent, with [Edit a message](/api-reference/messages/edit) or in the dashboard, didn't reach the recipient. Always `direction: "outbound"`. The message's text goes back to what the recipient has, and `edit_status` on the message is `failed`.
+
+```json
+{
+  "id": "evt_8b3a4e72-1c2d-4e5f-9a0b-2c3d4e5f6a7b",
+  "type": "message.edit_failed",
+  "created_at": "2026-05-17T14:28:04.000Z",
+  "data": {
+    "message_id": "4a5b6c7d-8e9f-0a1b-2c3d-4e5f6a7b8c9d",
+    "conversation_id": "3a4b5c6d-7e8f-9a0b-1c2d-3e4f5a6b7c8d",
+    "direction": "outbound",
+    "body": "Hey Sam — quick check-in about your order.",
+    "failed_reason": "expired",
+    "failed_at": "2026-05-17T14:28:04.218734+00:00"
+  }
+}
+```
+
+`body` is the text the recipient still has. `failed_reason` (treat it as an opaque code; new ones may be added):
+
+- `expired` — your line didn't confirm the edit within 3 minutes (for example, it was offline)
+- `rejected` — iMessage refused the edit, usually because its window had passed
+
+You can edit again while the window is open.
+</Accordion>
+
+<Accordion title="message.unsent" icon="eraser">
+Fired when a message is unsent: one you sent, with [Unsend a message](/api-reference/messages/unsend) or in the dashboard (`direction: "outbound"`), or one a contact sent you and then unsent (`direction: "inbound"`).
+
+```json
+{
+  "id": "evt_8b3a4e72-1c2d-4e5f-9a0b-2c3d4e5f6a7b",
+  "type": "message.unsent",
+  "created_at": "2026-05-17T14:24:10.000Z",
+  "data": {
+    "message_id": "4a5b6c7d-8e9f-0a1b-2c3d-4e5f6a7b8c9d",
+    "conversation_id": "3a4b5c6d-7e8f-9a0b-1c2d-3e4f5a6b7c8d",
+    "direction": "outbound",
+    "scope": "message",
+    "unsent_at": "2026-05-17T14:24:09.797234+00:00"
+  }
+}
+```
+
+`scope` is `message` when nothing of the message is left, or `part` when some of it went: its text, a link preview card or one file of several. For your own Undo Send it fires once the whole request has settled; a message sent from the dashboard with a link preview fires once, after both the text and the card are gone. `unsend_status` and `unsent_at` on [Retrieve a message](/api-reference/messages/retrieve) say the same. The payload carries no text: once unsent, the message's `body` is `""`.
+
+For your own messages, it means iMessage accepted the Undo Send. A recipient on older software still has the message; see [What the recipient sees](/guides/editing-and-unsending#what-the-recipient-sees). An Undo Send that didn't happen fires [`message.unsend_failed`](#message-unsend-failed) instead.
+</Accordion>
+
+<Accordion title="message.unsend_failed" icon="rotate-left">
+Fired when an Undo Send of a message you sent, with [Unsend a message](/api-reference/messages/unsend) or in the dashboard, didn't happen. Always `direction: "outbound"`. The recipient still has the message, its text comes back, and `unsend_status` on the message is `failed` (or `partly_unsent` if another part of the same request went).
+
+```json
+{
+  "id": "evt_8b3a4e72-1c2d-4e5f-9a0b-2c3d4e5f6a7b",
+  "type": "message.unsend_failed",
+  "created_at": "2026-05-17T14:24:31.000Z",
+  "data": {
+    "message_id": "4a5b6c7d-8e9f-0a1b-2c3d-4e5f6a7b8c9d",
+    "conversation_id": "3a4b5c6d-7e8f-9a0b-1c2d-3e4f5a6b7c8d",
+    "direction": "outbound",
+    "body": "Hey Sam — quick check-in about your order.",
+    "failed_reason": "rejected",
+    "failed_at": "2026-05-17T14:24:31.404112+00:00"
+  }
+}
+```
+
+`body` and `failed_reason` (`expired` or `rejected`) are as for [`message.edit_failed`](#message-edit-failed). If part of the message went and another part didn't (for example, a link preview's card), [`message.unsent`](#message-unsent) with `scope: "part"` follows. Unsend again within the 110 seconds to try once more.
 </Accordion>
 
 <Accordion title="message.reaction.added" icon="heart">

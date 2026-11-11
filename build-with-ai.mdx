@@ -169,7 +169,7 @@ CONTACTS (/v1/contacts)
   422 contact_blocked) and DELETE /v1/contacts/{id}/block to undo. A block
   fires no webhook and doesn't affect group conversations.
 - Neither opt-out nor delete cancels a message already accepted and still
-  waiting; that is done in the dashboard.
+  waiting; cancel it with POST /v1/messages/{id}/cancel (see below).
 
 TAPBACKS, READ RECEIPTS AND TYPING
 - message.inbound carries message_id and conversation_id; use them directly.
@@ -192,8 +192,31 @@ TAPBACKS, READ RECEIPTS AND TYPING
 - Tapback and typing calls to a blocked or opted-out 1:1 contact get 422
   contact_blocked / contact_opted_out; 503 opt_out_check_unavailable means
   retry later.
-- These five endpoints share 300 requests per 60 seconds per account (429
-  rate_limited with Retry-After), separate from the list budget.
+- These endpoints, and edit/unsend/cancel below, share 300 requests per 60
+  seconds per account (429 rate_limited with Retry-After), separate from the
+  list budget.
+
+EDIT, UNSEND AND CANCEL (messages you sent)
+- POST /v1/messages/{id}/edit {"body": "..."} changes the text: iMessage
+  only, within 14 min 30 s of sent_at, at most 5 edits. 202 with
+  edit_status "pending"; message.edited (direction "outbound") fires when it
+  lands, message.edit_failed if not (body goes back). The text it already has
+  is 200 and spends nothing. One edit at a time: 409 edit_in_flight means
+  wait for message.edited. A dashboard message with a link preview keeps its
+  link last and unchanged (422 link_changed).
+- POST /v1/messages/{id}/unsend takes a message back: iMessage only, within
+  110 s of sent_at. 202 with unsend_status "pending", body ""; then
+  message.unsent (scope "message") or message.unsend_failed. Repeat calls are
+  200. A message with files and text, or several files, is 422 multi_part.
+- NEVER rely on unsend for compliance or to retract sensitive data: older
+  iPhones/Macs keep the original, and SMS/RCS messages can't be unsent or
+  edited at all (422 sms_not_supported).
+- POST /v1/messages/{id}/cancel stops a message still pending or queued
+  (e.g. held for sending hours): 200 status "cancelled", message.cancelled
+  fires, repeat calls are 200. 409 message_dispatching = too late, it goes
+  out; 422 not_cancellable = already sent (unsend it instead). Edit/unsend
+  of a message not sent yet is 422 not_sent_yet: cancel it instead.
+- API sends never get a link preview card; the link is plain text.
 
 RETRIES AND ERRORS
 - Branch on detail.error (the stable code), never on detail.message.

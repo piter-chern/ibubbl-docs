@@ -23,7 +23,7 @@ None. The path parameter `contact_id` is the contact's ID (a UUID).
 - `opted_out` becomes `true` and `opted_out_at` is set.
 - The first opt-out for this person fires a [`contact.opted_out`](/webhooks/events) webhook with `source: "api"`.
 - **It's safe to call twice.** If the person has already opted out, in any way and under any form of their number (a STOP reply, a rep, GoHighLevel Do Not Disturb, or an earlier call), you get `200` with the contact as it is, and no second webhook fires.
-- **Messages already accepted can still go out.** New sends are refused from now on, but a message accepted earlier and still waiting (held for [sending hours](/concepts/working-hours), or queued) is not withdrawn. Cancel it in the dashboard if it must not be sent. See [Suppression & Opt-Outs](/concepts/suppression).
+- **Messages already accepted can still go out.** New sends are refused from now on, but a message accepted earlier and still waiting (held for [sending hours](/concepts/working-hours), or queued) is not withdrawn. [Cancel it](/api-reference/messages/cancel) if it must not be sent. See [Suppression & Opt-Outs](/concepts/suppression).
 
 To stop messaging someone only for now, [block](/api-reference/contacts/block) them instead: a block can be undone.
 

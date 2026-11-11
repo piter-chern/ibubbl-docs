@@ -498,7 +498,7 @@
             }
           },
           "429": {
-            "description": "`rate_limited`: more than 300 conversation actions in 60 seconds from your account (all keys, and tapbacks, read and typing requests, count together; list requests have their own budget). Wait `Retry-After` seconds, then send the same request again.",
+            "description": "`rate_limited`: more than 300 conversation actions in 60 seconds from your account (all keys, and tapbacks, read, typing, edit, unsend and cancel requests, count together; list requests have their own budget). Wait `Retry-After` seconds, then send the same request again.",
             "headers": {
               "Retry-After": {
                 "description": "Seconds to wait before retrying.",
@@ -608,7 +608,7 @@
             }
           },
           "429": {
-            "description": "`rate_limited`: more than 300 conversation actions in 60 seconds from your account (all keys, and tapbacks, read and typing requests, count together; list requests have their own budget). Wait `Retry-After` seconds, then send the same request again.",
+            "description": "`rate_limited`: more than 300 conversation actions in 60 seconds from your account (all keys, and tapbacks, read, typing, edit, unsend and cancel requests, count together; list requests have their own budget). Wait `Retry-After` seconds, then send the same request again.",
             "headers": {
               "Retry-After": {
                 "description": "Seconds to wait before retrying.",
@@ -627,6 +627,349 @@
           },
           "422": {
             "description": "`target_unsent` or `target_partly_unsent`: the contact unsent the message, so the tapback can't be changed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "`forbidden`: your iBubbl account is suspended or cancelled.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/messages/{message_id}/edit": {
+      "post": {
+        "tags": [
+          "Messages"
+        ],
+        "summary": "Edit a message",
+        "description": "Change the text of a message you sent over iMessage, within 14 minutes 30 seconds of `sent_at` and up to five times, as on an iPhone.\n\nThe edit is accepted with `edit_status: \"pending\"`, and `body` shows the new text at once. When it reaches the recipient, `message.edited` fires with `direction: \"outbound\"` and `edit_count` goes up by one. If it doesn't, `message.edit_failed` fires and `body` goes back to the text they have.\n\nOn iOS 16, iPadOS 16.1, macOS 13 Ventura, visionOS 1 and later the message changes in place and is marked Edited. On earlier versions the recipient gets a follow-up message starting \"Edited to\" with the new text, and the original stays. In a group, only members using iMessage see the edit.\n\nSending the text the message already has answers `200` and changes nothing, so a retried request never spends a second edit.\n\nCounts toward the conversation-actions rate limit (300 a minute per account).",
+        "operationId": "v1_edit_message_v1_messages__message_id__edit_post",
+        "parameters": [
+          {
+            "name": "message_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Message Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MessageEdit"
+              }
+            }
+          }
+        },
+        "responses": {
+          "202": {
+            "description": "Edit accepted.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Message"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "The message already has this text; nothing changed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Message"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid API key.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Message not found.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "`rate_limited`: more than 300 conversation actions in 60 seconds from your account (all keys, and tapbacks, read, typing, edit, unsend and cancel requests, count together; list requests have their own budget). Wait `Retry-After` seconds, then send the same request again.",
+            "headers": {
+              "Retry-After": {
+                "description": "Seconds to wait before retrying.",
+                "schema": {
+                  "type": "integer"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "`edit_in_flight` (your previous edit hasn't reached the recipient yet; retry in a few seconds) or `already_unsent`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "`validation_error` (bad body), `invalid_target` (a message you received), `sms_not_supported` (it went out by SMS), `not_sent_yet` (still waiting to go out: cancel it instead), `not_editable` (no text to edit, or it failed or never went out), `edit_window_expired`, `edit_limit_reached`, `link_changed`, `contact_blocked`, `contact_opted_out`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "`opt_out_check_unavailable`: the contact's opt-out couldn't be checked, so nothing was changed. Retry.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "`forbidden`: your iBubbl account is suspended or cancelled.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/messages/{message_id}/unsend": {
+      "post": {
+        "tags": [
+          "Messages"
+        ],
+        "summary": "Unsend a message",
+        "description": "Take back a message you sent over iMessage, within 110 seconds of `sent_at` (iMessage allows two minutes).\n\nThe Undo Send is accepted with `unsend_status: \"pending\"`, and `body` is empty at once. When it reaches the recipient, `message.unsent` fires with `direction: \"outbound\"`. If it doesn't, `message.unsend_failed` fires and `body` comes back.\n\nOn iOS 16, iPadOS 16.1, macOS 13 Ventura, visionOS 1 and later the message disappears and both sides see a note that it was unsent. On earlier versions the original stays in the conversation: never rely on Undo Send to retract sensitive information.\n\nA message that went out with a link preview is two bubbles; both are unsent. A message with files (text and files, or several files) can't be unsent through the API (`422 multi_part`).\n\nRepeating the request while the Undo Send is pending or done answers `200` and changes nothing; after `message.unsend_failed` it tries again, if it's still within the window.\n\nCounts toward the conversation-actions rate limit (300 a minute per account).",
+        "operationId": "v1_unsend_message_v1_messages__message_id__unsend_post",
+        "parameters": [
+          {
+            "name": "message_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Message Id"
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "description": "Undo Send accepted.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Message"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "Already unsent or being unsent; nothing changed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Message"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid API key.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Message not found.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "`rate_limited`: more than 300 conversation actions in 60 seconds from your account (all keys, and tapbacks, read, typing, edit, unsend and cancel requests, count together; list requests have their own budget). Wait `Retry-After` seconds, then send the same request again.",
+            "headers": {
+              "Retry-After": {
+                "description": "Seconds to wait before retrying.",
+                "schema": {
+                  "type": "integer"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "`edit_in_flight`: an edit of this message hasn't reached the recipient yet. Retry in a few seconds.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "`invalid_target` (a message you received), `sms_not_supported` (it went out by SMS), `not_sent_yet` (still waiting to go out: cancel it instead), `not_unsendable` (it failed or never went out), `unsend_window_expired`, `multi_part`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "`forbidden`: your iBubbl account is suspended or cancelled.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/messages/{message_id}/cancel": {
+      "post": {
+        "tags": [
+          "Messages"
+        ],
+        "summary": "Cancel a message",
+        "description": "Stop a message you sent that hasn't gone out yet: one waiting for the contact's working hours or the line's hourly limit (`status: \"pending\"` with a `held_reason`), or queued by a capacity hold (`status: \"queued\"`). It moves to `cancelled`, will never be sent, and `message.cancelled` fires.\n\nA message that is already being sent can't be stopped (`409 message_dispatching`); it goes out, and `message.sent` fires. Retrying the original `POST /v1/messages` with the same `idempotency_key` returns the cancelled message and doesn't send it again.\n\nIdempotent: cancelling a cancelled message answers `200` with it, and no second webhook fires.\n\nCounts toward the conversation-actions rate limit (300 a minute per account).",
+        "operationId": "v1_cancel_message_v1_messages__message_id__cancel_post",
+        "parameters": [
+          {
+            "name": "message_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Message Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The message, now `cancelled`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Message"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid API key.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Message not found.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "`rate_limited`: more than 300 conversation actions in 60 seconds from your account (all keys, and tapbacks, read, typing, edit, unsend and cancel requests, count together; list requests have their own budget). Wait `Retry-After` seconds, then send the same request again.",
+            "headers": {
+              "Retry-After": {
+                "description": "Seconds to wait before retrying.",
+                "schema": {
+                  "type": "integer"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "`message_dispatching`: it is already being sent and can't be stopped.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "`not_cancellable`: not a message of yours that is still waiting to go out (it was sent, failed or expired, or it is a message you received).",
             "content": {
               "application/json": {
                 "schema": {
@@ -1510,7 +1853,7 @@
             }
           },
           "429": {
-            "description": "`rate_limited`: more than 300 conversation actions in 60 seconds from your account (all keys, and tapbacks, read and typing requests, count together; list requests have their own budget). Wait `Retry-After` seconds, then send the same request again.",
+            "description": "`rate_limited`: more than 300 conversation actions in 60 seconds from your account (all keys, and tapbacks, read, typing, edit, unsend and cancel requests, count together; list requests have their own budget). Wait `Retry-After` seconds, then send the same request again.",
             "headers": {
               "Retry-After": {
                 "description": "Seconds to wait before retrying.",
@@ -1591,7 +1934,7 @@
             }
           },
           "429": {
-            "description": "`rate_limited`: more than 300 conversation actions in 60 seconds from your account (all keys, and tapbacks, read and typing requests, count together; list requests have their own budget). Wait `Retry-After` seconds, then send the same request again.",
+            "description": "`rate_limited`: more than 300 conversation actions in 60 seconds from your account (all keys, and tapbacks, read, typing, edit, unsend and cancel requests, count together; list requests have their own budget). Wait `Retry-After` seconds, then send the same request again.",
             "headers": {
               "Retry-After": {
                 "description": "Seconds to wait before retrying.",
@@ -1690,7 +2033,7 @@
             }
           },
           "429": {
-            "description": "`rate_limited`: more than 300 conversation actions in 60 seconds from your account (all keys, and tapbacks, read and typing requests, count together; list requests have their own budget). Wait `Retry-After` seconds, then send the same request again.",
+            "description": "`rate_limited`: more than 300 conversation actions in 60 seconds from your account (all keys, and tapbacks, read, typing, edit, unsend and cancel requests, count together; list requests have their own budget). Wait `Retry-After` seconds, then send the same request again.",
             "headers": {
               "Retry-After": {
                 "description": "Seconds to wait before retrying.",
@@ -2565,6 +2908,79 @@
             "type": "array",
             "title": "Attachments",
             "description": "The files on this message, in the order they were sent: sent with `attachments`, from the dashboard or an automation, or received from the contact. Empty when there are none. File contents and URLs are not returned."
+          },
+          "edited_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Edited At",
+            "description": "ISO 8601 UTC timestamp of the latest edit that reached the recipient: one of yours (`POST /v1/messages/{id}/edit`, or the dashboard), or, on an inbound message, the contact's own edit. Null when it was never edited.",
+            "examples": [
+              "2026-05-17T14:25:00.000000Z"
+            ]
+          },
+          "edit_count": {
+            "type": "integer",
+            "maximum": 5.0,
+            "minimum": 0.0,
+            "title": "Edit Count",
+            "description": "How many of your edits reached the recipient. iMessage allows five per message. Always `0` on an inbound message.",
+            "default": 0
+          },
+          "edit_status": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "pending",
+                  "edited",
+                  "failed"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Edit Status",
+            "description": "`pending` = your latest edit is on its way (`body` already shows the new text); `failed` = it didn't reach the recipient, and `body` is back to the text they have (webhook `message.edit_failed`); `edited` = the message was edited. Null when it never was."
+          },
+          "unsend_status": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "pending",
+                  "unsent",
+                  "partly_unsent",
+                  "failed"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Unsend Status",
+            "description": "`pending` = your Undo Send is on its way; `unsent` = the whole message was unsent (by you, or by the contact on an inbound message) and `body` is empty; `partly_unsent` = part of it was (its text, a link preview or a file); `failed` = your Undo Send didn't happen and the recipient still has the message (webhook `message.unsend_failed`). Null when nothing was unsent."
+          },
+          "unsent_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Unsent At",
+            "description": "ISO 8601 UTC timestamp of when the message (or the latest part of it) was unsent. Null unless `unsend_status` is `unsent` or `partly_unsent`.",
+            "examples": [
+              "2026-05-17T14:24:10.000000Z"
+            ]
           }
         },
         "type": "object",
@@ -3280,6 +3696,26 @@
           "body": "Hey Sam \u2014 quick check-in about your order.",
           "idempotency_key": "a3f2c8d9-e0f1-4b4d-9c5a-7b8e2d1f0c4a",
           "to": "+14155551234"
+        }
+      },
+      "MessageEdit": {
+        "properties": {
+          "body": {
+            "type": "string",
+            "maxLength": 4000,
+            "minLength": 1,
+            "title": "Body",
+            "description": "The new text. It replaces the whole text of the message; leading and trailing whitespace is trimmed. For a message that went out with a link preview, keep the link exactly as sent and at the end, and change only the text before it. Fields not listed here are rejected with `422 validation_error`."
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "body"
+        ],
+        "title": "MessageEdit",
+        "example": {
+          "body": "Hey Sam \u2014 quick check-in about your order #1042."
         }
       },
       "ReactionCreate": {

@@ -85,6 +85,18 @@ if not res.ok:
   You reused an `idempotency_key` with a request payload that doesn't match the one originally cached. Either generate a new key for this distinct send, or fix your retry logic to reuse the original payload byte-for-byte. See [Idempotency](/idempotency).
 </ResponseField>
 
+<ResponseField name="edit_in_flight" type="409">
+  [Edit a message](/api-reference/messages/edit) and [Unsend a message](/api-reference/messages/unsend): an earlier edit of the message hasn't reached the recipient yet. Wait for [`message.edited`](/webhooks/events#message-edited) (usually a few seconds), then send the request again. Nothing changed.
+</ResponseField>
+
+<ResponseField name="already_unsent" type="409">
+  [Edit a message](/api-reference/messages/edit): the message was unsent (or is being unsent), so there is nothing left to edit.
+</ResponseField>
+
+<ResponseField name="message_dispatching" type="409">
+  [Cancel a message](/api-reference/messages/cancel): your line has already picked the message up to send it, so it can't be stopped. It goes out, and `message.sent` fires. Within 110 seconds of sending you can still [unsend it](/api-reference/messages/unsend).
+</ResponseField>
+
 <ResponseField name="validation_error" type="422">
   Generic request-shape failure. The `message` will identify the field. Common causes: missing required body field, malformed E.164 phone, body length zero, `to` and `contact_id` both omitted, neither `body` nor `attachments`, an `attachments` entry that isn't an `https` URL (or more than 10 of them), `attachments` with `chat_guid` or `participant_phones`, or `attachments` with `effect` or `reply_to_message_id`. On a list endpoint: an unknown or repeated query parameter, `limit` outside 1–100, or a time without a time zone.
 </ResponseField>
@@ -170,11 +182,47 @@ if not res.ok:
 </ResponseField>
 
 <ResponseField name="invalid_target" type="422">
-  [Add a tapback](/api-reference/messages/react) only: the message is one you sent. Tapbacks go only on messages you received.
+  [Add a tapback](/api-reference/messages/react): the message is one you sent; tapbacks go only on messages you received. [Edit](/api-reference/messages/edit) and [Unsend](/api-reference/messages/unsend): the message is one you received; only messages you sent can be changed.
 </ResponseField>
 
 <ResponseField name="sms_not_supported" type="422">
-  [Add a tapback](/api-reference/messages/react) only: the message came in by SMS, or the conversation's latest messages are going out by SMS, and tapbacks can't be sent over SMS. They work over iMessage and RCS. Nothing was sent. See [Tapbacks, read receipts and typing](/guides/reactions-read-receipts-typing#tapbacks).
+  [Add a tapback](/api-reference/messages/react): the message came in by SMS, or the conversation's latest messages are going out by SMS, and tapbacks can't be sent over SMS. They work over iMessage and RCS. See [Tapbacks, read receipts and typing](/guides/reactions-read-receipts-typing#tapbacks). [Edit](/api-reference/messages/edit) and [Unsend](/api-reference/messages/unsend): the message went out by SMS (RCS included), where messages can't be edited or unsent; only iMessage messages can. Nothing was sent or changed.
+</ResponseField>
+
+<ResponseField name="not_sent_yet" type="422">
+  [Edit](/api-reference/messages/edit) and [Unsend](/api-reference/messages/unsend): the message is still `pending` or `queued`, so there's nothing on the recipient's phone to change. [Cancel it](/api-reference/messages/cancel) and send a new one.
+</ResponseField>
+
+<ResponseField name="not_editable" type="422">
+  [Edit a message](/api-reference/messages/edit): the message can't be edited. It has no text (only files), or it failed, was cancelled or expired, or iMessage never confirmed it. Send a follow-up message instead.
+</ResponseField>
+
+<ResponseField name="not_unsendable" type="422">
+  [Unsend a message](/api-reference/messages/unsend): the message failed, was cancelled or expired, or iMessage never confirmed it, so there's nothing to take back.
+</ResponseField>
+
+<ResponseField name="edit_window_expired" type="422">
+  [Edit a message](/api-reference/messages/edit): more than 14 minutes 30 seconds have passed since `sent_at`. iMessage allows edits for 15 minutes; iBubbl stops 30 seconds early so an edit never arrives too late. Send a follow-up message instead.
+</ResponseField>
+
+<ResponseField name="edit_limit_reached" type="422">
+  [Edit a message](/api-reference/messages/edit): the message has already been edited five times, the most iMessage allows.
+</ResponseField>
+
+<ResponseField name="link_changed" type="422">
+  [Edit a message](/api-reference/messages/edit): the message was sent from the dashboard with a link preview, and the new text moves, changes or removes the link. Keep the link exactly as sent, at the end, and change only the text before it.
+</ResponseField>
+
+<ResponseField name="unsend_window_expired" type="422">
+  [Unsend a message](/api-reference/messages/unsend): more than 110 seconds have passed since `sent_at`. iMessage allows 2 minutes; iBubbl stops 10 seconds early.
+</ResponseField>
+
+<ResponseField name="multi_part" type="422">
+  [Unsend a message](/api-reference/messages/unsend): the message has files and text, or several files, so it shows as more than one bubble. Unsending part of a message is available in the dashboard only, for now.
+</ResponseField>
+
+<ResponseField name="not_cancellable" type="422">
+  [Cancel a message](/api-reference/messages/cancel): the message isn't one of yours that is still waiting to go out. It was sent, failed or expired, it's a message you received, or it's a meeting invite. To take back one that went out, [unsend it](/api-reference/messages/unsend) within 110 seconds.
 </ResponseField>
 
 <ResponseField name="target_unsent" type="422">
@@ -186,7 +234,7 @@ if not res.ok:
 </ResponseField>
 
 <ResponseField name="opt_out_check_unavailable" type="503">
-  [Add a tapback](/api-reference/messages/react) and [Start typing](/api-reference/conversations/start-typing): iBubbl couldn't confirm that the contact hasn't opted out, so it sent nothing. Retry after a short backoff. (Mark read doesn't fail this way: it answers `200` with `read_receipt_skipped_reason: "opt_out_check_unavailable"` and sends no receipt.)
+  [Add a tapback](/api-reference/messages/react), [Edit a message](/api-reference/messages/edit) and [Start typing](/api-reference/conversations/start-typing): iBubbl couldn't confirm that the contact hasn't opted out, so it sent nothing. Retry after a short backoff. (Mark read doesn't fail this way: it answers `200` with `read_receipt_skipped_reason: "opt_out_check_unavailable"` and sends no receipt.)
 </ResponseField>
 
 <ResponseField name="first_message_needs_text" type="422">
@@ -238,7 +286,7 @@ if not res.ok:
 <ResponseField name="rate_limited" type="429">
   Returned in four places, and nowhere else:
 
-  - **Conversation actions** ([Add](/api-reference/messages/react) and [remove](/api-reference/messages/remove-reaction) a tapback, [Mark read](/api-reference/conversations/mark-read), [Start](/api-reference/conversations/start-typing) and [stop](/api-reference/conversations/stop-typing) typing): your account made more than 300 of these requests in 60 seconds (all API keys and all five endpoints together; a budget separate from lists). The response has a `Retry-After` header; wait that long and call again. See [Rate limits](/concepts/limits#rate-limits).
+  - **Conversation actions** ([Edit](/api-reference/messages/edit), [unsend](/api-reference/messages/unsend) and [cancel](/api-reference/messages/cancel) a message, [add](/api-reference/messages/react) and [remove](/api-reference/messages/remove-reaction) a tapback, [Mark read](/api-reference/conversations/mark-read), [start](/api-reference/conversations/start-typing) and [stop](/api-reference/conversations/stop-typing) typing): your account made more than 300 of these requests in 60 seconds (all API keys and all eight endpoints together; a budget separate from lists). The response has a `Retry-After` header; wait that long and call again. See [Rate limits](/concepts/limits#rate-limits).
   - **List endpoints** ([List messages](/api-reference/messages/list), [List contacts](/api-reference/contacts/list)): your account made more than 120 list requests in 60 seconds (all API keys and all lists together). The response has a `Retry-After` header with the seconds to wait; then send the same request again. See [Rate limits](/concepts/limits#rate-limits).
   - **Sends with `attachments`**, rarely: iBubbl was already downloading as many attachment sends as it can, and no slot freed within 10 seconds. `Retry-After` is `5`; then send the same request with the same `idempotency_key`. Nothing was created.
   - **`/v1/events`**: a secret-URL [inbound event](/inbound-events/overview) source received more than 60 events in 60 seconds. There is no `Retry-After` header here; send again after about a minute.
@@ -255,6 +303,9 @@ if not res.ok:
 | `not_found` | 404 | ❌ Verify the ID. |
 | `group_not_found` | 404 | ❌ Use the group's current `chat_guid`. |
 | `idempotency_conflict` | 409 | ❌ Fix the retry logic. |
+| `edit_in_flight` | 409 | ✅ After `message.edited` (a few seconds). |
+| `already_unsent` | 409 | ❌ The message was unsent. |
+| `message_dispatching` | 409 | ❌ It's being sent; unsend it within 110 seconds instead. |
 | `validation_error` | 422 | ❌ Fix the payload or query parameters. |
 | `invalid_cursor` | 422 | ❌ Use the last `id` from the previous page. |
 | `contact_opted_out` | 422 | ❌ Cannot bypass. |
@@ -264,8 +315,13 @@ if not res.ok:
 | `insufficient_participants` | 422 | ❌ Fix the participant list, or send one-to-one. |
 | `reply_target_not_found` | 422 | ❌ Fix `reply_to_message_id`, or the addressing field. |
 | `reply_target_unsent` / `reply_target_partly_unsent` | 422 | ❌ Send without `reply_to_message_id`. |
-| `invalid_target` | 422 | ❌ Tapbacks go only on messages you received. |
+| `invalid_target` | 422 | ❌ Tapbacks go only on messages you received; edits and unsends only on messages you sent. |
 | `sms_not_supported` | 422 | ❌ Not over SMS. |
+| `not_sent_yet` | 422 | ❌ Cancel it instead. |
+| `not_editable` / `not_unsendable` / `not_cancellable` | 422 | ❌ This message can't be changed that way. |
+| `edit_window_expired` / `edit_limit_reached` / `unsend_window_expired` | 422 | ❌ Too late; send a follow-up message. |
+| `link_changed` | 422 | ❌ Keep the link as sent, at the end. |
+| `multi_part` | 422 | ❌ Use the dashboard. |
 | `target_unsent` / `target_partly_unsent` | 422 | ❌ The contact unsent the message. |
 | `first_message_needs_text` | 422 | ❌ Add a `body`. |
 | `attachment_fetch_failed` | 422 | ⚠️ Fix or check the URL, then send again; the key is still unused. |
@@ -290,14 +346,14 @@ The general rule: **don't retry 4xx**. Most 4xxes are payload-level problems tha
 
 | Status | When |
 | ------ | ---- |
-| `200` / `201` / `202` / `204` | Success. `202` for accepted-but-queued sends; `201` for created resources; `204` (no body) for [Delete a contact](/api-reference/contacts/delete); `200` everywhere else. |
+| `200` / `201` / `202` / `204` | Success. `202` for accepted-but-queued sends, edits and unsends; `201` for created resources; `204` (no body) for [Delete a contact](/api-reference/contacts/delete); `200` everywhere else. |
 | `401` | Auth failure. |
 | `403` | Account suspended or cancelled (`forbidden`), or an inbound event's signature failed (`invalid_signature`). |
 | `404` | Resource not found (or hidden across tenants), or `group_not_found`. |
-| `409` | Idempotency conflict. |
+| `409` | Idempotency conflict, or a message in a state another request holds: `edit_in_flight`, `already_unsent`, `message_dispatching`. |
 | `413` | Inbound event body over 256 KB. |
 | `422` | Validation, routing or send-limit failure. |
 | `429` | `rate_limited`: too many list requests or conversation actions from your account, or attachment downloads busy (all with `Retry-After`), or too many inbound events for one source on `/v1/events`. |
 | `500` | No owner rep (`no_owner_rep`) or an unexpected iBubbl error (`internal_error`). |
-| `503` | `opt_out_check_unavailable` on a tapback or typing call. Retry after a short backoff. |
+| `503` | `opt_out_check_unavailable` on a tapback, edit or typing call. Retry after a short backoff. |
 | `502` / `503` without a `detail.error` | The network edge during a deployment blip, not iBubbl itself. Retry with the same idempotency key after a short backoff. |

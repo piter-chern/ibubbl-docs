@@ -123,6 +123,6 @@ These apply in v1:
 
 - **No participant management.** The API can't add or remove participants, and removals made elsewhere aren't seen (see [Participants](#participants)). Adding a participant from the dashboard changes the group's `chat_guid`.
 - **No renaming.** `group_name` can only be set when the group is created, and later renames aren't picked up.
-- **No editing or unsending.** The v1 API can't edit or unsend a message you sent. When a contact edits a message they sent you, you receive `message.edited`; when a contact unsends one, no event fires.
-- **No attachments.** `POST /v1/messages` sends text only, to 1:1 contacts and groups alike.
+- **Editing and unsending work in groups.** [Edit](/api-reference/messages/edit) and [Unsend](/api-reference/messages/unsend) work on group messages you sent, and only members using iMessage see an edit. When a member edits or unsends a message they sent, you receive `message.edited` or `message.unsent` with `direction: "inbound"`.
+- **No attachments.** `attachments` on `POST /v1/messages` works one-to-one only; group sends are text only.
 - **At least 2 participants.** Single-participant "groups" aren't a thing in iMessage; use the `to` or `contact_id` shape for 1:1 sends.

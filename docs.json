@@ -59,6 +59,7 @@
           "guides/send-messages",
           "guides/attachments",
           "guides/reactions-read-receipts-typing",
+          "guides/editing-and-unsending",
           "guides/receive-messages",
           "guides/webhook-signatures",
           "guides/test-webhooks-locally",
@@ -82,6 +83,9 @@
               "api-reference/messages/send",
               "api-reference/messages/list",
               "api-reference/messages/retrieve",
+              "api-reference/messages/edit",
+              "api-reference/messages/unsend",
+              "api-reference/messages/cancel",
               "api-reference/messages/react",
               "api-reference/messages/remove-reaction"
             ]

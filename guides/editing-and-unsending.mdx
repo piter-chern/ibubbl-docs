@@ -1,0 +1,265 @@
+---
+title: 'Edit, Undo Send, and Cancel Messages'
+description: 'Fix a typo after sending, take back a message, or stop one before it goes out, and what the recipient sees on each kind of device.'
+---
+
+Three ways to change your mind about a message:
+
+| To | Call | When |
+|---|---|---|
+| Change the text | [`POST /v1/messages/{message_id}/edit`](/api-reference/messages/edit) | Within 14 minutes 30 seconds of sending, up to 5 times |
+| Take it back | [`POST /v1/messages/{message_id}/unsend`](/api-reference/messages/unsend) | Within 110 seconds of sending |
+| Stop it before it goes out | [`POST /v1/messages/{message_id}/cancel`](/api-reference/messages/cancel) | While its `status` is `pending` or `queued` |
+
+Edit and Undo Send are iMessage features: they work on messages that went out over iMessage (`channel: "imessage"`), and a message that went out by SMS or RCS gets `422 sms_not_supported`. Cancel works on any message that hasn't gone out yet.
+
+`message_id` is the `id` from [Send a message](/api-reference/messages/send). Messages sent from the dashboard can be changed too; find them with [List messages](/api-reference/messages/list).
+
+<Note>
+**Messages sent through the API never get a link preview card.** A link in a message you send with `POST /v1/messages` goes out as part of a single text bubble, so the recipient sees the link as text. iBubbl builds a rich preview card only for a message typed in the dashboard (fetching the page for a card would count as a click on a tracked or one-time link). A dashboard message with a link is two bubbles, the text and the card: [Unsend](/api-reference/messages/unsend) takes back both, and [Edit](/api-reference/messages/edit) changes only the text before the link.
+</Note>
+
+## Edit a message
+
+<CodeGroup>
+
+```bash cURL
+curl -X POST https://api.ibubbl.com/v1/messages/8b3a4e72-1c2d-4e5f-9a0b-2c3d4e5f6a7b/edit \
+  -H "Authorization: Bearer $IBUBBL_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"body": "Hey Sam — your order #1042 shipped today."}'
+```
+
+```typescript TypeScript
+const messageId = "8b3a4e72-1c2d-4e5f-9a0b-2c3d4e5f6a7b";
+
+const res = await fetch(
+  `https://api.ibubbl.com/v1/messages/${encodeURIComponent(messageId)}/edit`,
+  {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${process.env.IBUBBL_API_KEY}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ body: "Hey Sam — your order #1042 shipped today." }),
+    signal: AbortSignal.timeout(10_000),
+  },
+);
+
+const data = await res.json();
+if (!res.ok) throw new Error(`${res.status} ${data.detail?.error}`);
+console.log(res.status, data.edit_status); // 202 "pending"
+```
+
+```python Python
+import os
+import urllib.parse
+
+import requests
+
+API_KEY = os.environ["IBUBBL_API_KEY"]
+
+message_id = "8b3a4e72-1c2d-4e5f-9a0b-2c3d4e5f6a7b"
+
+res = requests.post(
+    f"https://api.ibubbl.com/v1/messages/{urllib.parse.quote(message_id, safe='')}/edit",
+    headers={"Authorization": f"Bearer {API_KEY}"},
+    json={"body": "Hey Sam — your order #1042 shipped today."},
+    timeout=10,
+)
+data = res.json()
+if not res.ok:
+    raise RuntimeError(f"{res.status_code} {data['detail']['error']}")
+print(res.status_code, data["edit_status"])  # 202 pending
+```
+
+</CodeGroup>
+
+What happens next:
+
+1. The answer is `202` with `edit_status: "pending"`. `body` already shows the new text.
+2. A few seconds later the edit reaches the recipient. [`message.edited`](/webhooks/events#message-edited) fires with `direction: "outbound"`, `edit_status` becomes `edited`, and `edit_count` goes up by one.
+3. If it doesn't land, [`message.edit_failed`](/webhooks/events#message-edit-failed) fires, `edit_status` becomes `failed`, and `body` goes back to the text the recipient has.
+
+The rules:
+
+- **Up to 5 edits, within 14 minutes 30 seconds of `sent_at`.** iMessage allows 15 minutes; iBubbl stops 30 seconds early so an edit never arrives too late to apply. Then `422 edit_window_expired` or `422 edit_limit_reached`: send a follow-up message instead.
+- **One at a time.** A second edit while one is on its way gets `409 edit_in_flight`. Wait for `message.edited`, then send the next.
+- **Retries are safe.** Sending the text the message already has answers `200` and doesn't use up an edit, so you can retry a request that timed out.
+- **Text only.** The text of a message can be edited, including a caption beside files; a message that is only files can't (`422 not_editable`).
+- **Not to blocked or opted-out contacts.** An edit reaches them as a change, so a one-to-one conversation with a [blocked](/api-reference/contacts/block) or [opted-out](/concepts/suppression) contact is refused (`contact_blocked`, `contact_opted_out`).
+
+## Undo Send
+
+<Warning>
+**Never rely on Undo Send for legal compliance, for confidentiality, or to retract sensitive or personal information.** A recipient on an older iPhone, iPad or Mac keeps the original message, and anyone may have read, copied or been notified of it before it was unsent. Messages that went out by SMS or RCS can't be unsent at all. Treat every message as delivered the moment you send it.
+</Warning>
+
+<CodeGroup>
+
+```bash cURL
+curl -X POST https://api.ibubbl.com/v1/messages/8b3a4e72-1c2d-4e5f-9a0b-2c3d4e5f6a7b/unsend \
+  -H "Authorization: Bearer $IBUBBL_API_KEY"
+```
+
+```typescript TypeScript
+const messageId = "8b3a4e72-1c2d-4e5f-9a0b-2c3d4e5f6a7b";
+
+const res = await fetch(
+  `https://api.ibubbl.com/v1/messages/${encodeURIComponent(messageId)}/unsend`,
+  {
+    method: "POST",
+    headers: { Authorization: `Bearer ${process.env.IBUBBL_API_KEY}` },
+    signal: AbortSignal.timeout(10_000),
+  },
+);
+
+const data = await res.json();
+if (!res.ok) throw new Error(`${res.status} ${data.detail?.error}`);
+console.log(res.status, data.unsend_status); // 202 "pending"
+```
+
+```python Python
+import os
+import urllib.parse
+
+import requests
+
+API_KEY = os.environ["IBUBBL_API_KEY"]
+
+message_id = "8b3a4e72-1c2d-4e5f-9a0b-2c3d4e5f6a7b"
+
+res = requests.post(
+    f"https://api.ibubbl.com/v1/messages/{urllib.parse.quote(message_id, safe='')}/unsend",
+    headers={"Authorization": f"Bearer {API_KEY}"},
+    timeout=10,
+)
+data = res.json()
+if not res.ok:
+    raise RuntimeError(f"{res.status_code} {data['detail']['error']}")
+print(res.status_code, data["unsend_status"])  # 202 pending
+```
+
+</CodeGroup>
+
+What happens next:
+
+1. The answer is `202` with `unsend_status: "pending"`, and `body` is already `""`.
+2. A few seconds later the message is gone: [`message.unsent`](/webhooks/events#message-unsent) fires with `direction: "outbound"` and `scope: "message"`, and `unsend_status` becomes `unsent`.
+3. If it doesn't land, [`message.unsend_failed`](/webhooks/events#message-unsend-failed) fires, `unsend_status` becomes `failed`, and `body` comes back. Calling Unsend again tries once more, while the 110 seconds last.
+
+The rules:
+
+- **Within 110 seconds of `sent_at`.** iMessage allows 2 minutes; iBubbl stops 10 seconds early. Then `422 unsend_window_expired`.
+- **One bubble.** A text message, or a single file on its own, is unsent whole. A message with files and text, or several files, gets `422 multi_part`: unsending part of a message is available in the dashboard only, for now. A dashboard message with a link preview is unsent text and card together.
+- **Retries are safe.** Calling again while it's pending or done answers `200` and changes nothing.
+- **Not during an edit.** While an edit of the message is on its way, `409 edit_in_flight`.
+- **Opt-outs don't block it.** Undo Send only removes content, so it works for any contact.
+
+## Cancel a message before it goes out
+
+A message can wait before it's sent: for the contact's [sending hours](/concepts/working-hours) or the line's hourly limit for new contacts (`status: "pending"`, with a `held_reason`), or behind a capacity hold (`status: "queued"`). While it waits, you can stop it.
+
+<CodeGroup>
+
+```bash cURL
+curl -X POST https://api.ibubbl.com/v1/messages/8b3a4e72-1c2d-4e5f-9a0b-2c3d4e5f6a7b/cancel \
+  -H "Authorization: Bearer $IBUBBL_API_KEY"
+```
+
+```typescript TypeScript
+const messageId = "8b3a4e72-1c2d-4e5f-9a0b-2c3d4e5f6a7b";
+
+const res = await fetch(
+  `https://api.ibubbl.com/v1/messages/${encodeURIComponent(messageId)}/cancel`,
+  {
+    method: "POST",
+    headers: { Authorization: `Bearer ${process.env.IBUBBL_API_KEY}` },
+    signal: AbortSignal.timeout(10_000),
+  },
+);
+
+const data = await res.json();
+if (!res.ok) throw new Error(`${res.status} ${data.detail?.error}`);
+console.log(data.status); // "cancelled"
+```
+
+```python Python
+import os
+import urllib.parse
+
+import requests
+
+API_KEY = os.environ["IBUBBL_API_KEY"]
+
+message_id = "8b3a4e72-1c2d-4e5f-9a0b-2c3d4e5f6a7b"
+
+res = requests.post(
+    f"https://api.ibubbl.com/v1/messages/{urllib.parse.quote(message_id, safe='')}/cancel",
+    headers={"Authorization": f"Bearer {API_KEY}"},
+    timeout=10,
+)
+data = res.json()
+if not res.ok:
+    raise RuntimeError(f"{res.status_code} {data['detail']['error']}")
+print(data["status"])  # cancelled
+```
+
+</CodeGroup>
+
+- The answer is `200` with `status: "cancelled"`, and [`message.cancelled`](/webhooks/events#message-cancelled) fires. The contact never sees it. Calling again answers `200` and fires nothing more.
+- Once your line has picked the message up to send it, it's too late: `409 message_dispatching`, and it goes out. After it's sent, use Unsend instead.
+- A message that already went out, failed or expired gets `422 not_cancellable`.
+- Retrying the original send with the same `idempotency_key` returns the cancelled message; it doesn't send it. Use a new key to send it after all.
+
+## What the recipient sees
+
+What Edit and Undo Send look like depends on the recipient's software. Apple describes it in [Unsend or edit messages on iPhone](https://support.apple.com/guide/iphone/unsend-or-edit-messages-iphe67195653/ios).
+
+| Recipient | After an edit | After an Undo Send |
+|---|---|---|
+| iMessage on iOS 16, iPadOS 16.1, macOS 13 Ventura, visionOS 1 or later | The bubble changes in place and is marked **Edited**. They can tap Edited to see the earlier versions. | The bubble disappears, and a note that a message was unsent shows in the conversation. |
+| iMessage on earlier versions | They get a follow-up message starting "Edited to", with the new text in quotation marks. The original stays. | Nothing changes: the original stays in the conversation. |
+| SMS or RCS (green bubbles, Android) | Not possible: `422 sms_not_supported`. | Not possible: `422 sms_not_supported`. |
+
+In a group, only members using iMessage see an edit.
+
+<Note>
+**`edited` and `unsent` mean iMessage accepted the change, not that the recipient's device applied it.** iBubbl can't see which software version the recipient runs, so `edit_status: "edited"`, `unsend_status: "unsent"` and their webhooks look the same whether the bubble changed or the recipient still has the original.
+</Note>
+
+## Webhooks
+
+| Event | Fires when |
+|---|---|
+| [`message.edited`](/webhooks/events#message-edited) | An edit reached the recipient. `direction: "outbound"` for your own edits (through the API or the dashboard), `"inbound"` when a contact edited a message they sent you. |
+| [`message.edit_failed`](/webhooks/events#message-edit-failed) | Your edit didn't reach the recipient. `body` is the text they still have. |
+| [`message.unsent`](/webhooks/events#message-unsent) | A message was unsent. `direction: "outbound"` for your Undo Send, `"inbound"` when a contact unsent a message they sent you. `scope` is `message` (all of it) or `part` (its text, a link preview or a file). |
+| [`message.unsend_failed`](/webhooks/events#message-unsend-failed) | Your Undo Send didn't happen. The recipient still has the message. |
+| [`message.cancelled`](/webhooks/events#message-cancelled) | A message was cancelled before it went out. |
+
+A failure carries `failed_reason`: `expired` when your line didn't confirm the change within 3 minutes (for example, it was offline), or `rejected` when iMessage refused it (usually because the window had passed on its side).
+
+## Where it stands
+
+[Retrieve a message](/api-reference/messages/retrieve) and [List messages](/api-reference/messages/list) show the current state on every message:
+
+| Field | Values |
+|---|---|
+| `edit_status` | `null` (never edited), `pending`, `edited` or `failed` |
+| `edit_count` | Your edits that reached the recipient, 0–5 (`0` on a message you received) |
+| `edited_at` | When the latest edit reached the recipient, or `null` |
+| `unsend_status` | `null`, `pending`, `unsent`, `partly_unsent` (part of it: its text, a link preview or a file) or `failed` |
+| `unsent_at` | When it (or the latest part) was unsent, or `null` |
+
+A message's `status` doesn't change when it's edited or unsent: it stays `sent`, `delivered` or `read`.
+
+## Rate limits
+
+Edit, Unsend and Cancel count toward the conversation-actions budget, with tapbacks, mark read and typing: **300 requests per 60 seconds per account**, across all your API keys. Over it, you get `429 rate_limited` with a `Retry-After` header. See [Rate limits](/concepts/limits#rate-limits).
+
+## Next
+
+- [Message lifecycle](/concepts/message-lifecycle): every status a message moves through.
+- [Webhook events](/webhooks/events): the payloads above, in full.
+- [Tapbacks, read receipts and typing](/guides/reactions-read-receipts-typing): the other things a person does in a conversation.
