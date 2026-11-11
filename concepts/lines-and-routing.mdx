@@ -43,7 +43,7 @@ A [retired](/api-reference/lines/list#responses) line stays in the list, so the 
 
 ## iMessage or SMS
 
-For each one-to-one text message to a US or Canadian number (`+1`), iBubbl decides whether to send it as an iMessage or as a text message (SMS). It goes down this list and stops at the first step that gives an answer:
+For each one-to-one message to a US or Canadian number (`+1`), with or without files, iBubbl decides whether to send it as an iMessage or as a text message (SMS). It goes down this list and stops at the first step that gives an answer:
 
 1. **The number recently failed on iMessage.** An earlier message to this number failed with iMessage error 22 (not reachable on iMessage) in the last 30 days, and no iMessage to the number has been delivered since. **→ SMS.**
 2. **An iMessage reached the number recently.** An iMessage from your account to this contact was delivered in the last 30 days. **→ iMessage.**
@@ -52,13 +52,14 @@ For each one-to-one text message to a US or Canadian number (`+1`), iBubbl decid
 
 The message that failed with error 22 is not resent automatically: it stays `failed` with `failed_reason: "imessage_undeliverable"`. Step 1 makes sure your *next* message to that number goes as SMS. Send it again yourself if it still matters.
 
+A message with [files](/guides/attachments) gets the same answer as a text. Over SMS, its files go as one MMS or as separate messages, and an Android phone with RCS gets one file per message. A PDF can't go over plain SMS, so it fails there. [Send attachments](/guides/attachments#what-your-contact-sees) shows how each kind arrives.
+
 ### What isn't routed
 
 - **Numbers outside `+1`** always go as iMessage. If the recipient isn't on iMessage, the message fails with `imessage_undeliverable`; iBubbl never falls back to SMS for them.
 - **Group messages** always go as iMessage.
-- **Attachments** aren't part of the public API yet. Messages with files sent from the dashboard or a workflow can go by SMS or MMS on some lines, and as iMessage otherwise.
 
-Routing is on for every line, for one-to-one text messages to `+1` numbers, as of 2026-11-10.
+Routing is on for every line, for one-to-one messages to `+1` numbers with or without files, as of 2026-11-11.
 
 ## Which channel a message used
 
