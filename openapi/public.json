@@ -12,7 +12,7 @@
           "Messages"
         ],
         "summary": "Send a message",
-        "description": "Send a message to one contact (`contact_id`, or `to` \u2014 an E.164 phone number; the contact is created on first use), into an existing group (`chat_guid`), or to a new group (`participant_phones`). Exactly one of the four is required.\n\nThe response returns immediately with `status: \"pending\"` or `\"queued\"`. Delivery progress arrives as [webhook events](/webhooks/events) (`message.sent`, `message.delivered`, `message.read`, `message.failed`), or poll `GET /v1/messages/{id}`.\n\n**Idempotency is required.** Provide a unique `idempotency_key` per logical send (UUIDv4 recommended); a retry with the same key and payload replays the original response, while a reused key with a different payload returns `409 idempotency_conflict`. See the [Idempotency](/idempotency) guide.\n\nA send to an opted-out contact returns `422 contact_opted_out`; see [Suppression](/concepts/suppression).\n\nOn a `5xx` (including a `502`/`503` from the network edge during a deploy), retry with the same `idempotency_key`.",
+        "description": "Send a message to one contact (`contact_id`, or `to` \u2014 an E.164 phone number; the contact is created on first use), into an existing group (`chat_guid`), or to a new group (`participant_phones`). Exactly one of the four is required.\n\nThe response returns immediately with `status: \"pending\"` or `\"queued\"`. Delivery progress arrives as [webhook events](/webhooks/events) (`message.sent`, `message.delivered`, `message.read`, `message.failed`), or poll `GET /v1/messages/{id}`.\n\n**Idempotency is required.** Provide a unique `idempotency_key` per logical send (UUIDv4 recommended); a retry with the same key and payload replays the original response, while a reused key with a different payload returns `409 idempotency_conflict`. See the [Idempotency](/idempotency) guide.\n\nA send to an opted-out contact returns `422 contact_opted_out`; see [Suppression](/concepts/suppression).\n\nTo send files, list up to 10 `https` URLs in `attachments` (1:1 only); `body`, if set, is their caption. iBubbl downloads them before answering, which can take up to about 30 seconds, so allow 60 seconds before your client times out. See [Attachments](/guides/attachments).\n\nOn a `5xx` (including a `502`/`503` from the network edge during a deploy), retry with the same `idempotency_key`.",
         "operationId": "v1_send_message_v1_messages_post",
         "requestBody": {
           "required": true,
@@ -66,7 +66,25 @@
             }
           },
           "422": {
-            "description": "Request rejected; see `detail.error`. `validation_error` (bad request shape), `contact_opted_out`, `contact_blocked`, `no_eligible_line`, `unresponsive_contact`, `cold_cap_exhausted`, `followup_cap_exhausted`, `daily_cap_exhausted`, `group_outbound_blocked_suppression`, `insufficient_participants`, `reply_target_not_found`, `reply_target_unsent`, or `reply_target_partly_unsent`.",
+            "description": "Request rejected; see `detail.error`. `validation_error` (bad request shape), `contact_opted_out`, `contact_blocked`, `no_eligible_line`, `unresponsive_contact`, `cold_cap_exhausted`, `followup_cap_exhausted`, `daily_cap_exhausted`, `group_outbound_blocked_suppression`, `insufficient_participants`, `reply_target_not_found`, `reply_target_unsent`, `reply_target_partly_unsent`, `first_message_needs_text`, `attachment_fetch_failed`, `attachment_too_large`, `unsupported_attachment`, or `attachment_combination_not_supported`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "`rate_limited`: too many sends with attachments are being downloaded right now. Wait `Retry-After` seconds and retry with the same `idempotency_key`.",
+            "headers": {
+              "Retry-After": {
+                "description": "Seconds to wait before retrying.",
+                "schema": {
+                  "type": "integer"
+                }
+              }
+            },
             "content": {
               "application/json": {
                 "schema": {
@@ -1539,6 +1557,14 @@
             ],
             "title": "Reply To Message Id",
             "description": "The ID of the message this one quotes as an inline reply, or null. The quote shows on the recipient's device only when `channel` is `imessage`."
+          },
+          "attachments": {
+            "items": {
+              "$ref": "#/components/schemas/MessageAttachment"
+            },
+            "type": "array",
+            "title": "Attachments",
+            "description": "The files on this message, in the order they were sent: sent with `attachments`, from the dashboard or an automation, or received from the contact. Empty when there are none. File contents and URLs are not returned."
           }
         },
         "type": "object",
@@ -1547,10 +1573,12 @@
           "direction",
           "created_at",
           "status",
-          "body"
+          "body",
+          "attachments"
         ],
         "title": "Message",
         "example": {
+          "attachments": [],
           "body": "Hey Sam \u2014 quick check-in about your order.",
           "contact_id": "c8a1f4e2-3b9d-4f7c-a8e5-1d2c3b4a5e6f",
           "conversation_id": "3a4b5c6d-7e8f-9a0b-1c2d-3e4f5a6b7c8d",
@@ -1564,6 +1592,41 @@
           "status": "pending",
           "to": "+14155551234"
         }
+      },
+      "MessageAttachment": {
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": [
+              "image",
+              "gif",
+              "video",
+              "audio",
+              "file"
+            ],
+            "title": "Kind",
+            "description": "`file` is a PDF (or another document)."
+          },
+          "mime_type": {
+            "type": "string",
+            "title": "Mime Type",
+            "examples": [
+              "image/jpeg"
+            ]
+          },
+          "size_bytes": {
+            "type": "integer",
+            "title": "Size Bytes",
+            "description": "Size in bytes. An inbound file can show `0` for a few seconds, until iBubbl has received it."
+          }
+        },
+        "type": "object",
+        "required": [
+          "kind",
+          "mime_type",
+          "size_bytes"
+        ],
+        "title": "MessageAttachment"
       },
       "MessageList": {
         "properties": {
@@ -1927,12 +1990,44 @@
             ]
           },
           "body": {
-            "type": "string",
-            "minLength": 1,
+            "anyOf": [
+              {
+                "type": "string",
+                "minLength": 1
+              },
+              {
+                "type": "null"
+              }
+            ],
             "title": "Body",
-            "description": "The message text. Plain text only; emoji + Unicode are supported. For a line break, include a newline (`\\n` in the JSON string); use `\\n`, not `\\r\\n`. A retry with the same `idempotency_key` must send the identical body, line breaks included, or it returns `409 idempotency_conflict`.",
+            "description": "The message text. Plain text only; emoji + Unicode are supported. For a line break, include a newline (`\\n` in the JSON string); use `\\n`, not `\\r\\n`. A retry with the same `idempotency_key` must send the identical body, line breaks included, or it returns `409 idempotency_conflict`. Required unless `attachments` is set; with attachments it is sent as their caption, and it is required for the first message to a contact (`422 first_message_needs_text`).",
             "examples": [
               "Hey Sam \u2014 quick check-in about your order."
+            ]
+          },
+          "attachments": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string",
+                  "maxLength": 2083,
+                  "minLength": 1,
+                  "format": "uri"
+                },
+                "type": "array",
+                "maxItems": 10,
+                "minItems": 1
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Attachments",
+            "description": "Up to 10 files to send, each an `https` URL iBubbl downloads when the request arrives. Images (JPEG, PNG, WebP, HEIC, HEIF) and GIFs up to 25 MiB each, MP4/MOV video up to 50 MiB, PDF up to 10 MB, audio (MP3, M4A, AAC) up to 25 MiB on its own; 86 MB in all. With other files, audio must be one MP3 of at most 2 MB. The type comes from the response's `Content-Type` (or the URL's extension when that is `application/octet-stream`). A URL that can't be downloaded, or a file that breaks these rules, rejects the whole request (`422 attachment_fetch_failed`, `attachment_too_large`, `unsupported_attachment`, `attachment_combination_not_supported`) and nothing is sent. Only with `to` or `contact_id`, and not with `effect` or `reply_to_message_id`. The URLs, in order, are part of the payload compared for idempotency; a replay never downloads them again.",
+            "examples": [
+              [
+                "https://example.com/photos/order-1042.jpg"
+              ]
             ]
           },
           "reply_to_message_id": {
@@ -1945,7 +2040,7 @@
               }
             ],
             "title": "Reply To Message Id",
-            "description": "Send as an inline reply that quotes an earlier message (a UUID: the `id` of a message, or the `message_id` of a `message.inbound` event). The message must be in the conversation you are sending to: the same contact for a 1:1 send, the same group for a `chat_guid` send; otherwise `422 reply_target_not_found`. A message the contact unsent returns `422 reply_target_unsent`, and one they unsent part of `422 reply_target_partly_unsent`. iMessage only: when the message goes out as SMS (see `channel`) it is sent as plain text, without the quote. Not allowed with `participant_phones`.",
+            "description": "Send as an inline reply that quotes an earlier message (a UUID: the `id` of a message, or the `message_id` of a `message.inbound` event). The message must be in the conversation you are sending to: the same contact for a 1:1 send, the same group for a `chat_guid` send; otherwise `422 reply_target_not_found`. A message the contact unsent returns `422 reply_target_unsent`, and one they unsent part of `422 reply_target_partly_unsent`. iMessage only: when the message goes out as SMS (see `channel`) it is sent as plain text, without the quote. Not allowed with `participant_phones` or `attachments`.",
             "examples": [
               "8b3a4e72-1c2d-4e5f-9a0b-2c3d4e5f6a7b"
             ]
@@ -1975,7 +2070,7 @@
               }
             ],
             "title": "Effect",
-            "description": "An iMessage send effect. Bubble effects: `slam`, `loud`, `gentle`, `invisible` (Invisible Ink). Screen effects: `echo`, `spotlight`, `balloons`, `confetti`, `love`, `lasers`, `fireworks`, `celebration`, `shooting_star`. iMessage only: when the message goes out as SMS (see `channel`) it is sent without the effect. Not allowed with `participant_phones`.",
+            "description": "An iMessage send effect. Bubble effects: `slam`, `loud`, `gentle`, `invisible` (Invisible Ink). Screen effects: `echo`, `spotlight`, `balloons`, `confetti`, `love`, `lasers`, `fireworks`, `celebration`, `shooting_star`. iMessage only: when the message goes out as SMS (see `channel`) it is sent without the effect. Not allowed with `participant_phones` or `attachments`.",
             "examples": [
               "confetti"
             ]
@@ -1985,7 +2080,7 @@
             "maxLength": 128,
             "minLength": 1,
             "title": "Idempotency Key",
-            "description": "Client-supplied unique key per logical send. Keys never expire: reusing a key with the same payload replays the original message, however long ago it was sent, and the same key with a different payload returns `409 idempotency_conflict`. The one exception is a message that ended `failed` or `expired`: its key is released and the retry is sent as a new message. The payload compared is the routing field exactly as sent (`to`, `contact_id`, `chat_guid`, or the sorted `participant_phones` plus `group_name`), `body`, and `effect` and `reply_to_message_id` when set, so a retry that switches from `to` to the same contact's `contact_id` is a 409. Generate a new UUIDv4 for every distinct message.",
+            "description": "Client-supplied unique key per logical send. Keys never expire: reusing a key with the same payload replays the original message, however long ago it was sent, and the same key with a different payload returns `409 idempotency_conflict`. The one exception is a message that ended `failed` or `expired`: its key is released and the retry is sent as a new message. The payload compared is the routing field exactly as sent (`to`, `contact_id`, `chat_guid`, or the sorted `participant_phones` plus `group_name`), `body`, and `effect`, `reply_to_message_id` and `attachments` when set, so a retry that switches from `to` to the same contact's `contact_id` is a 409. Generate a new UUIDv4 for every distinct message.",
             "examples": [
               "a3f2c8d9-e0f1-4b4d-9c5a-7b8e2d1f0c4a"
             ]
@@ -1993,7 +2088,6 @@
         },
         "type": "object",
         "required": [
-          "body",
           "idempotency_key"
         ],
         "title": "MessageCreate",

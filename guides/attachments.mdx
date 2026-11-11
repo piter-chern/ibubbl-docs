@@ -1,0 +1,208 @@
+---
+title: 'Send attachments'
+description: 'Send photos, videos, PDFs and audio by URL, with an optional caption.'
+---
+
+Send files with a message by listing their URLs in `attachments` on [`POST /v1/messages`](/api-reference/messages/send). iBubbl downloads each file when the request arrives, checks it, and sends it from your line with your `body` as the caption.
+
+```json
+{
+  "to": "+14155551234",
+  "body": "Here's your receipt.",
+  "attachments": ["https://files.example.com/receipts/order-1042.pdf"],
+  "idempotency_key": "…"
+}
+```
+
+## Send files with a caption
+
+<CodeGroup>
+
+```bash cURL
+# One key per message: generate it once, and reuse it if you retry.
+IDEMPOTENCY_KEY=$(uuidgen)
+
+# iBubbl downloads the files before answering: allow up to 60 seconds.
+curl -X POST https://api.ibubbl.com/v1/messages \
+  --max-time 60 \
+  -H "Authorization: Bearer $IBUBBL_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d "{
+    \"to\": \"+14155551234\",
+    \"body\": \"Here are the photos from today's visit.\",
+    \"attachments\": [
+      \"https://files.example.com/visits/1042/front.jpg\",
+      \"https://files.example.com/visits/1042/back.jpg\"
+    ],
+    \"idempotency_key\": \"$IDEMPOTENCY_KEY\"
+  }"
+```
+
+```typescript TypeScript
+import { randomUUID } from "node:crypto";
+
+// One key per message: generate it once, and reuse it if you retry.
+const idempotencyKey = randomUUID();
+
+const res = await fetch("https://api.ibubbl.com/v1/messages", {
+  method: "POST",
+  headers: {
+    Authorization: `Bearer ${process.env.IBUBBL_API_KEY}`,
+    "Content-Type": "application/json",
+  },
+  body: JSON.stringify({
+    to: "+14155551234",
+    body: "Here are the photos from today's visit.",
+    attachments: [
+      "https://files.example.com/visits/1042/front.jpg",
+      "https://files.example.com/visits/1042/back.jpg",
+    ],
+    idempotency_key: idempotencyKey,
+  }),
+  // iBubbl downloads the files before answering: allow up to 60 seconds.
+  signal: AbortSignal.timeout(60_000),
+});
+
+const data = await res.json();
+if (!res.ok) throw new Error(`${res.status} ${data.detail?.error}`);
+console.log(data.id, data.status, data.attachments);
+```
+
+```python Python
+import os
+import uuid
+
+import requests
+
+API_KEY = os.environ["IBUBBL_API_KEY"]
+
+# One key per message: generate it once, and reuse it if you retry.
+idempotency_key = str(uuid.uuid4())
+
+res = requests.post(
+    "https://api.ibubbl.com/v1/messages",
+    headers={"Authorization": f"Bearer {API_KEY}"},
+    json={
+        "to": "+14155551234",
+        "body": "Here are the photos from today's visit.",
+        "attachments": [
+            "https://files.example.com/visits/1042/front.jpg",
+            "https://files.example.com/visits/1042/back.jpg",
+        ],
+        "idempotency_key": idempotency_key,
+    },
+    # iBubbl downloads the files before answering: allow up to 60 seconds.
+    timeout=60,
+)
+data = res.json()
+if not res.ok:
+    raise RuntimeError(f"{res.status_code} {data['detail']['error']}")
+print(data["id"], data["status"], data["attachments"])
+```
+
+</CodeGroup>
+
+The `202` response is the usual [message object](/api-reference/messages/send#responses), with an `attachments` array describing what will be sent, in your order:
+
+```json
+{
+  "id": "8b3a4e72-1c2d-4e5f-9a0b-2c3d4e5f6a7b",
+  "status": "pending",
+  "body": "Here are the photos from today's visit.",
+  "attachments": [
+    { "kind": "image", "mime_type": "image/jpeg", "size_bytes": 2481133 },
+    { "kind": "image", "mime_type": "image/jpeg", "size_bytes": 1975020 }
+  ]
+}
+```
+
+(Other fields are omitted here.) [Retrieve a message](/api-reference/messages/retrieve) and [List messages](/api-reference/messages/list) return the same `attachments` array, including the files your contacts send you. They describe the files; they don't return their contents or URLs.
+
+<Note>
+**Set a 60-second client timeout on sends with attachments.** iBubbl answers only once every file is downloaded and stored, which can take up to about 30 seconds for large files. A text-only send still answers at once.
+</Note>
+
+## How the URLs are read
+
+- **Each URL must be `https`,** and publicly reachable. iBubbl downloads it once, when the request arrives, and keeps its own copy. A signed or expiring URL only needs to work for a few minutes; once you have the `202`, it can expire.
+- **Redirects** are followed, up to 3, as long as every hop is `https`.
+- **The type** comes from the response's `Content-Type` header. When that is `application/octet-stream` (or missing), the URL's file extension decides instead, so `…/report.pdf` works.
+- **Private and internal addresses are refused,** including `localhost`, private networks and cloud metadata addresses, at every hop.
+- **The whole request fails if one file does.** Nothing is sent and no message is created, so you can fix the URL and send again with the same `idempotency_key`.
+- **Downloads have a time limit:** all the files together get about 30 seconds, and a server that stops sending for 10 seconds fails the download.
+- **The file name your contact sees** is generated by iBubbl; it isn't taken from the URL.
+
+## Supported files and limits
+
+| Kind | Types | Largest file |
+| ---- | ----- | ------------ |
+| Images | JPEG, PNG, WebP, HEIC, HEIF | 25 MiB each |
+| GIFs | GIF | 25 MiB each |
+| Video | MP4, MOV (QuickTime) | 50 MiB (52,428,800 bytes) |
+| PDF | PDF | 10 MB (10,000,000 bytes) |
+| Audio | MP3, M4A (`audio/mp4`, `audio/x-m4a`), AAC | 25 MiB, sent on its own |
+
+**For the whole message:**
+
+- **Up to 10 files,** and **86 MB (86,000,000 bytes)** in all.
+- **Any number of images and GIFs** can go together, within those totals.
+- **Mixing kinds:** a message with several files that aren't all images can hold images, PDFs and videos (each within its own limit), plus **at most one audio file, and only an MP3 of 2 MB or less**. Other audio (M4A, AAC, or a larger MP3) must be sent on its own, in a message of its own.
+- **Not supported:** other types, such as calendar invites (`.ics`), WebM or Ogg audio, SVG, Word documents and ZIP files.
+
+Every file in a message that passes these rules goes out together with its caption. A combination that wouldn't is refused with `422 attachment_combination_not_supported` rather than sent without its text.
+
+Attachments work only for one-to-one sends (`to` or `contact_id`). With `chat_guid` or `participant_phones` the request is refused with `422 validation_error`.
+
+**Effects and replies can't be combined with attachments.** A request with `attachments` and `effect` or `reply_to_message_id` is refused with `422 validation_error` ("Effects and replies cannot be combined with attachments"). Send the files and the reply or effect as two messages.
+
+## Captions and the first message
+
+`body` is optional when you send `attachments`. If you include it, it's the caption.
+
+**The first message to a contact must include text.** Messages can't open a new conversation with files alone, so a send with `attachments` and no `body` to a contact you've never exchanged a message with is refused with `422 first_message_needs_text`. Add a `body`. Once the contact has a message from you (sent, or still waiting to go out) or has sent you one, files without text are fine.
+
+## What your contact sees
+
+How the files arrive depends on how the message travels. `channel` on [Retrieve a message](/api-reference/messages/retrieve), and on the `message.*` [webhooks](/webhooks/events#the-channel-field), tells you which way it went once it's sent.
+
+- **iMessage:** the caption and the files go out together, as one send: the caption appears first, then the files directly below it, as separate bubbles. A message without a `body` shows just the files.
+- **SMS/MMS** (the contact isn't on iMessage):
+  - **Up to 5 images, 10 MB in all,** go as one MMS with the caption. One video, or one audio file of 2 MB or less, also goes as one MMS.
+  - **Anything larger or mixed** (more images, a PDF, other audio, or images with a video) goes as the caption first, then each file as a separate message, a couple of seconds apart. Carriers can deliver those messages out of order.
+  - **PDFs can't be sent over plain SMS.** If the contact's phone only takes SMS/MMS, a message with a PDF fails, and you get [`message.failed`](/webhooks/events).
+- **RCS** (an Android phone with RCS): the caption first, then **one file per message**, a second or two apart and in your order.
+
+Your `attachments` array and the `202` are the same whichever way the message goes.
+
+## Idempotency
+
+The URLs are part of the [idempotency](/idempotency) payload, **in order**. A retry with the same `idempotency_key` must send the same URLs in the same order; a different URL, a missing one or a new order returns `409 idempotency_conflict`.
+
+A retry that replays an accepted message returns the original response **without downloading anything again**, even if the file at the URL has changed since. To send a changed file, use a new key.
+
+## Errors
+
+A refused request creates no message, so its `idempotency_key` stays unused. Each attachment error names the file it's about by its position, starting at 0: `attachments[1]: attachment fetch answered 404`.
+
+| `detail.error` | HTTP | Cause | What to do |
+| -------------- | ---- | ----- | ---------- |
+| `attachment_fetch_failed` | 422 | iBubbl couldn't download a URL: not `https`, the host doesn't resolve or is private, a non-`200` answer, more than 3 redirects, an empty file, or the download took too long. | Check the URL works from the public internet, then send again. |
+| `attachment_too_large` | 422 | A file is over its kind's limit, or the files are over 86 MB in all. | Send a smaller file, or split the files across messages. |
+| `unsupported_attachment` | 422 | A file's type isn't in the table above. | Convert it to a supported type. |
+| `attachment_combination_not_supported` | 422 | The files can't go together, for example an M4A with a photo, or two audio files. | Send the audio in a message of its own. |
+| `first_message_needs_text` | 422 | Files without `body` to a contact you've never exchanged a message with. | Add a `body`. |
+| `validation_error` | 422 | The request's shape: an empty `attachments` list, more than 10 URLs, something that isn't an `https` URL, `attachments` with `chat_guid` or `participant_phones`, `attachments` with `effect` or `reply_to_message_id`, or neither `body` nor `attachments`. | Fix the request. |
+| `rate_limited` | 429 | Rare: iBubbl is downloading too many attachment sends at once. Comes with a `Retry-After` header (5 seconds). | Wait `Retry-After` seconds, then send the same request again with the same `idempotency_key`. |
+
+The other send errors (opt-outs, limits and so on) work as for any send; see [Errors when sending](/guides/send-messages#errors-when-sending) and the [error catalog](/errors).
+
+## Next
+
+<CardGroup cols={2}>
+  <Card title="Send messages" icon="paper-plane" href="/guides/send-messages">
+    Addressing, groups, replies and effects.
+  </Card>
+  <Card title="Send a message (reference)" icon="code" href="/api-reference/messages/send">
+    Every field of `POST /v1/messages`.
+  </Card>
+</CardGroup>

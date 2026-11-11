@@ -63,7 +63,8 @@ REFERENCE
 
 SENDING (POST /v1/messages)
 - Exactly one of: to (E.164, e.g. +14155551234), contact_id, chat_guid,
-  participant_phones. Plus body and idempotency_key, both required.
+  participant_phones. Plus idempotency_key (required) and body (required
+  unless attachments are sent; see ATTACHMENTS).
 - Generate ONE idempotency_key (a UUIDv4) per logical message, before the
   first attempt, and store it with the message. Reuse the same key and the
   identical payload on every retry. Never generate the key inside a retry
@@ -88,6 +89,26 @@ SENDING (POST /v1/messages)
   in the same conversation (the same contact, or the same group), else 422
   reply_target_not_found. Neither is allowed with participant_phones.
 
+ATTACHMENTS (POST /v1/messages; https://docs.ibubbl.com/guides/attachments)
+- attachments: 1-10 https URLs, 1:1 only (to or contact_id; never with
+  chat_guid or participant_phones). iBubbl downloads them during the request:
+  set the client timeout to 60 s for these sends.
+- body is optional with attachments (it is the caption), but the first
+  message to a contact must have a body, else 422 first_message_needs_text.
+- Types and limits: JPEG/PNG/WebP/HEIC/HEIF and GIF 25 MiB each, MP4/MOV
+  50 MiB, PDF 10 MB, MP3/M4A/AAC audio 25 MiB alone; 86 MB in all. With other
+  files, audio must be one MP3 of at most 2 MB, else 422
+  attachment_combination_not_supported. No .ics, WebM, Ogg, SVG, ZIP.
+- Errors (422, nothing created, key reusable): attachment_fetch_failed (URL
+  not reachable/public, non-200, too slow), attachment_too_large,
+  unsupported_attachment, attachment_combination_not_supported. The message
+  names the file as attachments[i].
+- The URLs, in order, are part of the idempotency payload; a replay never
+  downloads again. effect and reply_to_message_id are not allowed with
+  attachments (422 validation_error): send them as a separate message.
+- Response: every message has attachments: [{kind, mime_type, size_bytes}]
+  ([] for text). No file contents or URLs.
+
 LIMITS (per line; https://docs.ibubbl.com/concepts/limits)
 - 50 new contacts a day (resets at midnight America/New_York); the 51st gets
   422 cold_cap_exhausted.
@@ -97,7 +118,8 @@ LIMITS (per line; https://docs.ibubbl.com/concepts/limits)
   daily_cap_exhausted.
 - 6 unanswered messages in a row to a contact who never replied; the 7th gets
   422 unresponsive_contact.
-- No HTTP rate limit on POST /v1/messages (a send never gets a 429), but a
+- No HTTP rate limit on POST /v1/messages (a text send never gets a 429; a
+  send with attachments rarely gets 429 rate_limited, Retry-After 5), but a
   line sends one message at a time (about one a second). Send one request at
   a time per line; bursts only build a queue. Pace outreach to new contacts
   at about one every 2 minutes per line.
@@ -135,8 +157,8 @@ RETRIES AND ERRORS
   the same payload, with exponential backoff (1 s, 2 s, 4 s) and a small cap
   on attempts. Exception: 500 no_owner_rep will not succeed on retry.
 - Never retry a 4xx automatically. Fix the request instead. The one
-  exception: 429 rate_limited on a list; wait Retry-After seconds, then
-  repeat the request.
+  exception: 429 rate_limited (a list or an attachment send); wait
+  Retry-After seconds, then repeat the same request (same idempotency_key).
 - 422 unresponsive_contact: the contact has not replied to 6 messages in a
   row. Stop messaging them until they reply.
 - 422 contact_opted_out: final. Never message this contact again, and never

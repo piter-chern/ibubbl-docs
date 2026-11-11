@@ -63,13 +63,14 @@ A message that is already `pending` when the Mac goes offline waits for it. If t
 
 ## Rate limits
 
-- **`POST /v1/messages` has no HTTP rate limit.** iBubbl never answers `429` to a send.
+- **`POST /v1/messages` has no HTTP rate limit.** A text send never gets a `429`. The one exception is rare: a send with `attachments` gets `429 rate_limited` with `Retry-After: 5` when iBubbl is already downloading as many attachment sends as it can and no slot frees within 10 seconds. Wait, then send the same request with the same `idempotency_key`.
+- **Attachments:** up to 10 files and 86 MB per message; images and GIFs 25 MiB each, video 50 MiB, PDF 10 MB, audio 25 MiB. See [Send attachments](/guides/attachments#supported-files-and-limits).
 - **List endpoints** such as [List messages](/api-reference/messages/list) (`GET /v1/messages`) allow **120 requests per 60 seconds per account**. The window slides: each request counts for 60 seconds after it's made. All your API keys and all list endpoints share that one budget. Over it, the answer is `429 rate_limited` with a `Retry-After` header: wait that many seconds, then send the same request again. A refused request doesn't count. At 100 items a page, that's up to 12,000 items a minute, so a loop that reads one page after another rarely reaches it; [Pagination](/concepts/pagination#read-every-page) shows a loop that handles `429`. Other reads, such as retrieving one message, aren't limited.
 - **`POST /v1/events/{token}`** accepts up to 60 events per 60 seconds for each secret-URL [inbound event source](/inbound-events/overview). Over that, it answers `429 rate_limited` while a workflow listens to that source. If no workflow listens, it answers `200` with `runs_started: 0` and the event is dropped. Signed sources, such as Recharge, have no limit.
 
 ## Throughput and pacing
 
-No rate limit on sends doesn't mean unlimited speed. Each line is one Mac, and it sends **one message at a time**:
+No rate limit on text sends doesn't mean unlimited speed. Each line is one Mac, and it sends **one message at a time**:
 
 - The Mac checks for new messages every 2 seconds, then sends them in order with a 1-second pause after each one. So one line sends **at most about one message per second**.
 - Before the first text to a new US or Canadian number, the Mac asks Apple whether the number uses iMessage (see [Lines and routing](/concepts/lines-and-routing)). These checks are spaced 5 to 10 seconds apart.

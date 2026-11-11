@@ -75,7 +75,8 @@ print(data["status"], data["channel"])
   "held_until": null,
   "held_reason": null,
   "effect": null,
-  "reply_to_message_id": null
+  "reply_to_message_id": null,
+  "attachments": []
 }
 ```
 
@@ -109,10 +110,11 @@ print(data["status"], data["channel"])
   "held_until": null,
   "held_reason": null,
   "effect": null,
-  "reply_to_message_id": null
+  "reply_to_message_id": null,
+  "attachments": []
 }
 ```
-`direction` is `outbound` or `inbound`: an inbound message (for example the `message_id` of a `message.inbound` event) can be retrieved too, and then `status` is `delivered`, or `read` once it has been read in the dashboard, and `to` is the contact who sent it. `created_at` is when iBubbl recorded the message (UTC, microseconds, never changes). `status` is one of `queued`, `pending`, `sent`, `delivered`, `read`, `failed`, `expired`, `cancelled`. `channel` is how it went out (`imessage` or `sms`), or `null` before it is sent. For an inbound message, it is how the message arrived (`null` for messages received before iBubbl recorded it).
+`direction` is `outbound` or `inbound`: an inbound message (for example the `message_id` of a `message.inbound` event) can be retrieved too, and then `status` is `delivered`, or `read` once it has been read in the dashboard, and `to` is the contact who sent it. `created_at` is when iBubbl recorded the message (UTC, microseconds, never changes). `status` is one of `queued`, `pending`, `sent`, `delivered`, `read`, `failed`, `expired`, `cancelled`. `channel` is how it went out (`imessage` or `sms`), or `null` before it is sent. For an inbound message, it is how the message arrived (`null` for messages received before iBubbl recorded it). `attachments` lists the message's files in order, each as `kind` (`image`, `gif`, `video`, `audio` or `file`), `mime_type` and `size_bytes`, for files you sent and files the contact sent you; it's `[]` when there are none. File contents and URLs aren't returned. An inbound file can show `size_bytes: 0` for a few seconds, until iBubbl has received it.
 
 **401 Unauthorized**
 ```json

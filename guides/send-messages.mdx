@@ -336,7 +336,7 @@ Two optional fields make a send look like one typed in Messages:
 - `reply_to_message_id` sends the message as an **inline reply** that quotes an earlier message. Pass a message `id`, or the `message_id` from a [`message.inbound`](/webhooks/events) webhook to reply to something the contact sent.
 - `effect` adds an **iMessage effect**, such as confetti or a slam. The values are in the table below.
 
-Use either or both, with `to`, `contact_id` or `chat_guid`. This example replies to an inbound message with confetti:
+Use either or both, with `to`, `contact_id` or `chat_guid`. Neither can be combined with `attachments` (`422 validation_error`): send the files and the reply or effect as two messages. This example replies to an inbound message with confetti:
 
 <CodeGroup>
 
@@ -463,6 +463,10 @@ A bubble effect animates the message bubble; a screen effect fills the recipient
 **Both fields are part of the idempotency payload when you set them.** A retry with the same `idempotency_key` must send the same `effect` and `reply_to_message_id`, or it returns `409 idempotency_conflict`. See [Idempotency](/idempotency).
 </Note>
 
+## Send files
+
+Add `attachments`, a list of up to 10 `https` URLs, to send photos, GIFs, videos, PDFs or audio to one contact. `body` becomes optional and, when set, is the caption; the first message to a contact still needs a `body`. iBubbl downloads the files before it answers, so allow 60 seconds. [Send attachments](/guides/attachments) has the examples, the types and limits, and how each route delivers them.
+
 ## Read the `202` response
 
 ```json
@@ -480,7 +484,8 @@ A bubble effect animates the message bubble; a screen effect fills the recipient
   "held_until": null,
   "held_reason": null,
   "effect": null,
-  "reply_to_message_id": null
+  "reply_to_message_id": null,
+  "attachments": []
 }
 ```
 
@@ -510,7 +515,7 @@ A refused send creates no message, so its `idempotency_key` stays unused and you
 
 | `detail.error` | HTTP | What to do |
 | -------------- | ---- | ---------- |
-| `validation_error` | 422 | Fix the request: zero or two addressing fields, a number not in E.164, an empty `body`, `group_name` without `participant_phones`, fewer than 2 `participant_phones`, an unknown `effect`, a `reply_to_message_id` that isn't a UUID, or either of those with `participant_phones`. |
+| `validation_error` | 422 | Fix the request: zero or two addressing fields, a number not in E.164, an empty `body`, `group_name` without `participant_phones`, fewer than 2 `participant_phones`, an unknown `effect`, a `reply_to_message_id` that isn't a UUID, either of those with `participant_phones` or `attachments`, or `attachments` that aren't 1–10 `https` URLs or are sent to a group. |
 | `not_found` | 404 | The `contact_id` doesn't exist on this account. |
 | `group_not_found` | 404 | No group with that `chat_guid`. It may have changed when someone joined: read it again from `GET /v1/messages/{id}`. |
 | `idempotency_conflict` | 409 | You reused a key with a different payload. Send the original payload, or use a new key for a new message. |
@@ -524,6 +529,7 @@ A refused send creates no message, so its `idempotency_key` stays unused and you
 | `insufficient_participants` | 422 | The new group names fewer than 2 different people. |
 | `reply_target_not_found` | 422 | `reply_to_message_id` isn't a message in this conversation. Check the ID, and that you're sending to the same contact or group. |
 | `reply_target_unsent` / `reply_target_partly_unsent` | 422 | The contact unsent the message (or part of it). Send without `reply_to_message_id`. |
+| `first_message_needs_text`, `attachment_fetch_failed`, `attachment_too_large`, `unsupported_attachment`, `attachment_combination_not_supported` | 422 | A problem with `attachments`. See [Send attachments](/guides/attachments#errors). |
 | `internal_error` | 500 | Retry with the **same** `idempotency_key` and payload, with backoff. |
 
 `401`, `403` and `500 no_owner_rep` are account problems, not send problems; see [Errors](/errors).

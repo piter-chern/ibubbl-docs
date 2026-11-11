@@ -57,6 +57,7 @@
         "group": "Guides",
         "pages": [
           "guides/send-messages",
+          "guides/attachments",
           "guides/receive-messages",
           "guides/webhook-signatures",
           "guides/test-webhooks-locally",

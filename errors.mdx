@@ -86,7 +86,7 @@ if not res.ok:
 </ResponseField>
 
 <ResponseField name="validation_error" type="422">
-  Generic request-shape failure. The `message` will identify the field. Common causes: missing required body field, malformed E.164 phone, body length zero, `to` and `contact_id` both omitted. On a list endpoint: an unknown or repeated query parameter, `limit` outside 1–100, or a time without a time zone.
+  Generic request-shape failure. The `message` will identify the field. Common causes: missing required body field, malformed E.164 phone, body length zero, `to` and `contact_id` both omitted, neither `body` nor `attachments`, an `attachments` entry that isn't an `https` URL (or more than 10 of them), `attachments` with `chat_guid` or `participant_phones`, or `attachments` with `effect` or `reply_to_message_id`. On a list endpoint: an unknown or repeated query parameter, `limit` outside 1–100, or a time without a time zone.
 </ResponseField>
 
 <ResponseField name="invalid_cursor" type="422">
@@ -169,6 +169,26 @@ if not res.ok:
   `POST /v1/messages` only: the contact unsent part of the message `reply_to_message_id` points to, and your line can't quote what's left. Send without `reply_to_message_id`.
 </ResponseField>
 
+<ResponseField name="first_message_needs_text" type="422">
+  `POST /v1/messages` only: you sent `attachments` without a `body` to a contact you've never exchanged a message with. Messages can't open a new conversation with files alone. Add a `body`. See [Captions and the first message](/guides/attachments#captions-and-the-first-message).
+</ResponseField>
+
+<ResponseField name="attachment_fetch_failed" type="422">
+  `POST /v1/messages` only: iBubbl couldn't download one of the `attachments` URLs. The `message` names it by position, for example `attachments[1]: attachment fetch answered 404`. Causes: the host doesn't resolve or is a private or internal address, the server answered something other than `200`, more than 3 redirects (or one to a non-`https` URL), an empty file, or the download took too long (about 30 seconds for all the files, or 10 seconds without data). Check the URL works from the public internet, then send again. Nothing was created. See [Send attachments](/guides/attachments#how-the-urls-are-read).
+</ResponseField>
+
+<ResponseField name="attachment_too_large" type="422">
+  `POST /v1/messages` only: a file is over its kind's limit (images and GIFs 25 MiB, video 50 MiB, PDF 10 MB, audio 25 MiB), or the files are over 86 MB in all. The `message` names the file. Send a smaller file, or split the files across messages. See [Supported files and limits](/guides/attachments#supported-files-and-limits).
+</ResponseField>
+
+<ResponseField name="unsupported_attachment" type="422">
+  `POST /v1/messages` only: a file's type can't be sent through the API, for example a calendar invite (`.ics`), WebM or Ogg audio, SVG or a ZIP file. The type comes from the response's `Content-Type` (or the URL's extension when that is `application/octet-stream`). Convert the file to a supported type.
+</ResponseField>
+
+<ResponseField name="attachment_combination_not_supported" type="422">
+  `POST /v1/messages` only: the files can't go out together with their caption. With other files, audio must be a single MP3 of 2 MB or less; any other audio, and a second audio file, needs a message of its own. Send it separately.
+</ResponseField>
+
 <ResponseField name="imessage_undeliverable" type="message.failed">
   Not an API error: it appears only as `failed_reason` on a failed message and its [`message.failed`](/webhooks/events) webhook. iMessage couldn't deliver the message to this number because the number isn't reachable on iMessage. Resending fails the same way, so reach the contact another way. Other iMessage failures appear as `imessage_error:<code>`.
 </ResponseField>
@@ -196,12 +216,13 @@ if not res.ok:
 </ResponseField>
 
 <ResponseField name="rate_limited" type="429">
-  Returned in two places, and nowhere else:
+  Returned in three places, and nowhere else:
 
   - **List endpoints** such as [List messages](/api-reference/messages/list): your account made more than 120 list requests in 60 seconds (all API keys and all lists together). The response has a `Retry-After` header with the seconds to wait; then send the same request again. See [Rate limits](/concepts/limits#rate-limits).
+  - **Sends with `attachments`**, rarely: iBubbl was already downloading as many attachment sends as it can, and no slot freed within 10 seconds. `Retry-After` is `5`; then send the same request with the same `idempotency_key`. Nothing was created.
   - **`/v1/events`**: a secret-URL [inbound event](/inbound-events/overview) source received more than 60 events in 60 seconds. There is no `Retry-After` header here; send again after about a minute.
 
-  Sends (`POST /v1/messages`) never return it.
+  Text-only sends (`POST /v1/messages` without `attachments`) never return it.
 </ResponseField>
 
 ## When to retry
@@ -222,6 +243,9 @@ if not res.ok:
 | `insufficient_participants` | 422 | ❌ Fix the participant list, or send one-to-one. |
 | `reply_target_not_found` | 422 | ❌ Fix `reply_to_message_id`, or the addressing field. |
 | `reply_target_unsent` / `reply_target_partly_unsent` | 422 | ❌ Send without `reply_to_message_id`. |
+| `first_message_needs_text` | 422 | ❌ Add a `body`. |
+| `attachment_fetch_failed` | 422 | ⚠️ Fix or check the URL, then send again; the key is still unused. |
+| `attachment_too_large` / `unsupported_attachment` / `attachment_combination_not_supported` | 422 | ❌ Change the files. |
 | `invalid_url` | 422 | ❌ Use an `https://` URL. |
 | `invalid_timezone` | 422 | ❌ Fix the timezone. |
 | `invalid_email` / `invalid_tag` / `duplicate_tag` | 422 | ❌ Fix the value. |
@@ -229,13 +253,13 @@ if not res.ok:
 | `daily_cap_exhausted` / `cold_cap_exhausted` | 422 | ⚠️ Not queued. Send again after the limit resets (midnight ET). |
 | `hourly_cap_hit` / `followup_cap_exhausted` | — | Legacy: not used on any current line. |
 | `no_eligible_line` | 422 | ⚠️ Send again once your line is back online. |
-| `rate_limited` | 429 | ✅ Lists: send the same request again after `Retry-After` seconds. `/v1/events`: after about a minute. |
+| `rate_limited` | 429 | ✅ Lists and attachment sends: send the same request again (same `idempotency_key`) after `Retry-After` seconds. `/v1/events`: after about a minute. |
 | `invalid_signature` | 403 | ❌ Fix the signing secret. |
 | `payload_too_large` | 413 | ❌ Fix the payload size. |
 | `no_owner_rep` | 500 | ❌ Not until your account has an active owner rep; email [support@ibubbl.com](mailto:support@ibubbl.com). |
 | `internal_error` | 500 | ✅ Retry with the same idempotency key after a short backoff. |
 
-The general rule: **don't retry 4xx**. Most 4xxes are payload-level problems that retrying won't fix. The exception is `429 rate_limited`: wait, then send the same request again (on a list, `Retry-After` says how long). The limit 422s (`daily_cap_exhausted`, `cold_cap_exhausted`) are retryable only after the limit resets at midnight ET; iBubbl does not queue them for you. The hourly new-contact limit and an offline line are different: those sends are accepted and wait (`pending` with `held_reason: "hourly_limit"`, or `queued`), so resending just creates a duplicate. The numbers are on [Limits and queues](/concepts/limits). A send refused with a `404` or `422` creates no message, so its `idempotency_key` stays unused and you can reuse it when you send again.
+The general rule: **don't retry 4xx**. Most 4xxes are payload-level problems that retrying won't fix. The exception is `429 rate_limited`: wait, then send the same request again (on a list or an attachment send, `Retry-After` says how long). The limit 422s (`daily_cap_exhausted`, `cold_cap_exhausted`) are retryable only after the limit resets at midnight ET; iBubbl does not queue them for you. The hourly new-contact limit and an offline line are different: those sends are accepted and wait (`pending` with `held_reason: "hourly_limit"`, or `queued`), so resending just creates a duplicate. The numbers are on [Limits and queues](/concepts/limits). A send refused with a `404` or `422` creates no message, so its `idempotency_key` stays unused and you can reuse it when you send again.
 
 ## HTTP status mapping summary
 
@@ -248,6 +272,6 @@ The general rule: **don't retry 4xx**. Most 4xxes are payload-level problems tha
 | `409` | Idempotency conflict. |
 | `413` | Inbound event body over 256 KB. |
 | `422` | Validation, routing or send-limit failure. |
-| `429` | `rate_limited`: too many list requests from your account (with `Retry-After`), or too many inbound events for one source on `/v1/events`. |
+| `429` | `rate_limited`: too many list requests from your account, or attachment downloads busy (both with `Retry-After`), or too many inbound events for one source on `/v1/events`. |
 | `500` | No owner rep (`no_owner_rep`) or an unexpected iBubbl error (`internal_error`). |
 | `502` / `503` | Never returned by iBubbl itself: only by the network edge during a deployment blip. Retry with the same idempotency key after a short backoff. |
