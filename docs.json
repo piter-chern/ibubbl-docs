@@ -58,6 +58,7 @@
         "pages": [
           "guides/send-messages",
           "guides/attachments",
+          "guides/reactions-read-receipts-typing",
           "guides/receive-messages",
           "guides/webhook-signatures",
           "guides/test-webhooks-locally",
@@ -80,7 +81,9 @@
             "pages": [
               "api-reference/messages/send",
               "api-reference/messages/list",
-              "api-reference/messages/retrieve"
+              "api-reference/messages/retrieve",
+              "api-reference/messages/react",
+              "api-reference/messages/remove-reaction"
             ]
           },
           {
@@ -96,6 +99,14 @@
               "api-reference/contacts/opt-out",
               "api-reference/contacts/block",
               "api-reference/contacts/unblock"
+            ]
+          },
+          {
+            "group": "Conversations",
+            "pages": [
+              "api-reference/conversations/mark-read",
+              "api-reference/conversations/start-typing",
+              "api-reference/conversations/stop-typing"
             ]
           },
           {

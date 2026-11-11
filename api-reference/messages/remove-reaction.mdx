@@ -1,0 +1,176 @@
+---
+title: 'Remove a tapback'
+openapi: 'DELETE /v1/messages/{message_id}/reactions/{reaction_id}'
+---
+
+### Remove a tapback
+
+**Method:** `DELETE` | **Endpoint:** `/v1/messages/{message_id}/reactions/{reaction_id}`
+
+**Description:** Take back a tapback you [added](/api-reference/messages/react). It disappears from the message on the contact's phone, and [`message.reaction.removed`](/webhooks/events) fires when it does.
+
+**Authentication:** API key in the `Authorization` header: `Authorization: Bearer ib_pk_<64 hex>`. Create keys in the dashboard under **Settings → API access**.
+
+**Rate limit:** 300 conversation actions per 60 seconds per account, shared with tapbacks, mark read and typing. Over that, `429 rate_limited` with a `Retry-After` header; see [Rate limits](/concepts/limits#rate-limits).
+
+#### Request Body
+None. The path parameters are the message's `message_id` and the reaction's `id` (`reaction_id`), both UUIDs.
+
+#### How it behaves
+
+- **Only your own tapback, on that message.** A contact's reaction, or a reaction on another message, answers `404 not_found`.
+- **The answer comes first.** It returns `200` with `status: "removed"` at once. `message.reaction.removed` fires when the phone confirms. If your line can't remove it, [`message.reaction.failed`](/webhooks/events) fires with `action: "remove"` and `failed_reason: "retract_rejected"`, and the tapback may still show on the phone.
+- **A tapback still `pending`** won't be sent once you remove it.
+- **It's safe to call twice.** Removing a tapback that's already removed, replaced or failed answers `200` with it unchanged.
+- **Opt-outs don't stop it.** You can remove a tapback after the contact opted out.
+
+<RequestExample>
+
+```bash cURL
+curl -X DELETE https://api.ibubbl.com/v1/messages/8b3a4e72-1c2d-4e5f-9a0b-2c3d4e5f6a7b/reactions/7a8b9c0d-1e2f-3a4b-5c6d-7e8f9a0b1c2d \
+  -H "Authorization: Bearer $IBUBBL_API_KEY"
+```
+
+```typescript TypeScript
+const messageId = "8b3a4e72-1c2d-4e5f-9a0b-2c3d4e5f6a7b";
+const reactionId = "7a8b9c0d-1e2f-3a4b-5c6d-7e8f9a0b1c2d";
+
+const res = await fetch(
+  `https://api.ibubbl.com/v1/messages/${messageId}/reactions/${reactionId}`,
+  {
+    method: "DELETE",
+    headers: { Authorization: `Bearer ${process.env.IBUBBL_API_KEY}` },
+    signal: AbortSignal.timeout(10_000),
+  },
+);
+
+const data = await res.json();
+if (!res.ok) throw new Error(`${res.status} ${data.detail?.error}`);
+console.log(data.status, data.removed_at);
+```
+
+```python Python
+import os
+
+import requests
+
+API_KEY = os.environ["IBUBBL_API_KEY"]
+
+message_id = "8b3a4e72-1c2d-4e5f-9a0b-2c3d4e5f6a7b"
+reaction_id = "7a8b9c0d-1e2f-3a4b-5c6d-7e8f9a0b1c2d"
+
+res = requests.delete(
+    f"https://api.ibubbl.com/v1/messages/{message_id}/reactions/{reaction_id}",
+    headers={"Authorization": f"Bearer {API_KEY}"},
+    timeout=10,
+)
+data = res.json()
+if not res.ok:
+    raise RuntimeError(f"{res.status_code} {data['detail']['error']}")
+print(data["status"], data["removed_at"])
+```
+
+</RequestExample>
+
+<ResponseExample>
+
+```json 200 OK
+{
+  "id": "7a8b9c0d-1e2f-3a4b-5c6d-7e8f9a0b1c2d",
+  "message_id": "8b3a4e72-1c2d-4e5f-9a0b-2c3d4e5f6a7b",
+  "conversation_id": "3a4b5c6d-7e8f-9a0b-1c2d-3e4f5a6b7c8d",
+  "type": "love",
+  "emoji": "❤️",
+  "direction": "outbound",
+  "status": "removed",
+  "failed_reason": null,
+  "created_at": "2026-11-11T16:03:25.403057Z",
+  "removed_at": "2026-11-11T16:04:04.236980Z"
+}
+```
+
+```json 404 Not Found
+{
+  "detail": {
+    "error": "not_found",
+    "message": "Reaction not found"
+  }
+}
+```
+
+</ResponseExample>
+
+#### Responses
+**200 OK**
+
+The reaction, now `removed` (the same object as [Add a tapback](/api-reference/messages/react) returns). A tapback that had already failed keeps `status: "failed"`.
+
+```json
+{
+  "id": "7a8b9c0d-1e2f-3a4b-5c6d-7e8f9a0b1c2d",
+  "message_id": "8b3a4e72-1c2d-4e5f-9a0b-2c3d4e5f6a7b",
+  "conversation_id": "3a4b5c6d-7e8f-9a0b-1c2d-3e4f5a6b7c8d",
+  "type": "love",
+  "emoji": "❤️",
+  "direction": "outbound",
+  "status": "removed",
+  "failed_reason": null,
+  "created_at": "2026-11-11T16:03:25.403057Z",
+  "removed_at": "2026-11-11T16:04:04.236980Z"
+}
+```
+
+**401 Unauthorized**
+```json
+{
+  "detail": {
+    "error": "unauthorized",
+    "message": "Invalid or revoked API key"
+  }
+}
+```
+Other `message` values: `Authorization Bearer token required`, `API key required (use Authorization: Bearer ib_pk_…)`, `Invalid API key format`, `Customer account not found`.
+
+**403 Forbidden**
+```json
+{
+  "detail": {
+    "error": "forbidden",
+    "message": "Account is suspended"
+  }
+}
+```
+Your iBubbl account is suspended or cancelled (`message` is then `Account is cancelled`). Every API-key endpoint returns this.
+
+**404 Not Found**
+```json
+{
+  "detail": {
+    "error": "not_found",
+    "message": "Reaction not found"
+  }
+}
+```
+Also returned for a malformed ID, a contact's reaction, a reaction on a different message than the one in the path, and one that belongs to another account.
+
+**422 Unprocessable Entity**
+```json
+{
+  "detail": {
+    "error": "target_unsent",
+    "message": "The contact unsent this message."
+  }
+}
+```
+`target_unsent` or `target_partly_unsent`: the contact unsent the message (or part of it) after you reacted, so the tapback can't be changed any more.
+
+**429 Too Many Requests**
+```json
+{
+  "detail": {
+    "error": "rate_limited",
+    "message": "Too many conversation actions; wait 12s (limit 300 a minute per account)."
+  }
+}
+```
+Wait the `Retry-After` header's seconds, then send the same request again.

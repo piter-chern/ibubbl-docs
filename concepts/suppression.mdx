@@ -127,6 +127,8 @@ Both stop one-to-one sends, but they are different things:
 | Webhook | None. | [`contact.opted_out`](/webhooks/events), once per person. |
 | Sends | One-to-one sends return `422 contact_blocked`. Group conversations are not affected. | Every send returns `422 contact_opted_out`, including to a group they're in (`group_outbound_blocked_suppression`). |
 | Their inbound messages | Stored and sent to you as `message.inbound`, but not marked unread, not notified, and no workflow starts. | Stored and sent to you as `message.inbound`. No workflow starts. |
+| Tapbacks and typing | In a one-to-one conversation, [Add a tapback](/api-reference/messages/react) and [Start typing](/api-reference/conversations/start-typing) return `422 contact_blocked`. Removing a tapback and stopping typing still work. | The same, with `422 contact_opted_out`. |
+| Read receipts | [Mark a conversation read](/api-reference/conversations/mark-read) marks the messages read but sends no receipt (`contact_blocked`). | The same (`contact_opted_out`). |
 | After the contact is deleted | Gone: a new contact for the number isn't blocked. | Kept: a new contact for the number is opted out. |
 
 A contact can be both. Sends then return `contact_opted_out`.

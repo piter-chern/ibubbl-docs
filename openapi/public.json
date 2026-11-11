@@ -427,6 +427,227 @@
         }
       }
     },
+    "/v1/messages/{message_id}/reactions": {
+      "post": {
+        "tags": [
+          "Messages"
+        ],
+        "summary": "Add a tapback",
+        "description": "Send one of the six iMessage tapbacks (`love`, `like`, `dislike`, `laugh`, `emphasize`, `question`) on a message you received. It goes out over iMessage, or RCS for an Android contact; it can't go out by SMS.\n\nThe tapback is accepted as `pending`. When it reaches the contact's phone, `message.reaction.added` fires with `direction: \"outbound\"`. If it can't be sent, `message.reaction.failed` fires with a `failed_reason`.\n\nOne tapback per message, as in iMessage: a different type replaces your previous one (`message.reaction.removed` fires for it if it was sent). Sending the type that's already on the message answers `200` with that reaction and sends nothing.\n\nCounts toward the conversation-actions rate limit (300 a minute per account).",
+        "operationId": "v1_add_reaction_v1_messages__message_id__reactions_post",
+        "parameters": [
+          {
+            "name": "message_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Message Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReactionCreate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "That tapback is already on the message; nothing sent.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Reaction"
+                }
+              }
+            }
+          },
+          "201": {
+            "description": "Tapback accepted.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Reaction"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid API key.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Message (or reaction) not found.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "`rate_limited`: more than 300 conversation actions in 60 seconds from your account (all keys, and tapbacks, read and typing requests, count together; list requests have their own budget). Wait `Retry-After` seconds, then send the same request again.",
+            "headers": {
+              "Retry-After": {
+                "description": "Seconds to wait before retrying.",
+                "schema": {
+                  "type": "integer"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "`validation_error` (bad body, unknown `type`), `invalid_target` (a message you sent), `contact_blocked`, `contact_opted_out`, `sms_not_supported` (the message came in by SMS, or the conversation is going out by SMS), `target_unsent` or `target_partly_unsent` (the contact unsent the message, or part of it).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "`opt_out_check_unavailable`: the contact's opt-out couldn't be checked, so nothing was sent. Retry.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "`forbidden`: your iBubbl account is suspended or cancelled.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/messages/{message_id}/reactions/{reaction_id}": {
+      "delete": {
+        "tags": [
+          "Messages"
+        ],
+        "summary": "Remove a tapback",
+        "description": "Take back a tapback you sent. It's removed from the contact's phone, and `message.reaction.removed` fires when that happens. Only a tapback from you, on this message, can be removed.\n\nIdempotent: removing one already removed (or replaced, or failed) answers `200` with it unchanged.\n\nCounts toward the conversation-actions rate limit (300 a minute per account).",
+        "operationId": "v1_remove_reaction_v1_messages__message_id__reactions__reaction_id__delete",
+        "parameters": [
+          {
+            "name": "message_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Message Id"
+            }
+          },
+          {
+            "name": "reaction_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Reaction Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The reaction, now `removed`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Reaction"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid API key.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Message (or reaction) not found.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "`rate_limited`: more than 300 conversation actions in 60 seconds from your account (all keys, and tapbacks, read and typing requests, count together; list requests have their own budget). Wait `Retry-After` seconds, then send the same request again.",
+            "headers": {
+              "Retry-After": {
+                "description": "Seconds to wait before retrying.",
+                "schema": {
+                  "type": "integer"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "`target_unsent` or `target_partly_unsent`: the contact unsent the message, so the tapback can't be changed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "`forbidden`: your iBubbl account is suspended or cancelled.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/v1/contacts": {
       "post": {
         "tags": [
@@ -1238,6 +1459,267 @@
         }
       }
     },
+    "/v1/conversations/{conversation_id}/read": {
+      "post": {
+        "tags": [
+          "Conversations"
+        ],
+        "summary": "Mark a conversation read",
+        "description": "Mark every message you've received in this conversation read. It clears the unread badge in the iBubbl inbox and, when read receipts are on for your account, sends the contact a read receipt: they see \"Read\" under their latest message on iMessage, and on RCS (Android). SMS has no read receipts.\n\nA receipt goes out only when there was something unread, and never to a group, a blocked contact or one who opted out. `read_receipt` says whether one was queued, and why not.\n\nIdempotent: calling again with nothing new answers `200` with `marked_count: 0`.\n\nCounts toward the conversation-actions rate limit (300 a minute per account).",
+        "operationId": "v1_mark_conversation_read_v1_conversations__conversation_id__read_post",
+        "parameters": [
+          {
+            "name": "conversation_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Conversation Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Marked read.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConversationRead"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid API key.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Conversation not found.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "`rate_limited`: more than 300 conversation actions in 60 seconds from your account (all keys, and tapbacks, read and typing requests, count together; list requests have their own budget). Wait `Retry-After` seconds, then send the same request again.",
+            "headers": {
+              "Retry-After": {
+                "description": "Seconds to wait before retrying.",
+                "schema": {
+                  "type": "integer"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "`forbidden`: your iBubbl account is suspended or cancelled.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/conversations/{conversation_id}/typing": {
+      "post": {
+        "tags": [
+          "Conversations"
+        ],
+        "summary": "Start typing",
+        "description": "Show the contact the typing bubble (the three dots) in this conversation. It lasts 10 seconds: call again every 5 seconds to keep it going. Sending a message clears it on the contact's phone; so does `DELETE`, or simply not calling again.\n\nTyping shows only in a 1:1 iMessage conversation the contact has already messaged. Anywhere else the call answers `200` with `status: \"ignored\"` and an `ignored_reason`, and does nothing.\n\nTyping is a signal to the contact, so it's refused for a blocked contact or one who opted out.\n\nCounts toward the conversation-actions rate limit (300 a minute per account); calls closer than 3 seconds apart are answered without doing anything new.",
+        "operationId": "v1_start_typing_v1_conversations__conversation_id__typing_post",
+        "parameters": [
+          {
+            "name": "conversation_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Conversation Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Typing started (or ignored).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TypingStatus"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid API key.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Conversation not found.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "`rate_limited`: more than 300 conversation actions in 60 seconds from your account (all keys, and tapbacks, read and typing requests, count together; list requests have their own budget). Wait `Retry-After` seconds, then send the same request again.",
+            "headers": {
+              "Retry-After": {
+                "description": "Seconds to wait before retrying.",
+                "schema": {
+                  "type": "integer"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "`contact_blocked` or `contact_opted_out`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "`opt_out_check_unavailable`: the contact's opt-out couldn't be checked, so typing wasn't shown. Retry.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "`forbidden`: your iBubbl account is suspended or cancelled.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "Conversations"
+        ],
+        "summary": "Stop typing",
+        "description": "Stop showing the typing bubble. You don't need this before sending: a sent message clears it on its own. Some phones keep showing the bubble for up to a minute after a stop that isn't followed by a message.\n\nTyping shows only in a 1:1 iMessage conversation the contact has already messaged. Anywhere else the call answers `200` with `status: \"ignored\"` and an `ignored_reason`, and does nothing.\n\nIdempotent: stopping when nothing is typing answers `200` `stopped`.\n\nCounts toward the conversation-actions rate limit (300 a minute per account).",
+        "operationId": "v1_stop_typing_v1_conversations__conversation_id__typing_delete",
+        "parameters": [
+          {
+            "name": "conversation_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Conversation Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Typing stopped (or ignored).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TypingStatus"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid API key.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Conversation not found.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "`rate_limited`: more than 300 conversation actions in 60 seconds from your account (all keys, and tapbacks, read and typing requests, count together; list requests have their own budget). Wait `Retry-After` seconds, then send the same request again.",
+            "headers": {
+              "Retry-After": {
+                "description": "Seconds to wait before retrying.",
+                "schema": {
+                  "type": "integer"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "`forbidden`: your iBubbl account is suspended or cancelled.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/v1/webhooks": {
       "post": {
         "tags": [
@@ -1781,6 +2263,62 @@
         ],
         "title": "ContactList"
       },
+      "ConversationRead": {
+        "properties": {
+          "conversation_id": {
+            "type": "string",
+            "title": "Conversation Id",
+            "description": "The conversation."
+          },
+          "marked_count": {
+            "type": "integer",
+            "title": "Marked Count",
+            "description": "How many received messages this call marked read (0 if they already were)."
+          },
+          "read_receipt": {
+            "type": "string",
+            "enum": [
+              "queued",
+              "skipped"
+            ],
+            "title": "Read Receipt",
+            "description": "`queued`: the contact will see \"Read\" (iMessage, and RCS on Android). `skipped`: no receipt goes out; see `read_receipt_skipped_reason`."
+          },
+          "read_receipt_skipped_reason": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "nothing_unread",
+                  "receipts_off",
+                  "group",
+                  "contact_blocked",
+                  "contact_opted_out",
+                  "opt_out_check_unavailable"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Read Receipt Skipped Reason",
+            "description": "Why no receipt: `nothing_unread` (nothing new since the last read), `receipts_off` (read receipts are off for your account), `group` (never sent in group conversations), `contact_blocked`, `contact_opted_out`, or `opt_out_check_unavailable` (the opt-out couldn't be checked, so none was sent). Null when queued."
+          }
+        },
+        "type": "object",
+        "required": [
+          "conversation_id",
+          "marked_count",
+          "read_receipt",
+          "read_receipt_skipped_reason"
+        ],
+        "title": "ConversationRead",
+        "example": {
+          "conversation_id": "3a4b5c6d-7e8f-9a0b-1c2d-3e4f5a6b7c8d",
+          "marked_count": 2,
+          "read_receipt": "queued"
+        }
+      },
       "EventAck": {
         "properties": {
           "received": {
@@ -2112,6 +2650,190 @@
           "has_more"
         ],
         "title": "MessageList"
+      },
+      "Reaction": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id",
+            "description": "Reaction ID. The `reaction_id` in `message.reaction.*` events."
+          },
+          "message_id": {
+            "type": "string",
+            "title": "Message Id",
+            "description": "The message the tapback is on."
+          },
+          "conversation_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Conversation Id",
+            "description": "The conversation that message is in."
+          },
+          "type": {
+            "type": "string",
+            "title": "Type",
+            "description": "`love`, `like`, `dislike`, `laugh`, `emphasize` or `question`."
+          },
+          "emoji": {
+            "type": "string",
+            "title": "Emoji",
+            "description": "The tapback as an emoji, e.g. `\u2764\ufe0f`."
+          },
+          "direction": {
+            "type": "string",
+            "enum": [
+              "outbound"
+            ],
+            "const": "outbound",
+            "title": "Direction",
+            "description": "Always `outbound`: a tapback you sent."
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "pending",
+              "sent",
+              "failed",
+              "removed"
+            ],
+            "title": "Status",
+            "description": "`pending`: accepted, not yet on the contact's phone. `sent`: delivered to Messages (`message.reaction.added` fires then). `failed`: never sent, see `failed_reason` (`message.reaction.failed` fires). `removed`: you removed it, or a newer tapback of yours on the same message replaced it."
+          },
+          "failed_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Failed Reason",
+            "description": "Why a `failed` tapback wasn't sent: `sms_target`, `target_not_found`, `bb_rejected`, `messages_error`, `expired`, `retract_rejected` or `target_unsent`. Null otherwise."
+          },
+          "created_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created At",
+            "description": "When you sent the tapback (UTC)."
+          },
+          "removed_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Removed At",
+            "description": "When it was removed or replaced (UTC); null while active."
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "message_id",
+          "conversation_id",
+          "type",
+          "emoji",
+          "direction",
+          "status",
+          "failed_reason",
+          "created_at",
+          "removed_at"
+        ],
+        "title": "Reaction",
+        "example": {
+          "conversation_id": "3a4b5c6d-7e8f-9a0b-1c2d-3e4f5a6b7c8d",
+          "created_at": "2026-11-11T15:04:05.123Z",
+          "direction": "outbound",
+          "emoji": "\u2764\ufe0f",
+          "id": "7a8b9c0d-1e2f-3a4b-5c6d-7e8f9a0b1c2d",
+          "message_id": "8b3a4e72-1c2d-4e5f-9a0b-2c3d4e5f6a7b",
+          "status": "pending",
+          "type": "love"
+        }
+      },
+      "TypingStatus": {
+        "properties": {
+          "conversation_id": {
+            "type": "string",
+            "title": "Conversation Id",
+            "description": "The conversation."
+          },
+          "typing": {
+            "type": "boolean",
+            "title": "Typing",
+            "description": "Whether the typing bubble is on after this call."
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "started",
+              "stopped",
+              "ignored"
+            ],
+            "title": "Status",
+            "description": "`started` (or kept going), `stopped`, or `ignored`: typing can't be shown here and nothing was done; see `ignored_reason`."
+          },
+          "ignored_reason": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "group",
+                  "not_imessage",
+                  "no_chat"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ignored Reason",
+            "description": "`group` (not available in group conversations), `not_imessage` (the contact is on SMS or RCS), `no_chat` (the contact hasn't messaged this line yet). Null otherwise."
+          },
+          "expires_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expires At",
+            "description": "When the bubble stops unless you call again (UTC), 10 seconds after the call. Null unless `started`."
+          }
+        },
+        "type": "object",
+        "required": [
+          "conversation_id",
+          "typing",
+          "status",
+          "ignored_reason",
+          "expires_at"
+        ],
+        "title": "TypingStatus",
+        "example": {
+          "conversation_id": "3a4b5c6d-7e8f-9a0b-1c2d-3e4f5a6b7c8d",
+          "expires_at": "2026-11-11T15:04:15.123Z",
+          "status": "started",
+          "typing": true
+        }
       },
       "ContactUpdate": {
         "properties": {
@@ -2560,6 +3282,35 @@
           "to": "+14155551234"
         }
       },
+      "ReactionCreate": {
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": [
+              "love",
+              "like",
+              "dislike",
+              "laugh",
+              "emphasize",
+              "question"
+            ],
+            "title": "Type",
+            "description": "One of the six iMessage tapbacks: `love`, `like`, `dislike`, `laugh`, `emphasize`, `question`. Custom emoji tapbacks can't be sent. Fields not listed here are rejected with `422 validation_error`.",
+            "examples": [
+              "love"
+            ]
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "type"
+        ],
+        "title": "ReactionCreate",
+        "example": {
+          "type": "love"
+        }
+      },
       "ContactTagAdd": {
         "properties": {
           "name": {
@@ -2856,6 +3607,9 @@
     },
     {
       "name": "Contacts"
+    },
+    {
+      "name": "Conversations"
     },
     {
       "name": "Webhooks"

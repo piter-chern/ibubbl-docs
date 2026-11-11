@@ -1,0 +1,188 @@
+---
+title: 'Start typing'
+openapi: 'POST /v1/conversations/{conversation_id}/typing'
+---
+
+### Start typing
+
+**Method:** `POST` | **Endpoint:** `/v1/conversations/{conversation_id}/typing`
+
+**Description:** Show the contact the typing bubble (the three animated dots) in an iMessage conversation, for example while your AI writes a reply. It lasts 10 seconds; call again every 5 seconds to keep it going. Sending a message clears it. See [Typing while your AI thinks](/guides/reactions-read-receipts-typing#typing-while-your-ai-thinks).
+
+**Authentication:** API key in the `Authorization` header: `Authorization: Bearer ib_pk_<64 hex>`. Create keys in the dashboard under **Settings → API access**.
+
+**Rate limit:** 300 conversation actions per 60 seconds per account, shared with tapbacks and mark read. Over that, `429 rate_limited` with a `Retry-After` header; see [Rate limits](/concepts/limits#rate-limits). A refresh every 5 seconds is 12 calls a minute per conversation.
+
+#### Request Body
+None. The path parameter `conversation_id` is the conversation's ID (a UUID): `conversation_id` on every [message](/api-reference/messages/retrieve) and on [`message.inbound`](/webhooks/events).
+
+#### How it behaves
+
+- **It lasts 10 seconds.** `expires_at` says when it stops unless you call again. The dots appear on the phone within about a second.
+- **Keep it going by calling every 5 seconds.** Calls less than 3 seconds apart are answered `started` without doing anything new, and keep the earlier `expires_at`.
+- **Sending ends it.** When you [send a message](/api-reference/messages/send), it replaces the dots straight away. If you stop calling instead, or call [Stop typing](/api-reference/conversations/stop-typing), iBubbl stops typing, but the dots can stay on the contact's iPhone for up to about a minute.
+- **iMessage, one-to-one only.** Where typing can't be shown, the call answers `200` with `status: "ignored"` and does nothing:
+
+| `ignored_reason` | Meaning |
+|---|---|
+| `group` | A group conversation. |
+| `not_imessage` | The contact is known not to use iMessage (an SMS or RCS contact). |
+| `no_chat` | The contact hasn't messaged this line yet, so there's no chat to type in. |
+
+- **Blocked and opted-out contacts are refused.** Typing is a signal to the contact, so a [blocked](/api-reference/contacts/block) contact gets `422 contact_blocked` and an opted-out one `422 contact_opted_out`.
+- **No webhook** fires for typing.
+
+<RequestExample>
+
+```bash cURL
+curl -X POST https://api.ibubbl.com/v1/conversations/3a4b5c6d-7e8f-9a0b-1c2d-3e4f5a6b7c8d/typing \
+  -H "Authorization: Bearer $IBUBBL_API_KEY"
+```
+
+```typescript TypeScript
+const conversationId = "3a4b5c6d-7e8f-9a0b-1c2d-3e4f5a6b7c8d";
+
+const res = await fetch(`https://api.ibubbl.com/v1/conversations/${conversationId}/typing`, {
+  method: "POST",
+  headers: { Authorization: `Bearer ${process.env.IBUBBL_API_KEY}` },
+  signal: AbortSignal.timeout(10_000),
+});
+
+const data = await res.json();
+if (!res.ok) throw new Error(`${res.status} ${data.detail?.error}`);
+// "started", or "ignored" with ignored_reason where typing can't be shown.
+console.log(data.status, data.ignored_reason, data.expires_at);
+```
+
+```python Python
+import os
+
+import requests
+
+API_KEY = os.environ["IBUBBL_API_KEY"]
+
+conversation_id = "3a4b5c6d-7e8f-9a0b-1c2d-3e4f5a6b7c8d"
+
+res = requests.post(
+    f"https://api.ibubbl.com/v1/conversations/{conversation_id}/typing",
+    headers={"Authorization": f"Bearer {API_KEY}"},
+    timeout=10,
+)
+data = res.json()
+if not res.ok:
+    raise RuntimeError(f"{res.status_code} {data['detail']['error']}")
+# "started", or "ignored" with ignored_reason where typing can't be shown.
+print(data["status"], data["ignored_reason"], data["expires_at"])
+```
+
+</RequestExample>
+
+<ResponseExample>
+
+```json 200 OK
+{
+  "conversation_id": "3a4b5c6d-7e8f-9a0b-1c2d-3e4f5a6b7c8d",
+  "typing": true,
+  "status": "started",
+  "ignored_reason": null,
+  "expires_at": "2026-11-11T16:04:49.293232Z"
+}
+```
+
+```json 422 Unprocessable Entity
+{
+  "detail": {
+    "error": "contact_opted_out",
+    "message": "This contact has opted out."
+  }
+}
+```
+
+</ResponseExample>
+
+#### Responses
+**200 OK**
+
+| Field | Description |
+|-------|-------------|
+| `conversation_id` | The conversation. |
+| `typing` | `true` when the dots are on after this call. |
+| `status` | `started` (or kept going), or `ignored`. |
+| `ignored_reason` | `group`, `not_imessage` or `no_chat` when ignored; otherwise `null`. |
+| `expires_at` | When the dots stop unless you call again (UTC, 10 seconds after the call that started or extended them). `null` unless `started`. |
+
+```json
+{
+  "conversation_id": "3a4b5c6d-7e8f-9a0b-1c2d-3e4f5a6b7c8d",
+  "typing": false,
+  "status": "ignored",
+  "ignored_reason": "group",
+  "expires_at": null
+}
+```
+
+**401 Unauthorized**
+```json
+{
+  "detail": {
+    "error": "unauthorized",
+    "message": "Invalid or revoked API key"
+  }
+}
+```
+Other `message` values: `Authorization Bearer token required`, `API key required (use Authorization: Bearer ib_pk_…)`, `Invalid API key format`, `Customer account not found`.
+
+**403 Forbidden**
+```json
+{
+  "detail": {
+    "error": "forbidden",
+    "message": "Account is suspended"
+  }
+}
+```
+Your iBubbl account is suspended or cancelled (`message` is then `Account is cancelled`). Every API-key endpoint returns this.
+
+**404 Not Found**
+```json
+{
+  "detail": {
+    "error": "not_found",
+    "message": "Conversation not found"
+  }
+}
+```
+Also returned for a malformed ID and a conversation that belongs to another account.
+
+**422 Unprocessable Entity**
+```json
+{
+  "detail": {
+    "error": "contact_blocked",
+    "message": "This contact is blocked."
+  }
+}
+```
+`contact_blocked` or `contact_opted_out`, in a one-to-one conversation. Nothing was shown. Group conversations are answered `ignored` instead.
+
+**429 Too Many Requests**
+```json
+{
+  "detail": {
+    "error": "rate_limited",
+    "message": "Too many conversation actions; wait 12s (limit 300 a minute per account)."
+  }
+}
+```
+Wait the `Retry-After` header's seconds, then call again.
+
+**503 Service Unavailable**
+```json
+{
+  "detail": {
+    "error": "opt_out_check_unavailable",
+    "message": "Couldn't check the contact's opt-out. Try again."
+  }
+}
+```
+iBubbl couldn't confirm the contact hasn't opted out, so it showed nothing. Retry after a short backoff.

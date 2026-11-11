@@ -171,6 +171,30 @@ CONTACTS (/v1/contacts)
 - Neither opt-out nor delete cancels a message already accepted and still
   waiting; that is done in the dashboard.
 
+TAPBACKS, READ RECEIPTS AND TYPING
+- message.inbound carries message_id and conversation_id; use them directly.
+- POST /v1/messages/{message_id}/reactions {"type": "love"|"like"|"dislike"|
+  "laugh"|"emphasize"|"question"}: only on a RECEIVED message (else 422
+  invalid_target). 201 pending; the same type again is 200 and sends
+  nothing; a different type replaces it. Delivery fires
+  message.reaction.added (direction "outbound"); a failure fires
+  message.reaction.failed. Not over SMS (422 sms_not_supported).
+  DELETE /v1/messages/{message_id}/reactions/{reaction_id} removes it.
+- POST /v1/conversations/{conversation_id}/read marks the whole conversation
+  read and sends a read receipt; read_receipt is "queued" or "skipped" (with
+  a reason). Never in groups or to blocked/opted-out contacts. It also
+  clears the dashboard's unread badge.
+- POST /v1/conversations/{conversation_id}/typing shows the typing dots for
+  10 seconds: call it on message.inbound and again every 5 seconds while
+  generating a reply; sending the reply clears them. status "ignored"
+  (group, not_imessage, no_chat) is normal, not an error. DELETE the same
+  path only if you decide not to reply.
+- Tapback and typing calls to a blocked or opted-out 1:1 contact get 422
+  contact_blocked / contact_opted_out; 503 opt_out_check_unavailable means
+  retry later.
+- These five endpoints share 300 requests per 60 seconds per account (429
+  rate_limited with Retry-After), separate from the list budget.
+
 RETRIES AND ERRORS
 - Branch on detail.error (the stable code), never on detail.message.
 - Log the X-Request-Id response header with every error; quote it to
@@ -179,8 +203,9 @@ RETRIES AND ERRORS
   the same payload, with exponential backoff (1 s, 2 s, 4 s) and a small cap
   on attempts. Exception: 500 no_owner_rep will not succeed on retry.
 - Never retry a 4xx automatically. Fix the request instead. The one
-  exception: 429 rate_limited (a list or an attachment send); wait
-  Retry-After seconds, then repeat the same request (same idempotency_key).
+  exception: 429 rate_limited (a list, a tapback/read/typing call, or an
+  attachment send); wait Retry-After seconds, then repeat the same request
+  (same idempotency_key).
 - 422 unresponsive_contact: the contact has not replied to 6 messages in a
   row. Stop messaging them until they reply.
 - 422 contact_opted_out: final. Never message this contact again, and never

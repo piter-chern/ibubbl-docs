@@ -1,0 +1,218 @@
+---
+title: 'Add a tapback'
+openapi: 'POST /v1/messages/{message_id}/reactions'
+---
+
+### Add a tapback
+
+**Method:** `POST` | **Endpoint:** `/v1/messages/{message_id}/reactions`
+
+**Description:** React to a message a contact sent you with one of the six iMessage tapbacks: ❤️ `love`, 👍 `like`, 👎 `dislike`, 😂 `laugh`, ‼️ `emphasize` or ❓ `question`. It goes out over iMessage, or over RCS to an Android contact. It can't go out by SMS. See [Tapbacks, read receipts and typing](/guides/reactions-read-receipts-typing).
+
+**Authentication:** API key in the `Authorization` header: `Authorization: Bearer ib_pk_<64 hex>`. Create keys in the dashboard under **Settings → API access**.
+
+**Rate limit:** 300 conversation actions per 60 seconds per account (tapbacks, mark read and typing together, across all your API keys). Over that, you get `429 rate_limited` with a `Retry-After` header; see [Rate limits](/concepts/limits#rate-limits).
+
+#### Request Body
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `type` | string | Yes | `love`, `like`, `dislike`, `laugh`, `emphasize` or `question`. Lowercase. Custom emoji tapbacks can't be sent. |
+
+The path parameter `message_id` is the ID of a message you **received**: the `message_id` of a [`message.inbound`](/webhooks/events) event, or the `id` of an inbound message from [List messages](/api-reference/messages/list). Fields not listed above are rejected with `422 validation_error`.
+
+#### How it behaves
+
+- **It's accepted first, sent second.** The answer is `201` with `status: "pending"`. When the tapback reaches the contact's phone, [`message.reaction.added`](/webhooks/events) fires with `direction: "outbound"`. If it can't be sent, [`message.reaction.failed`](/webhooks/events) fires with a `failed_reason`, usually within seconds and always within 10 minutes.
+- **One tapback per message.** As in iMessage, a different type **replaces** your previous tapback on that message: the new one is `201`, and the old one ends as `removed`. If the old one had reached the phone, `message.reaction.removed` fires for it. Tapbacks sent from the dashboard count as yours too.
+- **It's safe to call twice.** Sending the type that's already on the message answers `200` with that same reaction and sends nothing.
+- **Groups work.** A tapback on a message in a group conversation goes to the group.
+- **Blocked and opted-out contacts get none.** In a one-to-one conversation, a [blocked](/api-reference/contacts/block) contact gets `422 contact_blocked` and an [opted-out](/concepts/suppression) one `422 contact_opted_out`, as for a send.
+- **Not over SMS.** If the message came in by SMS, or the conversation's latest messages are going out by SMS, the answer is `422 sms_not_supported`. If iBubbl can't tell yet, it's accepted, and a tapback the line then can't send fires `message.reaction.failed` with `failed_reason: "sms_target"`.
+
+<RequestExample>
+
+```bash cURL
+curl -X POST https://api.ibubbl.com/v1/messages/8b3a4e72-1c2d-4e5f-9a0b-2c3d4e5f6a7b/reactions \
+  -H "Authorization: Bearer $IBUBBL_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"type": "love"}'
+```
+
+```typescript TypeScript
+const messageId = "8b3a4e72-1c2d-4e5f-9a0b-2c3d4e5f6a7b";
+
+const res = await fetch(`https://api.ibubbl.com/v1/messages/${messageId}/reactions`, {
+  method: "POST",
+  headers: {
+    Authorization: `Bearer ${process.env.IBUBBL_API_KEY}`,
+    "Content-Type": "application/json",
+  },
+  body: JSON.stringify({ type: "love" }),
+  signal: AbortSignal.timeout(10_000),
+});
+
+const data = await res.json();
+if (!res.ok) throw new Error(`${res.status} ${data.detail?.error}`);
+// 201: a new tapback; 200: that tapback was already on the message.
+console.log(res.status, data.id, data.status);
+```
+
+```python Python
+import os
+
+import requests
+
+API_KEY = os.environ["IBUBBL_API_KEY"]
+
+message_id = "8b3a4e72-1c2d-4e5f-9a0b-2c3d4e5f6a7b"
+
+res = requests.post(
+    f"https://api.ibubbl.com/v1/messages/{message_id}/reactions",
+    headers={"Authorization": f"Bearer {API_KEY}"},
+    json={"type": "love"},
+    timeout=10,
+)
+data = res.json()
+if not res.ok:
+    raise RuntimeError(f"{res.status_code} {data['detail']['error']}")
+# 201: a new tapback; 200: that tapback was already on the message.
+print(res.status_code, data["id"], data["status"])
+```
+
+</RequestExample>
+
+<ResponseExample>
+
+```json 201 Created
+{
+  "id": "7a8b9c0d-1e2f-3a4b-5c6d-7e8f9a0b1c2d",
+  "message_id": "8b3a4e72-1c2d-4e5f-9a0b-2c3d4e5f6a7b",
+  "conversation_id": "3a4b5c6d-7e8f-9a0b-1c2d-3e4f5a6b7c8d",
+  "type": "love",
+  "emoji": "❤️",
+  "direction": "outbound",
+  "status": "pending",
+  "failed_reason": null,
+  "created_at": "2026-11-11T16:03:25.403057Z",
+  "removed_at": null
+}
+```
+
+```json 422 Unprocessable Entity
+{
+  "detail": {
+    "error": "sms_not_supported",
+    "message": "This conversation is on SMS, where tapbacks can't be sent. They work over iMessage and RCS."
+  }
+}
+```
+
+</ResponseExample>
+
+#### Responses
+**201 Created**
+
+The tapback is accepted and on its way.
+
+| Field | Description |
+|-------|-------------|
+| `id` | The reaction's ID: the `reaction_id` in `message.reaction.*` events, and the ID to [remove it](/api-reference/messages/remove-reaction) with. |
+| `message_id` | The message the tapback is on. |
+| `conversation_id` | That message's conversation. |
+| `type` / `emoji` | The tapback, as its name and as an emoji. |
+| `direction` | Always `outbound`: a tapback you sent. |
+| `status` | `pending` (accepted, not on the phone yet), `sent` (on the phone; `message.reaction.added` has fired), `failed` (never sent; see `failed_reason`) or `removed` (you removed it, or a newer tapback replaced it). |
+| `failed_reason` | Why a `failed` tapback wasn't sent: `sms_target`, `target_not_found`, `bb_rejected`, `messages_error`, `expired`, `retract_rejected` or `target_unsent`. Otherwise `null`. See [`message.reaction.failed`](/webhooks/events). |
+| `created_at` / `removed_at` | When you sent it, and when it was removed or replaced (UTC; `removed_at` is `null` while it's active). |
+
+```json
+{
+  "id": "7a8b9c0d-1e2f-3a4b-5c6d-7e8f9a0b1c2d",
+  "message_id": "8b3a4e72-1c2d-4e5f-9a0b-2c3d4e5f6a7b",
+  "conversation_id": "3a4b5c6d-7e8f-9a0b-1c2d-3e4f5a6b7c8d",
+  "type": "love",
+  "emoji": "❤️",
+  "direction": "outbound",
+  "status": "pending",
+  "failed_reason": null,
+  "created_at": "2026-11-11T16:03:25.403057Z",
+  "removed_at": null
+}
+```
+
+**200 OK**
+
+That type is already on the message. The body is the existing reaction (its `status` may already be `sent`); nothing new is sent.
+
+**401 Unauthorized**
+```json
+{
+  "detail": {
+    "error": "unauthorized",
+    "message": "Invalid or revoked API key"
+  }
+}
+```
+Other `message` values: `Authorization Bearer token required`, `API key required (use Authorization: Bearer ib_pk_…)`, `Invalid API key format`, `Customer account not found`.
+
+**403 Forbidden**
+```json
+{
+  "detail": {
+    "error": "forbidden",
+    "message": "Account is suspended"
+  }
+}
+```
+Your iBubbl account is suspended or cancelled (`message` is then `Account is cancelled`). Every API-key endpoint returns this.
+
+**404 Not Found**
+```json
+{
+  "detail": {
+    "error": "not_found",
+    "message": "Message not found"
+  }
+}
+```
+Also returned for a malformed ID and a message that belongs to another account.
+
+**422 Unprocessable Entity**
+```json
+{
+  "detail": {
+    "error": "invalid_target",
+    "message": "Only messages you received can get a tapback."
+  }
+}
+```
+Nothing was sent. The `error` is one of:
+
+- `validation_error`: no `type`, a `type` that isn't one of the six, or an unknown field.
+- `invalid_target`: the message is one you sent. Tapbacks go only on messages you received.
+- `contact_blocked`: a one-to-one conversation with a contact you [blocked](/api-reference/contacts/block).
+- `contact_opted_out`: a one-to-one conversation with a contact who opted out.
+- `sms_not_supported`: the message came in by SMS, or the conversation is going out by SMS.
+- `target_unsent` / `target_partly_unsent`: the contact unsent the message, or part of it.
+
+**429 Too Many Requests**
+```json
+{
+  "detail": {
+    "error": "rate_limited",
+    "message": "Too many conversation actions; wait 12s (limit 300 a minute per account)."
+  }
+}
+```
+Wait the `Retry-After` header's seconds, then send the same request again.
+
+**503 Service Unavailable**
+```json
+{
+  "detail": {
+    "error": "opt_out_check_unavailable",
+    "message": "Couldn't check the contact's opt-out. Try again."
+  }
+}
+```
+iBubbl couldn't confirm the contact hasn't opted out, so it sent nothing. Retry after a short backoff.

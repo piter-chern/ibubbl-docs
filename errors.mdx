@@ -94,11 +94,11 @@ if not res.ok:
 </ResponseField>
 
 <ResponseField name="contact_opted_out" type="422">
-  The destination contact has opted out and cannot receive new sends. iBubbl enforces this server-side; there is no programmatic way to override. See [Suppression & Opt-Outs](/concepts/suppression).
+  The destination contact has opted out and cannot receive new sends. iBubbl enforces this server-side; there is no programmatic way to override. [Add a tapback](/api-reference/messages/react) and [Start typing](/api-reference/conversations/start-typing) return it too, in a one-to-one conversation. See [Suppression & Opt-Outs](/concepts/suppression).
 </ResponseField>
 
 <ResponseField name="contact_blocked" type="422">
-  A one-to-one send to a contact your account has blocked, in the dashboard or with [Block a contact](/api-reference/contacts/block). Nothing was sent. The send works again once the contact is [unblocked](/api-reference/contacts/unblock). If a contact is both opted out and blocked, you get `contact_opted_out`.
+  A one-to-one send to a contact your account has blocked, in the dashboard or with [Block a contact](/api-reference/contacts/block). Nothing was sent. The send works again once the contact is [unblocked](/api-reference/contacts/unblock). If a contact is both opted out and blocked, you get `contact_opted_out`. [Add a tapback](/api-reference/messages/react) and [Start typing](/api-reference/conversations/start-typing) return it too, in a one-to-one conversation.
 </ResponseField>
 
 <ResponseField name="unresponsive_contact" type="422">
@@ -169,6 +169,26 @@ if not res.ok:
   `POST /v1/messages` only: the contact unsent part of the message `reply_to_message_id` points to, and your line can't quote what's left. Send without `reply_to_message_id`.
 </ResponseField>
 
+<ResponseField name="invalid_target" type="422">
+  [Add a tapback](/api-reference/messages/react) only: the message is one you sent. Tapbacks go only on messages you received.
+</ResponseField>
+
+<ResponseField name="sms_not_supported" type="422">
+  [Add a tapback](/api-reference/messages/react) only: the message came in by SMS, or the conversation's latest messages are going out by SMS, and tapbacks can't be sent over SMS. They work over iMessage and RCS. Nothing was sent. See [Tapbacks, read receipts and typing](/guides/reactions-read-receipts-typing#tapbacks).
+</ResponseField>
+
+<ResponseField name="target_unsent" type="422">
+  [Add a tapback](/api-reference/messages/react) and [Remove a tapback](/api-reference/messages/remove-reaction): the contact unsent the message, so it can't get (or lose) a tapback. Also a `failed_reason` on [`message.reaction.failed`](/webhooks/events) when they unsent it before the tapback went out.
+</ResponseField>
+
+<ResponseField name="target_partly_unsent" type="422">
+  [Add a tapback](/api-reference/messages/react) and [Remove a tapback](/api-reference/messages/remove-reaction): the contact unsent part of the message, and your line can't place a tapback on what's left.
+</ResponseField>
+
+<ResponseField name="opt_out_check_unavailable" type="503">
+  [Add a tapback](/api-reference/messages/react) and [Start typing](/api-reference/conversations/start-typing): iBubbl couldn't confirm that the contact hasn't opted out, so it sent nothing. Retry after a short backoff. (Mark read doesn't fail this way: it answers `200` with `read_receipt_skipped_reason: "opt_out_check_unavailable"` and sends no receipt.)
+</ResponseField>
+
 <ResponseField name="first_message_needs_text" type="422">
   `POST /v1/messages` only: you sent `attachments` without a `body` to a contact you've never exchanged a message with. Messages can't open a new conversation with files alone. Add a `body`. See [Captions and the first message](/guides/attachments#captions-and-the-first-message).
 </ResponseField>
@@ -216,8 +236,9 @@ if not res.ok:
 </ResponseField>
 
 <ResponseField name="rate_limited" type="429">
-  Returned in three places, and nowhere else:
+  Returned in four places, and nowhere else:
 
+  - **Conversation actions** ([Add](/api-reference/messages/react) and [remove](/api-reference/messages/remove-reaction) a tapback, [Mark read](/api-reference/conversations/mark-read), [Start](/api-reference/conversations/start-typing) and [stop](/api-reference/conversations/stop-typing) typing): your account made more than 300 of these requests in 60 seconds (all API keys and all five endpoints together; a budget separate from lists). The response has a `Retry-After` header; wait that long and call again. See [Rate limits](/concepts/limits#rate-limits).
   - **List endpoints** ([List messages](/api-reference/messages/list), [List contacts](/api-reference/contacts/list)): your account made more than 120 list requests in 60 seconds (all API keys and all lists together). The response has a `Retry-After` header with the seconds to wait; then send the same request again. See [Rate limits](/concepts/limits#rate-limits).
   - **Sends with `attachments`**, rarely: iBubbl was already downloading as many attachment sends as it can, and no slot freed within 10 seconds. `Retry-After` is `5`; then send the same request with the same `idempotency_key`. Nothing was created.
   - **`/v1/events`**: a secret-URL [inbound event](/inbound-events/overview) source received more than 60 events in 60 seconds. There is no `Retry-After` header here; send again after about a minute.
@@ -243,6 +264,9 @@ if not res.ok:
 | `insufficient_participants` | 422 | ❌ Fix the participant list, or send one-to-one. |
 | `reply_target_not_found` | 422 | ❌ Fix `reply_to_message_id`, or the addressing field. |
 | `reply_target_unsent` / `reply_target_partly_unsent` | 422 | ❌ Send without `reply_to_message_id`. |
+| `invalid_target` | 422 | ❌ Tapbacks go only on messages you received. |
+| `sms_not_supported` | 422 | ❌ Not over SMS. |
+| `target_unsent` / `target_partly_unsent` | 422 | ❌ The contact unsent the message. |
 | `first_message_needs_text` | 422 | ❌ Add a `body`. |
 | `attachment_fetch_failed` | 422 | ⚠️ Fix or check the URL, then send again; the key is still unused. |
 | `attachment_too_large` / `unsupported_attachment` / `attachment_combination_not_supported` | 422 | ❌ Change the files. |
@@ -253,13 +277,14 @@ if not res.ok:
 | `daily_cap_exhausted` / `cold_cap_exhausted` | 422 | ⚠️ Not queued. Send again after the limit resets (midnight ET). |
 | `hourly_cap_hit` / `followup_cap_exhausted` | — | Legacy: not used on any current line. |
 | `no_eligible_line` | 422 | ⚠️ Send again once your line is back online. |
-| `rate_limited` | 429 | ✅ Lists and attachment sends: send the same request again (same `idempotency_key`) after `Retry-After` seconds. `/v1/events`: after about a minute. |
+| `rate_limited` | 429 | ✅ Lists, conversation actions and attachment sends: send the same request again (same `idempotency_key`) after `Retry-After` seconds. `/v1/events`: after about a minute. |
 | `invalid_signature` | 403 | ❌ Fix the signing secret. |
 | `payload_too_large` | 413 | ❌ Fix the payload size. |
 | `no_owner_rep` | 500 | ❌ Not until your account has an active owner rep; email [support@ibubbl.com](mailto:support@ibubbl.com). |
 | `internal_error` | 500 | ✅ Retry with the same idempotency key after a short backoff. |
+| `opt_out_check_unavailable` | 503 | ✅ Retry after a short backoff. |
 
-The general rule: **don't retry 4xx**. Most 4xxes are payload-level problems that retrying won't fix. The exception is `429 rate_limited`: wait, then send the same request again (on a list or an attachment send, `Retry-After` says how long). The limit 422s (`daily_cap_exhausted`, `cold_cap_exhausted`) are retryable only after the limit resets at midnight ET; iBubbl does not queue them for you. The hourly new-contact limit and an offline line are different: those sends are accepted and wait (`pending` with `held_reason: "hourly_limit"`, or `queued`), so resending just creates a duplicate. The numbers are on [Limits and queues](/concepts/limits). A send refused with a `404` or `422` creates no message, so its `idempotency_key` stays unused and you can reuse it when you send again.
+The general rule: **don't retry 4xx**. Most 4xxes are payload-level problems that retrying won't fix. The exception is `429 rate_limited`: wait, then send the same request again (on a list, a conversation action or an attachment send, `Retry-After` says how long). The limit 422s (`daily_cap_exhausted`, `cold_cap_exhausted`) are retryable only after the limit resets at midnight ET; iBubbl does not queue them for you. The hourly new-contact limit and an offline line are different: those sends are accepted and wait (`pending` with `held_reason: "hourly_limit"`, or `queued`), so resending just creates a duplicate. The numbers are on [Limits and queues](/concepts/limits). A send refused with a `404` or `422` creates no message, so its `idempotency_key` stays unused and you can reuse it when you send again.
 
 ## HTTP status mapping summary
 
@@ -272,6 +297,7 @@ The general rule: **don't retry 4xx**. Most 4xxes are payload-level problems tha
 | `409` | Idempotency conflict. |
 | `413` | Inbound event body over 256 KB. |
 | `422` | Validation, routing or send-limit failure. |
-| `429` | `rate_limited`: too many list requests from your account, or attachment downloads busy (both with `Retry-After`), or too many inbound events for one source on `/v1/events`. |
+| `429` | `rate_limited`: too many list requests or conversation actions from your account, or attachment downloads busy (all with `Retry-After`), or too many inbound events for one source on `/v1/events`. |
 | `500` | No owner rep (`no_owner_rep`) or an unexpected iBubbl error (`internal_error`). |
-| `502` / `503` | Never returned by iBubbl itself: only by the network edge during a deployment blip. Retry with the same idempotency key after a short backoff. |
+| `503` | `opt_out_check_unavailable` on a tapback or typing call. Retry after a short backoff. |
+| `502` / `503` without a `detail.error` | The network edge during a deployment blip, not iBubbl itself. Retry with the same idempotency key after a short backoff. |

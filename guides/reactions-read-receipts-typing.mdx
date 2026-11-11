@@ -1,0 +1,362 @@
+---
+title: 'Tapbacks, Read Receipts & Typing Indicators'
+description: 'React to messages, send read receipts and show the typing bubble, the way a person on an iPhone would.'
+---
+
+Three small things make a conversation feel like it's with a person: a ❤️ on what they said, **Read** under their message, and the typing dots while a reply is on its way. iBubbl sends all three from your line through `/v1`:
+
+| To | Call |
+|---|---|
+| React to a message | [`POST /v1/messages/{message_id}/reactions`](/api-reference/messages/react), and [`DELETE …/reactions/{reaction_id}`](/api-reference/messages/remove-reaction) to take it back |
+| Send a read receipt | [`POST /v1/conversations/{conversation_id}/read`](/api-reference/conversations/mark-read) |
+| Show the typing dots | [`POST /v1/conversations/{conversation_id}/typing`](/api-reference/conversations/start-typing), and [`DELETE`](/api-reference/conversations/stop-typing) to stop |
+
+`message_id` and `conversation_id` are both on every [`message.inbound`](/webhooks/events) event, so you can act on a message the moment it arrives.
+
+## Tapbacks
+
+A tapback is one of the six iMessage reactions: ❤️ `love`, 👍 `like`, 👎 `dislike`, 😂 `laugh`, ‼️ `emphasize` and ❓ `question`.
+
+<CodeGroup>
+
+```bash cURL
+# message_id from the message.inbound event
+curl -X POST https://api.ibubbl.com/v1/messages/8b3a4e72-1c2d-4e5f-9a0b-2c3d4e5f6a7b/reactions \
+  -H "Authorization: Bearer $IBUBBL_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"type": "love"}'
+```
+
+```typescript TypeScript
+const messageId = "8b3a4e72-1c2d-4e5f-9a0b-2c3d4e5f6a7b"; // from the message.inbound event
+
+const res = await fetch(`https://api.ibubbl.com/v1/messages/${messageId}/reactions`, {
+  method: "POST",
+  headers: {
+    Authorization: `Bearer ${process.env.IBUBBL_API_KEY}`,
+    "Content-Type": "application/json",
+  },
+  body: JSON.stringify({ type: "love" }),
+  signal: AbortSignal.timeout(10_000),
+});
+
+const data = await res.json();
+if (!res.ok) throw new Error(`${res.status} ${data.detail?.error}`);
+console.log(data.id, data.status); // keep data.id to remove it later
+```
+
+```python Python
+import os
+
+import requests
+
+API_KEY = os.environ["IBUBBL_API_KEY"]
+
+message_id = "8b3a4e72-1c2d-4e5f-9a0b-2c3d4e5f6a7b"  # from the message.inbound event
+
+res = requests.post(
+    f"https://api.ibubbl.com/v1/messages/{message_id}/reactions",
+    headers={"Authorization": f"Bearer {API_KEY}"},
+    json={"type": "love"},
+    timeout=10,
+)
+data = res.json()
+if not res.ok:
+    raise RuntimeError(f"{res.status_code} {data['detail']['error']}")
+print(data["id"], data["status"])  # keep data["id"] to remove it later
+```
+
+</CodeGroup>
+
+What to know:
+
+- **Only on messages you received.** A tapback on a message you sent is `422 invalid_target`. Custom emoji tapbacks can't be sent.
+- **One per message.** A different type replaces your previous tapback on that message, as on an iPhone. The same type again answers `200` and sends nothing, so a retry is safe. Tapbacks a teammate added in the dashboard count as yours.
+- **Accepted, then sent.** The answer is `201` with `status: "pending"`. Your line sends it within seconds, and then:
+  - [`message.reaction.added`](/webhooks/events) fires with `direction: "outbound"` once it's on the contact's phone;
+  - or [`message.reaction.failed`](/webhooks/events) fires with a `failed_reason` if it can't be sent. A tapback not sent within 10 minutes fails as `expired`.
+- **Not over SMS.** Tapbacks go out over iMessage, and over RCS to Android contacts. If the message came in by SMS, or the conversation is going out by SMS, the answer is `422 sms_not_supported`. When iBubbl can't tell up front, the line refuses it later with `failed_reason: "sms_target"`.
+- **Same rules as a send.** In a one-to-one conversation, a [blocked](/api-reference/contacts/block) contact gets `422 contact_blocked`, an opted-out one `422 contact_opted_out`. Group conversations aren't checked for blocks or opt-outs.
+
+To take a tapback back, [remove it](/api-reference/messages/remove-reaction) with its `id`. `message.reaction.removed` fires when it's gone from the phone.
+
+## Read receipts
+
+[Mark a conversation read](/api-reference/conversations/mark-read) marks every message the contact sent you as read, and sends them a read receipt.
+
+<CodeGroup>
+
+```bash cURL
+# conversation_id from the message.inbound event
+curl -X POST https://api.ibubbl.com/v1/conversations/3a4b5c6d-7e8f-9a0b-1c2d-3e4f5a6b7c8d/read \
+  -H "Authorization: Bearer $IBUBBL_API_KEY"
+```
+
+```typescript TypeScript
+const conversationId = "3a4b5c6d-7e8f-9a0b-1c2d-3e4f5a6b7c8d"; // from the message.inbound event
+
+const res = await fetch(`https://api.ibubbl.com/v1/conversations/${conversationId}/read`, {
+  method: "POST",
+  headers: { Authorization: `Bearer ${process.env.IBUBBL_API_KEY}` },
+  signal: AbortSignal.timeout(10_000),
+});
+
+const data = await res.json();
+if (!res.ok) throw new Error(`${res.status} ${data.detail?.error}`);
+console.log(data.read_receipt, data.read_receipt_skipped_reason);
+```
+
+```python Python
+import os
+
+import requests
+
+API_KEY = os.environ["IBUBBL_API_KEY"]
+
+conversation_id = "3a4b5c6d-7e8f-9a0b-1c2d-3e4f5a6b7c8d"  # from the message.inbound event
+
+res = requests.post(
+    f"https://api.ibubbl.com/v1/conversations/{conversation_id}/read",
+    headers={"Authorization": f"Bearer {API_KEY}"},
+    timeout=10,
+)
+data = res.json()
+if not res.ok:
+    raise RuntimeError(f"{res.status_code} {data['detail']['error']}")
+print(data["read_receipt"], data["read_receipt_skipped_reason"])
+```
+
+</CodeGroup>
+
+- **It's for the whole conversation.** Read receipts on iMessage and RCS are per conversation: the contact sees **Read** under their latest message, which covers everything before it. That's why the endpoint takes a `conversation_id`, not a message.
+- **It also clears the unread badge in the iBubbl dashboard**, for your whole team. Mark a conversation read when it really has been handled, by your code or a person.
+- **Not in groups.** In a group conversation the messages are marked read in iBubbl, but no receipt is sent (`read_receipt_skipped_reason: "group"`): a receipt there would reach only one participant, in the wrong chat.
+- **Not to blocked or opted-out contacts**, and not when nothing is new: the answer says `skipped` and why.
+- **Read receipts are on by default.** To turn them off for your account, email [support@ibubbl.com](mailto:support@ibubbl.com).
+
+Don't confuse this with [`message.read`](/webhooks/events): that event is the **contact** reading **your** message.
+
+## Typing indicators
+
+[Start typing](/api-reference/conversations/start-typing) shows the contact the three animated dots in a one-to-one iMessage conversation. They last 10 seconds, so call again every 5 seconds to keep them going. Calls closer than 3 seconds apart are answered without doing anything new.
+
+The dots go away when you send a message. If you stop calling, or call [Stop typing](/api-reference/conversations/stop-typing), iBubbl stops typing straight away, but the contact's iPhone can keep showing the dots for up to about a minute. So start typing when you're going to reply, not "just in case".
+
+Where typing can't be shown, the call answers `200` with `status: "ignored"` and an `ignored_reason`: `group` (group conversations), `not_imessage` (the contact uses SMS or RCS), or `no_chat` (the contact hasn't messaged this line yet). Treat `ignored` as normal, not as an error. A [blocked](/api-reference/contacts/block) or opted-out contact gets `422`.
+
+### Typing while your AI thinks
+
+The most common use: a contact texts you, your AI takes a few seconds to write the reply, and meanwhile they see you typing.
+
+1. **On [`message.inbound`](/webhooks/events)**, mark the conversation read and start typing right away, with the event's `conversation_id`.
+2. **While your model generates**, call Start typing again every 5 seconds.
+3. **Send the reply.** It replaces the dots. Stop the refresh loop.
+4. **If you decide not to reply** (or the model fails), stop refreshing and call Stop typing.
+
+This builds on the receiver in [Receive messages](/guides/receive-messages#an-auto-reply-that-cannot-loop): verify the signature, de-duplicate on the event `id`, act only on `message.inbound`, and use a deterministic `idempotency_key`. The code below is the work that receiver hands off once those checks pass.
+
+<CodeGroup>
+
+```bash cURL
+# The calls, in order. The ids come from the message.inbound event.
+API=https://api.ibubbl.com
+CONVERSATION_ID=3a4b5c6d-7e8f-9a0b-1c2d-3e4f5a6b7c8d
+INBOUND_ID=5b6c7d8e-9f0a-1b2c-3d4e-5f6a7b8c9d0e
+
+# 1. Read receipt, then the typing dots.
+curl -X POST "$API/v1/conversations/$CONVERSATION_ID/read" -H "Authorization: Bearer $IBUBBL_API_KEY"
+curl -X POST "$API/v1/conversations/$CONVERSATION_ID/typing" -H "Authorization: Bearer $IBUBBL_API_KEY"
+
+# 2. Every 5 seconds while the reply is being written:
+curl -X POST "$API/v1/conversations/$CONVERSATION_ID/typing" -H "Authorization: Bearer $IBUBBL_API_KEY"
+
+# 3. Send the reply (it clears the dots). One key per inbound message, so a
+#    repeated event can never send a second reply.
+curl -X POST "$API/v1/messages" \
+  -H "Authorization: Bearer $IBUBBL_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d "{\"contact_id\": \"c8a1f4e2-3b9d-4f7c-a8e5-1d2c3b4a5e6f\", \"body\": \"Tuesday at 3 works. See you then!\", \"idempotency_key\": \"ai-reply-$INBOUND_ID\"}"
+
+# 4. Only if you decided not to reply:
+curl -X DELETE "$API/v1/conversations/$CONVERSATION_ID/typing" -H "Authorization: Bearer $IBUBBL_API_KEY"
+```
+
+```typescript TypeScript
+const API = "https://api.ibubbl.com";
+const HEADERS = {
+  Authorization: `Bearer ${process.env.IBUBBL_API_KEY}`,
+  "Content-Type": "application/json",
+};
+
+async function call(method: string, path: string, body?: unknown): Promise<any> {
+  const res = await fetch(`${API}${path}`, {
+    method,
+    headers: HEADERS,
+    body: body === undefined ? undefined : JSON.stringify(body),
+    signal: AbortSignal.timeout(10_000),
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(`${res.status} ${data.detail?.error}`);
+  return data;
+}
+
+// Run for a message.inbound event, after the signature check and
+// de-duplication. generateReply is your model call.
+export async function replyWithAI(
+  event: { data: { message_id: string; conversation_id: string; body: string } },
+  generateReply: (text: string) => Promise<string | null>,
+): Promise<void> {
+  const { message_id: inboundId, conversation_id: conversationId, body } = event.data;
+  const typingPath = `/v1/conversations/${conversationId}/typing`;
+
+  // Where to reply, and whether it's one-to-one (typing is 1:1 only).
+  const inbound = await call("GET", `/v1/messages/${inboundId}`);
+  if (inbound.conversation_kind === "group") return;
+
+  // 1. Read receipt, then the dots. Neither may stop the reply.
+  await call("POST", `/v1/conversations/${conversationId}/read`).catch(console.warn);
+  const typing = await call("POST", typingPath).catch(() => null);
+
+  // 2. Keep the dots going while the model works ("ignored" needs no refresh).
+  const refresh =
+    typing?.status === "started"
+      ? setInterval(() => call("POST", typingPath).catch(() => {}), 5_000)
+      : undefined;
+
+  let sent = false;
+  try {
+    const reply = await generateReply(body);
+    if (reply) {
+      // 3. Send. The deterministic key makes a repeated event harmless.
+      await call("POST", "/v1/messages", {
+        contact_id: inbound.contact_id,
+        body: reply,
+        idempotency_key: `ai-reply-${inboundId}`,
+      });
+      sent = true;
+    }
+  } finally {
+    clearInterval(refresh);
+    // 4. No reply after all: stop the dots.
+    if (!sent && typing?.status === "started") {
+      await call("DELETE", typingPath).catch(() => {});
+    }
+  }
+}
+```
+
+```python Python
+import os
+import threading
+from typing import Callable, Optional
+
+import requests
+
+API = "https://api.ibubbl.com"
+API_KEY = os.environ["IBUBBL_API_KEY"]
+HEADERS = {"Authorization": f"Bearer {API_KEY}"}
+
+
+def call(method: str, path: str, body: Optional[dict] = None) -> dict:
+    res = requests.request(method, f"{API}{path}", headers=HEADERS, json=body, timeout=10)
+    data = res.json()
+    if not res.ok:
+        raise RuntimeError(f"{res.status_code} {data['detail']['error']}")
+    return data
+
+
+def reply_with_ai(event: dict, generate_reply: Callable[[str], Optional[str]]) -> None:
+    """Run for a message.inbound event, after the signature check and
+    de-duplication. generate_reply is your model call."""
+    inbound_id = event["data"]["message_id"]
+    conversation_id = event["data"]["conversation_id"]
+    typing_path = f"/v1/conversations/{conversation_id}/typing"
+
+    # Where to reply, and whether it's one-to-one (typing is 1:1 only).
+    inbound = call("GET", f"/v1/messages/{inbound_id}")
+    if inbound["conversation_kind"] == "group":
+        return
+
+    # 1. Read receipt, then the dots. Neither may stop the reply.
+    try:
+        call("POST", f"/v1/conversations/{conversation_id}/read")
+    except Exception as exc:
+        print("read receipt:", exc)
+    try:
+        typing = call("POST", typing_path)["status"] == "started"
+    except Exception:
+        typing = False
+
+    # 2. Keep the dots going while the model works.
+    done = threading.Event()
+
+    def refresh() -> None:
+        while not done.wait(5):
+            try:
+                call("POST", typing_path)
+            except Exception:
+                pass
+
+    if typing:
+        threading.Thread(target=refresh, daemon=True).start()
+
+    sent = False
+    try:
+        reply = generate_reply(event["data"]["body"])
+        if reply:
+            # 3. Send. The deterministic key makes a repeated event harmless.
+            call("POST", "/v1/messages", {
+                "contact_id": inbound["contact_id"],
+                "body": reply,
+                "idempotency_key": f"ai-reply-{inbound_id}",
+            })
+            sent = True
+    finally:
+        done.set()
+        # 4. No reply after all: stop the dots.
+        if typing and not sent:
+            try:
+                call("DELETE", typing_path)
+            except Exception:
+                pass
+```
+
+</CodeGroup>
+
+- **Refresh every 5 seconds**, not faster: the dots last 10 seconds, and calls closer than 3 seconds apart do nothing new. 12 calls a minute per conversation keeps you far inside the [rate limit](#rate-limits).
+- **Your reply still follows the usual rules.** It can wait for the contact's [sending hours](/concepts/working-hours), or be refused (`contact_opted_out`, `unresponsive_contact`, …). The code stops typing whenever the send fails.
+- **A slow model is fine.** The contact sees typing for as long as you refresh. If generating takes minutes, consider a short holding reply instead.
+
+## What the contact sees
+
+| | iMessage (iPhone, iPad, Mac) | RCS (Android) | SMS |
+|---|---|---|---|
+| Tapback | The tapback on their message bubble. | Sent as an RCS reaction; how it looks depends on their messaging app. | Refused: `422 sms_not_supported`, or `message.reaction.failed` with `sms_target`. |
+| Read receipt | **Read** and a time under their latest message. | **Read**, in apps that show RCS read receipts. | Nothing: SMS has no read receipts. |
+| Typing | The three animated dots. | Nothing: answered `ignored` (`not_imessage`) once iBubbl knows the contact isn't on iMessage. | Nothing, as for RCS. |
+
+On iMessage, your read receipt shows even if the contact turned off read receipts for their own messages: that setting only controls what they send.
+
+## Webhooks
+
+| Event | Fires when |
+|---|---|
+| [`message.inbound`](/webhooks/events) | A contact messages you. Carries the `message_id` and `conversation_id` the three actions take. |
+| [`message.reaction.added`](/webhooks/events) | Your tapback reached the contact's phone (`direction: "outbound"`), or a contact reacted to one of your messages (`"inbound"`). |
+| [`message.reaction.removed`](/webhooks/events) | A tapback was removed: you took it back, a newer one of yours replaced it, or the contact took theirs back. |
+| [`message.reaction.failed`](/webhooks/events) | Your tapback, or its removal, couldn't be sent. `action` says which, `failed_reason` why. |
+
+Marking a conversation read and typing fire no events. Every event above carries `conversation_id`. Your own tapbacks are events about your own actions: never send a message because of one (see [An auto-reply that cannot loop](/guides/receive-messages#an-auto-reply-that-cannot-loop)).
+
+## Rate limits
+
+The five endpoints share one budget: **300 requests per 60 seconds per account**, across all your API keys. It's separate from the 120 a minute for [list endpoints](/concepts/limits#rate-limits), so typing never slows your history reads, and the other way round. Over the limit, the answer is `429 rate_limited` with a `Retry-After` header in seconds; wait that long, then call again. A refused call doesn't count.
+
+At one typing refresh every 5 seconds, that's room for about 20 conversations typing at the same moment, plus the read receipts and tapbacks around them.
+
+## Next
+
+- [Add a tapback](/api-reference/messages/react), [Remove a tapback](/api-reference/messages/remove-reaction)
+- [Mark a conversation read](/api-reference/conversations/mark-read)
+- [Start typing](/api-reference/conversations/start-typing), [Stop typing](/api-reference/conversations/stop-typing)
+- [Webhook events](/webhooks/events)

@@ -1,0 +1,162 @@
+---
+title: 'Mark a conversation read'
+openapi: 'POST /v1/conversations/{conversation_id}/read'
+---
+
+### Mark a conversation read
+
+**Method:** `POST` | **Endpoint:** `/v1/conversations/{conversation_id}/read`
+
+**Description:** Mark every message you've received in a conversation as read, and send the contact a read receipt: on iMessage they see **Read** under their latest message. It works on the whole conversation at once, because that's how read receipts work on iMessage and RCS. See [Tapbacks, read receipts and typing](/guides/reactions-read-receipts-typing#read-receipts).
+
+**Authentication:** API key in the `Authorization` header: `Authorization: Bearer ib_pk_<64 hex>`. Create keys in the dashboard under **Settings → API access**.
+
+**Rate limit:** 300 conversation actions per 60 seconds per account, shared with tapbacks and typing. Over that, `429 rate_limited` with a `Retry-After` header; see [Rate limits](/concepts/limits#rate-limits).
+
+#### Request Body
+None. The path parameter `conversation_id` is the conversation's ID (a UUID): `conversation_id` on every [message](/api-reference/messages/retrieve) and on every [`message.*` webhook](/webhooks/events).
+
+#### How it behaves
+
+- **The messages are marked read in iBubbl.** The conversation's unread badge clears in the dashboard too, for your whole team.
+- **A receipt goes out only when there's something new.** `read_receipt: "queued"` means the contact will see Read within a few seconds. `"skipped"` means no receipt goes out, and `read_receipt_skipped_reason` says why.
+- **Never in a group, and never to a blocked or opted-out contact.** The messages are still marked read in iBubbl.
+- **Read receipts are on by default.** To turn them off for your account, email [support@ibubbl.com](mailto:support@ibubbl.com); calls then answer `skipped` with `receipts_off`.
+- **It's safe to call twice.** A second call with nothing new answers `200` with `marked_count: 0`.
+
+| `read_receipt_skipped_reason` | Meaning |
+|---|---|
+| `nothing_unread` | Nothing new to mark since the last read. |
+| `receipts_off` | Read receipts are turned off for your account. |
+| `group` | A group conversation: receipts are never sent in groups. |
+| `contact_blocked` | You [blocked](/api-reference/contacts/block) the contact. |
+| `contact_opted_out` | The contact opted out. |
+| `opt_out_check_unavailable` | iBubbl couldn't check the contact's opt-out, so it sent no receipt. Call again later if it matters. |
+
+<RequestExample>
+
+```bash cURL
+curl -X POST https://api.ibubbl.com/v1/conversations/3a4b5c6d-7e8f-9a0b-1c2d-3e4f5a6b7c8d/read \
+  -H "Authorization: Bearer $IBUBBL_API_KEY"
+```
+
+```typescript TypeScript
+const conversationId = "3a4b5c6d-7e8f-9a0b-1c2d-3e4f5a6b7c8d";
+
+const res = await fetch(`https://api.ibubbl.com/v1/conversations/${conversationId}/read`, {
+  method: "POST",
+  headers: { Authorization: `Bearer ${process.env.IBUBBL_API_KEY}` },
+  signal: AbortSignal.timeout(10_000),
+});
+
+const data = await res.json();
+if (!res.ok) throw new Error(`${res.status} ${data.detail?.error}`);
+console.log(data.marked_count, data.read_receipt, data.read_receipt_skipped_reason);
+```
+
+```python Python
+import os
+
+import requests
+
+API_KEY = os.environ["IBUBBL_API_KEY"]
+
+conversation_id = "3a4b5c6d-7e8f-9a0b-1c2d-3e4f5a6b7c8d"
+
+res = requests.post(
+    f"https://api.ibubbl.com/v1/conversations/{conversation_id}/read",
+    headers={"Authorization": f"Bearer {API_KEY}"},
+    timeout=10,
+)
+data = res.json()
+if not res.ok:
+    raise RuntimeError(f"{res.status_code} {data['detail']['error']}")
+print(data["marked_count"], data["read_receipt"], data["read_receipt_skipped_reason"])
+```
+
+</RequestExample>
+
+<ResponseExample>
+
+```json 200 OK
+{
+  "conversation_id": "3a4b5c6d-7e8f-9a0b-1c2d-3e4f5a6b7c8d",
+  "marked_count": 2,
+  "read_receipt": "queued",
+  "read_receipt_skipped_reason": null
+}
+```
+
+```json 404 Not Found
+{
+  "detail": {
+    "error": "not_found",
+    "message": "Conversation not found"
+  }
+}
+```
+
+</ResponseExample>
+
+#### Responses
+**200 OK**
+
+| Field | Description |
+|-------|-------------|
+| `conversation_id` | The conversation. |
+| `marked_count` | How many received messages this call marked read (`0` if none were unread). |
+| `read_receipt` | `queued`: the contact will see Read. `skipped`: no receipt goes out. |
+| `read_receipt_skipped_reason` | Why it was skipped (table above), or `null` when queued. |
+
+```json
+{
+  "conversation_id": "3a4b5c6d-7e8f-9a0b-1c2d-3e4f5a6b7c8d",
+  "marked_count": 0,
+  "read_receipt": "skipped",
+  "read_receipt_skipped_reason": "nothing_unread"
+}
+```
+
+**401 Unauthorized**
+```json
+{
+  "detail": {
+    "error": "unauthorized",
+    "message": "Invalid or revoked API key"
+  }
+}
+```
+Other `message` values: `Authorization Bearer token required`, `API key required (use Authorization: Bearer ib_pk_…)`, `Invalid API key format`, `Customer account not found`.
+
+**403 Forbidden**
+```json
+{
+  "detail": {
+    "error": "forbidden",
+    "message": "Account is suspended"
+  }
+}
+```
+Your iBubbl account is suspended or cancelled (`message` is then `Account is cancelled`). Every API-key endpoint returns this.
+
+**404 Not Found**
+```json
+{
+  "detail": {
+    "error": "not_found",
+    "message": "Conversation not found"
+  }
+}
+```
+Also returned for a malformed ID and a conversation that belongs to another account.
+
+**429 Too Many Requests**
+```json
+{
+  "detail": {
+    "error": "rate_limited",
+    "message": "Too many conversation actions; wait 12s (limit 300 a minute per account)."
+  }
+}
+```
+Wait the `Retry-After` header's seconds, then send the same request again.

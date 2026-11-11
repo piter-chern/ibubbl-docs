@@ -1,0 +1,148 @@
+---
+title: 'Stop typing'
+openapi: 'DELETE /v1/conversations/{conversation_id}/typing'
+---
+
+### Stop typing
+
+**Method:** `DELETE` | **Endpoint:** `/v1/conversations/{conversation_id}/typing`
+
+**Description:** Stop the typing bubble you started with [Start typing](/api-reference/conversations/start-typing), when you decide not to reply. You don't need it before sending: a message you send clears the dots on its own.
+
+**Authentication:** API key in the `Authorization` header: `Authorization: Bearer ib_pk_<64 hex>`. Create keys in the dashboard under **Settings → API access**.
+
+**Rate limit:** 300 conversation actions per 60 seconds per account, shared with tapbacks, mark read and start typing. Over that, `429 rate_limited` with a `Retry-After` header; see [Rate limits](/concepts/limits#rate-limits).
+
+#### Request Body
+None. The path parameter `conversation_id` is the conversation's ID (a UUID).
+
+#### How it behaves
+
+- **iBubbl stops at once; some phones take longer.** The dots may stay on the contact's iPhone for up to about a minute after a stop that isn't followed by a message. Sending a message always clears them straight away.
+- **It's safe to call twice**, or when nothing is typing: the answer is `200` with `status: "stopped"`.
+- **Never refused for a block or an opt-out.** In a group, an SMS or RCS conversation, or one the contact hasn't messaged yet, it answers `ignored` with the same `ignored_reason` as Start typing.
+
+<RequestExample>
+
+```bash cURL
+curl -X DELETE https://api.ibubbl.com/v1/conversations/3a4b5c6d-7e8f-9a0b-1c2d-3e4f5a6b7c8d/typing \
+  -H "Authorization: Bearer $IBUBBL_API_KEY"
+```
+
+```typescript TypeScript
+const conversationId = "3a4b5c6d-7e8f-9a0b-1c2d-3e4f5a6b7c8d";
+
+const res = await fetch(`https://api.ibubbl.com/v1/conversations/${conversationId}/typing`, {
+  method: "DELETE",
+  headers: { Authorization: `Bearer ${process.env.IBUBBL_API_KEY}` },
+  signal: AbortSignal.timeout(10_000),
+});
+
+const data = await res.json();
+if (!res.ok) throw new Error(`${res.status} ${data.detail?.error}`);
+console.log(data.status);
+```
+
+```python Python
+import os
+
+import requests
+
+API_KEY = os.environ["IBUBBL_API_KEY"]
+
+conversation_id = "3a4b5c6d-7e8f-9a0b-1c2d-3e4f5a6b7c8d"
+
+res = requests.delete(
+    f"https://api.ibubbl.com/v1/conversations/{conversation_id}/typing",
+    headers={"Authorization": f"Bearer {API_KEY}"},
+    timeout=10,
+)
+data = res.json()
+if not res.ok:
+    raise RuntimeError(f"{res.status_code} {data['detail']['error']}")
+print(data["status"])
+```
+
+</RequestExample>
+
+<ResponseExample>
+
+```json 200 OK
+{
+  "conversation_id": "3a4b5c6d-7e8f-9a0b-1c2d-3e4f5a6b7c8d",
+  "typing": false,
+  "status": "stopped",
+  "ignored_reason": null,
+  "expires_at": null
+}
+```
+
+```json 404 Not Found
+{
+  "detail": {
+    "error": "not_found",
+    "message": "Conversation not found"
+  }
+}
+```
+
+</ResponseExample>
+
+#### Responses
+**200 OK**
+
+The same fields as [Start typing](/api-reference/conversations/start-typing), with `typing: false` and `status` `stopped` (or `ignored`).
+
+```json
+{
+  "conversation_id": "3a4b5c6d-7e8f-9a0b-1c2d-3e4f5a6b7c8d",
+  "typing": false,
+  "status": "stopped",
+  "ignored_reason": null,
+  "expires_at": null
+}
+```
+
+**401 Unauthorized**
+```json
+{
+  "detail": {
+    "error": "unauthorized",
+    "message": "Invalid or revoked API key"
+  }
+}
+```
+Other `message` values: `Authorization Bearer token required`, `API key required (use Authorization: Bearer ib_pk_…)`, `Invalid API key format`, `Customer account not found`.
+
+**403 Forbidden**
+```json
+{
+  "detail": {
+    "error": "forbidden",
+    "message": "Account is suspended"
+  }
+}
+```
+Your iBubbl account is suspended or cancelled (`message` is then `Account is cancelled`). Every API-key endpoint returns this.
+
+**404 Not Found**
+```json
+{
+  "detail": {
+    "error": "not_found",
+    "message": "Conversation not found"
+  }
+}
+```
+Also returned for a malformed ID and a conversation that belongs to another account.
+
+**429 Too Many Requests**
+```json
+{
+  "detail": {
+    "error": "rate_limited",
+    "message": "Too many conversation actions; wait 12s (limit 300 a minute per account)."
+  }
+}
+```
+Wait the `Retry-After` header's seconds, then call again.
