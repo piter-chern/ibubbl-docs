@@ -1188,7 +1188,7 @@
               }
             ],
             "title": "Channel",
-            "description": "How an outbound message actually went out: `imessage`, or `sms` (a text, including RCS) when the recipient couldn't be reached on iMessage. Null until the message has been sent, and for inbound messages."
+            "description": "How the message travelled: `imessage`, or `sms` (a text, including RCS). For an outbound message, how it actually went out (`sms` when the recipient couldn't be reached on iMessage); null until it has been sent. For an inbound message, how it arrived; null when that wasn't recorded."
           },
           "sent_at": {
             "anyOf": [

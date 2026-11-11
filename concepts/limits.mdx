@@ -56,7 +56,7 @@ Once one message to them goes out, they stop being new, and replies and follow-u
 
 Your line sends from a Mac. If that Mac hasn't checked in for 2 minutes, it counts as offline:
 
-- **A contact your line has messaged before** is accepted as `202` with `status: "queued"`. It goes out when the Mac is back. A message still `queued` 60–65 minutes after it was accepted becomes `expired`, and **no webhook fires** for that. Poll `GET /v1/messages/{id}` for messages that stay `queued`.
+- **A contact your line has messaged before** is accepted as `202` with `status: "queued"`. It goes out when the Mac is back. A message still `queued` 60–65 minutes after it was accepted becomes `expired`, and [`message.failed`](/webhooks/events#message-failed) fires with `status: "expired"` and `failed_reason: "queue_expired"`. Send it again if it still matters: its `idempotency_key` is released.
 - **A contact with no line yet** (someone your account has never messaged) gets `422 no_eligible_line`, because iBubbl only gives new contacts to a line whose Mac is online. Nothing is created. Send again once the line is back.
 
 A message that is already `pending` when the Mac goes offline waits for it. If the Mac stays offline for more than an hour, the message becomes `failed` with `failed_reason: "agent_offline"`, and `message.failed` fires.

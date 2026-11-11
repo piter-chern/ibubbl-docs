@@ -125,7 +125,7 @@ Both are `null` when the message is not being held. A held message is first mark
 
 Separately from working hours, a one-to-one send can be accepted but parked. The response is still `202 Accepted`, with `status: "queued"`. Today the only reason is `line_offline`: your line's Mac is offline. The reason is in the `failed_reason` field of the [`message.queued`](/webhooks/events) webhook, not in the API response. (`hourly_cap_hit` is a legacy reason that no current line uses; the hourly new-contact limit holds messages as `pending` instead.)
 
-iBubbl re-checks queued messages every 30 seconds and sends them once the Mac is back. A message still queued 60–65 minutes after it was accepted is dropped and moves to `status: "expired"` — no webhook fires for that today, so poll `GET /v1/messages/{id}` if you need to know. Send it again (a new `idempotency_key`, or the same one: an expired message's key is released) if it still matters.
+iBubbl re-checks queued messages every 30 seconds and sends them once the Mac is back. A message still queued 60–65 minutes after it was accepted is dropped and moves to `status: "expired"`, and a [`message.failed`](/webhooks/events#message-failed) webhook fires with `status: "expired"` and `failed_reason: "queue_expired"`. Send it again (a new `idempotency_key`, or the same one: an expired message's key is released) if it still matters.
 
 A `pending` message works differently: if its line has been offline for over an hour, it is not sent late. It moves to `status: "failed"` with `failed_reason: "agent_offline"`, and a [`message.failed`](/webhooks/events) webhook fires.
 

@@ -104,7 +104,7 @@ print(data["status"], data["channel"])
   "held_reason": null
 }
 ```
-`status` is one of `queued`, `pending`, `sent`, `delivered`, `read`, `failed`, `expired`, `cancelled`. `channel` is how it went out (`imessage` or `sms`), or `null` before it is sent.
+`status` is one of `queued`, `pending`, `sent`, `delivered`, `read`, `failed`, `expired`, `cancelled`. `channel` is how it went out (`imessage` or `sms`), or `null` before it is sent. For an inbound message, it is how the message arrived (`null` for messages received before iBubbl recorded it).
 
 **401 Unauthorized**
 ```json

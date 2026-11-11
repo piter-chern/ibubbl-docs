@@ -33,6 +33,18 @@ Every webhook POST iBubbl sends to your URL has the same envelope shape. The `ty
 Webhook payloads identify the contact and line by **phone number** (`from_number`, `to_number`, `contact_phone`), not by iBubbl's internal contact ID. If you need the contact ID, look it up via [`POST /v1/contacts`](/api-reference/contacts/upsert) — the upsert is idempotent and returns the ID.
 </Note>
 
+### The `channel` field
+
+`message.sent`, `message.delivered`, `message.read`, `message.failed`, `message.cancelled` and `message.inbound` carry `channel`: how the message travelled.
+
+| Value | Meaning |
+| ----- | ------- |
+| `imessage` | iMessage. |
+| `sms` | A text, including RCS. An outbound message goes out as a text when the recipient can't be reached on iMessage. |
+| `null` | Not known. An outbound message that never went out (cancelled, expired, or failed before sending), a send whose channel wasn't reported, or an inbound message received before iBubbl recorded the channel. |
+
+Each event carries the value at the moment it fired; [`GET /v1/messages/{id}`](/api-reference/messages/retrieve) returns the latest. `message.queued` doesn't carry `channel`, because nothing has been sent yet. See [Lines and routing](/concepts/lines-and-routing#which-channel-a-message-used).
+
 ### Ordering and duplicates
 
 - **Events can arrive out of order.** Retries, and events that fire close together, mean `message.read` can reach you before `message.delivered`. Order by the envelope's `created_at` (and treat `status` transitions as described below), not by arrival time.
@@ -64,7 +76,7 @@ Fired when a one-to-one message is accepted. That covers every accepted one-to-o
 }
 ```
 
-For a `queued` message, `failed_reason` names the capacity hold: today always `line_offline` (`hourly_cap_hit` is a legacy reason no current line uses; see [Limits and queues](/concepts/limits)). (Despite the name, this isn't a final failure: queued messages are retried automatically. One still queued 60–65 minutes after it was accepted becomes `status: "expired"` (`failed_reason: "queue_expired"`) and **no webhook fires**, so poll [`GET /v1/messages/{id}`](/api-reference/messages/retrieve) if you need to know.) For a `pending` message it is `null`.
+For a `queued` message, `failed_reason` names the capacity hold: today always `line_offline` (`hourly_cap_hit` is a legacy reason no current line uses; see [Limits and queues](/concepts/limits)). (Despite the name, this isn't a final failure: queued messages are retried automatically. One still queued 60–65 minutes after it was accepted expires, and [`message.failed`](#message-failed) fires with `status: "expired"` and `failed_reason: "queue_expired"`.) For a `pending` message it is `null`.
 
 A `pending` message is different: if its line has been offline for over an hour, it moves to `failed` and fires [`message.failed`](#message-failed) with `failed_reason: "agent_offline"`.
 
@@ -88,7 +100,8 @@ Fired when the message has gone out from your iBubbl line.
     "body": "Hey Sam — quick check-in about your order.",
     "status": "sent",
     "occurred_at": "2026-05-17T14:23:45.123Z",
-    "reply_to_message_id": null
+    "reply_to_message_id": null,
+    "channel": "imessage"
   }
 }
 ```
@@ -115,7 +128,8 @@ Fired when the recipient's device confirms delivery. Same payload shape as `mess
     "body": "Hey Sam — quick check-in about your order.",
     "status": "delivered",
     "occurred_at": "2026-05-17T14:23:46.900Z",
-    "reply_to_message_id": null
+    "reply_to_message_id": null,
+    "channel": "imessage"
   }
 }
 ```
@@ -138,7 +152,8 @@ Fired when the recipient reads the message (only when they have read receipts tu
     "body": "Hey Sam — quick check-in about your order.",
     "status": "read",
     "occurred_at": "2026-05-17T14:30:02.100Z",
-    "reply_to_message_id": null
+    "reply_to_message_id": null,
+    "channel": "imessage"
   }
 }
 ```
@@ -148,6 +163,8 @@ When a contact reads a message, iMessage implies they've read your earlier messa
 
 <Accordion title="message.failed" icon="circle-xmark">
 Fired when a send fails. `failed_reason` carries a stable failure code; `error_message` is a free-form diagnostic for your logs — don't parse it or show it to end users.
+
+It also fires when a `queued` message expires: then `status` is `"expired"` (the message's status in [`GET /v1/messages/{id}`](/api-reference/messages/retrieve)) and `failed_reason` is `queue_expired`. Both are final; branch on `failed_reason`, not on `status`.
 
 `message.failed` can follow a `message.sent` for the same message. That happens when iMessage reports the send failed after it was handed over. It can also follow `message.read` when no delivery was ever confirmed. A message with a confirmed delivery never moves to `failed`.
 
@@ -166,6 +183,7 @@ A failed message can also move back. If Apple later confirms delivery or a read 
     "status": "failed",
     "occurred_at": "2026-05-17T14:23:45.123Z",
     "reply_to_message_id": null,
+    "channel": "imessage",
     "failed_reason": "imessage_undeliverable",
     "error_message": "Message failed to send"
   }
@@ -182,6 +200,9 @@ A failed message can also move back. If Apple later confirms delivery or a read 
 - `bluebubbles_unreachable` — your line couldn't be reached at send time
 - `agent_offline` — your line was offline for over an hour, so the message was failed rather than sent late
 - `line_inactive` — the line was suspended or retired before the message went out
+- `queue_expired` — the message was still `queued` 60–65 minutes after it was accepted, so it was dropped. This one arrives with `status: "expired"`, not `"failed"`, and `channel: null`. Its `idempotency_key` is released, so send it again if it still matters.
+- `no_eligible_line` — a queued message lost the line it was waiting for, so it can't go out
+- `cold_cap_exhausted`, `followup_cap_exhausted`, `daily_cap_exhausted`, `unresponsive_contact` — legacy codes: a queued message failed a limit re-check on a line in the old limits mode. No current line uses that mode (see [Limits and queues](/concepts/limits)).
 
 See the [Error Reference](/errors) for the full catalog.
 </Accordion>
@@ -201,7 +222,8 @@ Fired when a message that hadn't been sent yet is stopped in the dashboard: one 
     "body": "Hey Sam — quick check-in about your order.",
     "status": "cancelled",
     "occurred_at": "2026-05-17T14:23:45.123Z",
-    "reply_to_message_id": null
+    "reply_to_message_id": null,
+    "channel": null
   }
 }
 ```
@@ -229,7 +251,8 @@ Fired when a contact replies to you. This is the event most integrations care ab
     "sender_phone": "+14155551234",
     "participants": [
       {"phone": "+14155551234", "first_name": "Sam", "last_name": "Lee"}
-    ]
+    ],
+    "channel": "imessage"
   }
 }
 ```
@@ -237,6 +260,8 @@ Fired when a contact replies to you. This is the event most integrations care ab
 `from_number` is the contact (the sender) and `to_number` is your iBubbl line (the recipient). `from_number` is the sender's address exactly as iMessage reported it: usually E.164, but it can be an Apple ID email address, or a number without the leading `+` for some SMS senders.
 
 `reply_to_message_id` is non-null when the contact is quoting one of your previous messages.
+
+`channel` is how the message arrived: `imessage`, or `sms` for a text (RCS included). It is `null` for messages received before iBubbl started recording it.
 
 ### Attachments
 
@@ -282,7 +307,8 @@ For group conversations (`conversation_kind: "group"`), `sender_phone` identifie
     "participants": [
       {"phone": "+14155551234", "first_name": "Sarah", "last_name": "Smith"},
       {"phone": "+14155557654", "first_name": "Bob",   "last_name": "Jones"}
-    ]
+    ],
+    "channel": "imessage"
   }
 }
 ```

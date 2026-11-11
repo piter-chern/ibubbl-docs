@@ -47,18 +47,18 @@ Routing is on for every line, for one-to-one text messages to `+1` numbers, as o
 
 ## Which channel a message used
 
-[`GET /v1/messages/{id}`](/api-reference/messages/retrieve) returns `channel`:
+[`GET /v1/messages/{id}`](/api-reference/messages/retrieve) returns `channel`, and so do the webhooks from [`message.sent`](/webhooks/events#the-channel-field) onwards (`message.delivered`, `message.read`, `message.failed`, `message.cancelled`), plus `message.inbound` for messages you receive:
 
 | Value | Meaning |
 | ----- | ------- |
-| `imessage` | Sent as an iMessage. |
-| `sms` | Sent as a text message. **RCS counts as `sms` too**: iBubbl doesn't tell SMS and RCS apart in the API. |
-| `null` | Not sent yet, or, rarely, iBubbl couldn't tell how it went out. |
+| `imessage` | Sent (or received) as an iMessage. |
+| `sms` | Sent (or received) as a text message. **RCS counts as `sms` too**: iBubbl doesn't tell SMS and RCS apart in the API. |
+| `null` | Not sent yet, or, rarely, iBubbl couldn't tell how it went out. For an inbound message: received before iBubbl started recording the channel. |
 
 Some behaviour depends on the channel. For example, a plain SMS never reports `read`. Check `channel` before assuming iMessage-only behaviour.
 
 <Note>
-No webhook carries the channel yet. Call `GET /v1/messages/{id}` after `message.sent` if you need it.
+Each webhook carries `channel` as it was when the event fired. `message.queued` doesn't carry it, since nothing has been sent yet. `GET /v1/messages/{id}` always returns the latest value.
 </Note>
 
 ## Next

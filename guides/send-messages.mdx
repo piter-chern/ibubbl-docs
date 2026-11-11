@@ -448,7 +448,7 @@ Send the value in the `effect` column. Values are lowercase and exact: anything 
 A bubble effect animates the message bubble; a screen effect fills the recipient's screen.
 
 <Warning>
-**iMessage only.** If the message goes out as SMS (RCS included), it is sent as plain text: the quote and the effect are dropped, and the API doesn't refuse the send. After `message.sent`, read `channel` (`imessage` or `sms`) from [`GET /v1/messages/{id}`](/api-reference/messages/retrieve) to see which way it went. See [Lines and routing](/concepts/lines-and-routing).
+**iMessage only.** If the message goes out as SMS (RCS included), it is sent as plain text: the quote and the effect are dropped, and the API doesn't refuse the send. The `message.sent` webhook carries `channel` (`imessage` or `sms`), so you can see which way it went; [`GET /v1/messages/{id}`](/api-reference/messages/retrieve) returns it too. See [Lines and routing](/concepts/lines-and-routing).
 </Warning>
 
 <Note>
@@ -491,7 +491,7 @@ A bubble effect animates the message bubble; a screen effect fills the recipient
 | `pending` | `null` | On its way: your line sends it shortly. |
 | `pending` | `working_hours` | Waiting for the contact's [sending hours](/concepts/working-hours). `held_until` says when it goes out. |
 | `pending` | `hourly_limit` | Waiting for the line's hourly limit on new contacts. `held_until` is an estimate. See [Limits and queues](/concepts/limits). |
-| `queued` | `null` | One-to-one only: the line's Mac is offline. It goes out when the Mac reconnects, or expires after about an hour. See [Offline lines](/concepts/limits#offline-lines). |
+| `queued` | `null` | One-to-one only: the line's Mac is offline. It goes out when the Mac reconnects, or expires after about an hour, which fires `message.failed` with `status: "expired"`. See [Offline lines](/concepts/limits#offline-lines). |
 
 A waiting message is not an error, so don't resend it: a new key would send a second message once the first goes out. For a group send, `to` is `null` and `conversation_kind` is `"group"`. `channel` stays `null` until the message is sent.
 
@@ -499,10 +499,10 @@ A waiting message is not an error, so don't resend it: a new key would send a se
 
 You have two ways to learn what happened next:
 
-- **Webhooks (recommended).** Subscribe to `message.sent`, `message.delivered`, `message.read`, `message.failed` and `message.cancelled`; each carries the `message_id` from the `202`. See [Webhook events](/webhooks/events) and [Receive messages](/guides/receive-messages).
+- **Webhooks (recommended).** Subscribe to `message.sent`, `message.delivered`, `message.read`, `message.failed` and `message.cancelled`; each carries the `message_id` from the `202`, and `channel` once the message has gone out. See [Webhook events](/webhooks/events) and [Receive messages](/guides/receive-messages).
 - **Polling.** [`GET /v1/messages/{id}`](/api-reference/messages/retrieve) returns the current `status`, `channel` (`imessage` or `sms`) and `held_*` fields.
 
-Use both where it matters. Some changes fire no webhook: a `queued` message that expires, for example. [Message lifecycle](/concepts/message-lifecycle) has every status, which ones are final, and which webhook each fires.
+Use both where it matters. A few changes fire no webhook, such as a `queued` message moving on to `pending`. [Message lifecycle](/concepts/message-lifecycle) has every status, which ones are final, and which webhook each fires.
 
 ## Errors when sending
 

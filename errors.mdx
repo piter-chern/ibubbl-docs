@@ -16,6 +16,57 @@ Every iBubbl API error response uses the same envelope shape:
 
 The `error` field is a **stable machine-readable code** — branch your integration's logic on this, not on the HTTP status or `message`. The `message` field is human-readable and may change without notice.
 
+## Request IDs
+
+Every response from `api.ibubbl.com`, successful or not, carries an `X-Request-Id` header. It names that one request in iBubbl's logs. When something goes wrong, log it next to the error and quote it to [support@ibubbl.com](mailto:support@ibubbl.com): it finds your request faster than a timestamp and a request body can.
+
+<CodeGroup>
+
+```bash cURL
+# -D - prints the response headers, including X-Request-Id.
+curl -sS -D - https://api.ibubbl.com/v1/messages/8b3a4e72-1c2d-4e5f-9a0b-2c3d4e5f6a7b \
+  -H "Authorization: Bearer $IBUBBL_API_KEY"
+```
+
+```typescript TypeScript
+const messageId = "8b3a4e72-1c2d-4e5f-9a0b-2c3d4e5f6a7b";
+
+const res = await fetch(`https://api.ibubbl.com/v1/messages/${messageId}`, {
+  headers: { Authorization: `Bearer ${process.env.IBUBBL_API_KEY}` },
+  signal: AbortSignal.timeout(10_000),
+});
+
+const data = await res.json();
+if (!res.ok) {
+  const requestId = res.headers.get("x-request-id");
+  throw new Error(`${res.status} ${data.detail?.error} (request ${requestId})`);
+}
+```
+
+```python Python
+import os
+
+import requests
+
+API_KEY = os.environ["IBUBBL_API_KEY"]
+
+message_id = "8b3a4e72-1c2d-4e5f-9a0b-2c3d4e5f6a7b"
+
+res = requests.get(
+    f"https://api.ibubbl.com/v1/messages/{message_id}",
+    headers={"Authorization": f"Bearer {API_KEY}"},
+    timeout=10,
+)
+data = res.json()
+if not res.ok:
+    request_id = res.headers.get("X-Request-Id")
+    raise RuntimeError(f"{res.status_code} {data['detail']['error']} (request {request_id})")
+```
+
+</CodeGroup>
+
+**Send your own ID to trace a request end to end.** If your request carries an `X-Request-Id` header, iBubbl uses it as the request's ID and returns it unchanged, so the same ID appears in your logs and ours. It must be 1–128 characters of letters, digits, `.`, `_`, `:` and `-`. Anything else is ignored, and iBubbl generates an ID instead. Reusing one ID for several requests is allowed, but a unique ID per request is easier to find.
+
 ## Error catalog
 
 <ResponseField name="unauthorized" type="401">
@@ -67,7 +118,7 @@ The `error` field is a **stable machine-readable code** — branch your integrat
 </ResponseField>
 
 <ResponseField name="line_offline" type="queued">
-  Your line's Mac is offline. This is not returned as an error: a one-to-one send to a contact your line has messaged before is accepted (`202`, `status: "queued"`) and goes out automatically when the Mac reconnects. The reason appears only as `failed_reason` on the [`message.queued`](/webhooks/events) webhook, not in the API response. If it is still queued 60–65 minutes after it was accepted it expires (`status: "expired"`); no webhook fires for that, so poll [`GET /v1/messages/{id}`](/api-reference/messages/retrieve) if you need to know. A contact with no line yet gets `no_eligible_line` instead. See [Limits and queues](/concepts/limits#offline-lines).
+  Your line's Mac is offline. This is not returned as an error: a one-to-one send to a contact your line has messaged before is accepted (`202`, `status: "queued"`) and goes out automatically when the Mac reconnects. The reason appears only as `failed_reason` on the [`message.queued`](/webhooks/events) webhook, not in the API response. If it is still queued 60–65 minutes after it was accepted it expires (`status: "expired"`), and [`message.failed`](/webhooks/events#message-failed) fires with `failed_reason: "queue_expired"`. A contact with no line yet gets `no_eligible_line` instead. See [Limits and queues](/concepts/limits#offline-lines).
 </ResponseField>
 
 <ResponseField name="daily_cap_exhausted" type="422">
@@ -119,7 +170,7 @@ The `error` field is a **stable machine-readable code** — branch your integrat
 </ResponseField>
 
 <ResponseField name="internal_error" type="500">
-  An unexpected error on iBubbl's side. These are paired with our error-tracking system; we get paged when they happen. If you see a sustained pattern, email [support@ibubbl.com](mailto:support@ibubbl.com) with the timestamp + request body.
+  An unexpected error on iBubbl's side. These are paired with our error-tracking system; we get paged when they happen. If you see a sustained pattern, email [support@ibubbl.com](mailto:support@ibubbl.com) with the response's [`X-Request-Id`](#request-ids) header.
 
   One known cause: two `POST /v1/messages` requests with the same `idempotency_key` arriving at the same moment. Only one message is created, and the other request gets this `500`. Retrying it with the same key returns the `202` replay. See [Duplicates and retries](/concepts/message-lifecycle#duplicates-and-retries).
 </ResponseField>

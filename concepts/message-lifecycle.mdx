@@ -42,8 +42,8 @@ Solid arrows are the normal path. Dashed arrows are the [moves that go backwards
 | `sent` | Your line sent it. | No | `message.sent` |
 | `delivered` | The recipient's device confirmed delivery. | No | `message.delivered` |
 | `read` | The recipient read it. A read is reported only when the recipient has read receipts on, and a plain SMS never reports one. | **No.** A late iMessage error can still turn it into `failed`, if no delivery receipt was recorded. | `message.read` |
-| `failed` | It didn't go out, or iMessage reported it undeliverable. `failed_reason` says why. | **Usually.** A failure with an `imessage_*` reason moves to `delivered` or `read` if Apple later confirms the message. A few connection failures can move to `sent` if the Mac confirms the send late (see below). | `message.failed`, with `failed_reason` |
-| `expired` | It was still `queued` about an hour after it was accepted, so iBubbl dropped it (`failed_reason: "queue_expired"`). | **Yes** | **None.** Poll `GET /v1/messages/{id}` |
+| `failed` | It didn't go out, or iMessage reported it undeliverable. `failed_reason` says why. That includes a `queued` message the queue's retry fails. | **Usually.** A failure with an `imessage_*` reason moves to `delivered` or `read` if Apple later confirms the message. A few connection failures can move to `sent` if the Mac confirms the send late (see below). | `message.failed`, with `failed_reason` |
+| `expired` | It was still `queued` about an hour after it was accepted, so iBubbl dropped it (`failed_reason: "queue_expired"`). | **Yes** | `message.failed`, with `status: "expired"` and `failed_reason: "queue_expired"` |
 | `cancelled` | Stopped before it went out. That happens when someone on your account cancels it in the dashboard, or when an [after-hours auto-reply](/concepts/after-hours-reply) misses its window. There is no API endpoint to cancel a message. | **Almost.** It moves to `sent` only if your line had already sent it when the cancel arrived. | `message.cancelled` (it carries no reason) |
 
 <Note>
@@ -64,11 +64,11 @@ Both are `null` when the message isn't held. iBubbl marks holds within about 10 
 These changes happen without a webhook. If you need to know about them, poll `GET /v1/messages/{id}`.
 
 - **`queued` → `pending`.** The capacity hold cleared and the message is on its way. The next event is `message.sent`.
-- **`queued` → `expired`.** A message still `queued` 60–65 minutes after it was accepted is dropped. This is the case most worth polling for: if a message is still `queued` after an hour, check it, and send it again if it still matters (its `idempotency_key` is released).
-- **`queued` → `failed`, when the queue's retry fails it.** The `failed_reason` is on the message.
 - **A group send is accepted.** Groups never fire `message.queued`. Their first event is `message.sent`.
 - **A read receipt marks earlier messages read.** When the recipient reads a message, iBubbl also marks your earlier `sent` and `delivered` messages in that conversation `read`, but `message.read` fires only for the message the receipt was about.
 - **A failed message heals straight to `delivered` or `read`.** You get `message.delivered` or `message.read`, with no `message.sent` before it.
+
+A `queued` message that ends without going out always fires `message.failed`. One still `queued` 60–65 minutes after it was accepted expires: the event carries `status: "expired"` and `failed_reason: "queue_expired"`, and its `idempotency_key` is released, so send it again if it still matters. One the queue's retry fails carries `status: "failed"` and the reason.
 
 A `pending` message never becomes `expired`. If its line's Mac has been offline for more than an hour, it moves to `failed` with `failed_reason: "agent_offline"`, and `message.failed` fires.
 

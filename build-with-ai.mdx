@@ -80,6 +80,8 @@ SENDING (POST /v1/messages)
   or line_id are ignored without an error; each contact sticks to one line.
 - Read the message's channel before assuming iMessage-only behaviour:
   "imessage" or "sms" (RCS also reports as "sms"); null until it is sent.
+  The message.* webhooks carry the same channel field (from message.sent on,
+  and on message.inbound for received messages); message.queued does not.
 - Optional reply_to_message_id (an inline quote) and effect (one of 13
   iMessage effects, e.g. "confetti") are iMessage only: on SMS the message
   goes out as plain text without them. reply_to_message_id must be a message
@@ -99,11 +101,14 @@ LIMITS (per line; https://docs.ibubbl.com/concepts/limits)
   time (about one a second). Send one request at a time per line; bursts only
   build a queue. Pace outreach to new contacts at about one every 2 minutes
   per line.
-- A "queued" message (line offline) that expires after about an hour fires NO
-  webhook. Poll GET /v1/messages/{id} for messages still queued after an hour.
+- A "queued" message (line offline) that expires after about an hour fires
+  message.failed with status "expired" and failed_reason "queue_expired".
+  Branch on failed_reason, not status. Its idempotency_key is released.
 
 RETRIES AND ERRORS
 - Branch on detail.error (the stable code), never on detail.message.
+- Log the X-Request-Id response header with every error; quote it to
+  support@ibubbl.com.
 - Network error, timeout or 5xx: retry with the SAME idempotency_key and
   the same payload, with exponential backoff (1 s, 2 s, 4 s) and a small cap
   on attempts. Exception: 500 no_owner_rep will not succeed on retry.

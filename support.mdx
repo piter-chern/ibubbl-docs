@@ -9,10 +9,11 @@ Email **[support@ibubbl.com](mailto:support@ibubbl.com)** with questions about t
 
 The more of this you send, the faster we can find your request in our logs:
 
-- **When it happened**: the date and time, with the timezone (UTC is best).
+- **The `X-Request-Id` response header.** Every API response carries one, and it finds your request directly. See [Request IDs](/errors#request-ids) for how to read it, and how to send your own.
+- **When it happened**: the date and time, with the timezone (UTC is best). This matters most when you don't have a request ID, such as for a webhook.
 - **The endpoint**: method and path, for example `POST /v1/messages`.
 - **The IDs involved**: the message `id`, the `contact_id`, the webhook subscription `id`, or the event `id` (`evt_…`), whichever apply.
-- **The request body** you sent, and the **HTTP status and response body** you got back.
+- **The HTTP status and response body** you got back, and the request body if there's no request ID.
 - **The email address of your iBubbl account.**
 
 For a webhook problem, also include the endpoint URL the subscription points at, and what the dashboard's webhook log shows for the delivery.
