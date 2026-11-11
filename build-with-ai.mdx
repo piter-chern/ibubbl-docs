@@ -105,6 +105,23 @@ LIMITS (per line; https://docs.ibubbl.com/concepts/limits)
   message.failed with status "expired" and failed_reason "queue_expired".
   Branch on failed_reason, not status. Its idempotency_key is released.
 
+READING HISTORY (GET /v1/messages)
+- Lists inbound and outbound messages, newest first, as
+  {"data": [...], "has_more": bool}. limit is 1-100 (default 50).
+- Next page: repeat the same request with starting_after = the id of the LAST
+  item in data. Stop when has_more is false. Never use page numbers or
+  offsets, and never change the filters between pages.
+- Filters: contact_id, conversation_id, chat_guid, direction
+  (inbound/outbound), status, created_after, created_before (ISO 8601 with
+  Z, e.g. 2026-11-10T09:30:00Z; both exclusive).
+- An unknown or repeated query parameter is 422 validation_error, and a
+  starting_after that isn't one of your ids is 422 invalid_cursor. Use the
+  exact parameter names above.
+- To catch up after missed webhooks: list with created_after = your last
+  processed created_at minus 5 minutes, skip message ids you already have,
+  and store each message's status as returned (it is current).
+  https://docs.ibubbl.com/guides/webhook-retries#recover-from-downtime
+
 RETRIES AND ERRORS
 - Branch on detail.error (the stable code), never on detail.message.
 - Log the X-Request-Id response header with every error; quote it to

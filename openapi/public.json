@@ -96,6 +96,236 @@
             }
           }
         }
+      },
+      "get": {
+        "tags": [
+          "Messages"
+        ],
+        "summary": "List messages",
+        "description": "List your messages, inbound and outbound, newest first. Use it to catch up after your webhook endpoint was down, or to read a conversation's history.\n\nResults are paginated: `has_more` tells you whether there is another page, and you get it by passing the `id` of the last message as `starting_after`. Pages are stable while new messages arrive: nothing is skipped or repeated. See [Pagination](/concepts/pagination).\n\nFilters combine with AND. A filter value that matches nothing (including another account's `contact_id` or `chat_guid`) returns an empty page. An unknown or repeated query parameter returns `422 validation_error`.\n\nMessages stay listed after their contact is deleted or blocked.",
+        "operationId": "v1_list_messages_v1_messages_get",
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 100,
+              "minimum": 1,
+              "description": "How many items to return, 1 to 100. Defaults to 50.",
+              "default": 50,
+              "title": "Limit"
+            },
+            "description": "How many items to return, 1 to 100. Defaults to 50."
+          },
+          {
+            "name": "starting_after",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "The `id` of the last item on the page you already have. Returns the items that come after it, in the same order. Leave it out for the first page. An `id` that isn't one of yours returns `422 invalid_cursor`.",
+              "title": "Starting After"
+            },
+            "description": "The `id` of the last item on the page you already have. Returns the items that come after it, in the same order. Leave it out for the first page. An `id` that isn't one of yours returns `422 invalid_cursor`."
+          },
+          {
+            "name": "contact_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Only messages with this contact: the 1:1 conversation, plus group messages they sent or that were addressed to them as the group's primary contact. For one whole conversation, use `conversation_id`.",
+              "title": "Contact Id"
+            },
+            "description": "Only messages with this contact: the 1:1 conversation, plus group messages they sent or that were addressed to them as the group's primary contact. For one whole conversation, use `conversation_id`."
+          },
+          {
+            "name": "conversation_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Only messages in this conversation (1:1 or group).",
+              "title": "Conversation Id"
+            },
+            "description": "Only messages in this conversation (1:1 or group)."
+          },
+          {
+            "name": "chat_guid",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "minLength": 1
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Only messages in the iMessage group with this `chat_guid`. It changes when a participant is added; the group's `conversation_id` doesn't.",
+              "title": "Chat Guid"
+            },
+            "description": "Only messages in the iMessage group with this `chat_guid`. It changes when a participant is added; the group's `conversation_id` doesn't."
+          },
+          {
+            "name": "direction",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "inbound",
+                    "outbound"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Only `inbound` or only `outbound` messages.",
+              "title": "Direction"
+            },
+            "description": "Only `inbound` or only `outbound` messages."
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "queued",
+                    "pending",
+                    "sent",
+                    "delivered",
+                    "read",
+                    "failed",
+                    "expired",
+                    "cancelled"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Only messages with this `status`.",
+              "title": "Status"
+            },
+            "description": "Only messages with this `status`."
+          },
+          {
+            "name": "created_after",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Only messages with `created_at` strictly after this time. ISO 8601 with a time zone, e.g. `2026-11-10T09:30:00Z`; in a query string, write `Z` or encode `+` as `%2B`.",
+              "title": "Created After"
+            },
+            "description": "Only messages with `created_at` strictly after this time. ISO 8601 with a time zone, e.g. `2026-11-10T09:30:00Z`; in a query string, write `Z` or encode `+` as `%2B`."
+          },
+          {
+            "name": "created_before",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Only messages with `created_at` strictly before this time. Same format as `created_after`.",
+              "title": "Created Before"
+            },
+            "description": "Only messages with `created_at` strictly before this time. Same format as `created_after`."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "A page of messages.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MessageList"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid API key.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "`validation_error` (a bad, unknown or repeated query parameter, or `limit` outside 1\u2013100) or `invalid_cursor` (`starting_after` is not one of your messages).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "`forbidden`: your iBubbl account is suspended or cancelled.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        }
       }
     },
     "/v1/messages/{message_id}": {
@@ -1090,6 +1320,23 @@
             "title": "Id",
             "description": "Unique message identifier (UUID)."
           },
+          "direction": {
+            "type": "string",
+            "enum": [
+              "inbound",
+              "outbound"
+            ],
+            "title": "Direction",
+            "description": "`outbound` = sent from your line (through the API, the dashboard or an automation); `inbound` = received from a contact. An inbound message has `status` `delivered`, or `read` once it has been read in the dashboard."
+          },
+          "created_at": {
+            "type": "string",
+            "title": "Created At",
+            "description": "ISO 8601 UTC timestamp, with microseconds and a `Z`, of when iBubbl recorded the message. It never changes, so it is what `GET /v1/messages` sorts and filters by; pass it back as `created_after` / `created_before` unchanged.",
+            "examples": [
+              "2026-05-17T14:23:45.123456Z"
+            ]
+          },
           "status": {
             "type": "string",
             "enum": [
@@ -1115,7 +1362,7 @@
               }
             ],
             "title": "To",
-            "description": "Destination phone number (E.164) for 1:1 sends. Null for group sends \u2014 group destination is identified by `chat_guid` instead.",
+            "description": "The contact's phone number (E.164) for 1:1 messages: the destination of an outbound message, and the sender of an inbound one. Null for group messages \u2014 the group is identified by `chat_guid` instead.",
             "examples": [
               "+14155551234"
             ]
@@ -1279,6 +1526,8 @@
         "type": "object",
         "required": [
           "id",
+          "direction",
+          "created_at",
           "status",
           "body"
         ],
@@ -1288,6 +1537,8 @@
           "contact_id": "c8a1f4e2-3b9d-4f7c-a8e5-1d2c3b4a5e6f",
           "conversation_id": "3a4b5c6d-7e8f-9a0b-1c2d-3e4f5a6b7c8d",
           "conversation_kind": "one_to_one",
+          "created_at": "2026-10-08T11:40:44.770512Z",
+          "direction": "outbound",
           "held_reason": "working_hours",
           "held_until": "2026-10-08T16:00:00+00:00",
           "id": "8b3a4e72-1c2d-4e5f-9a0b-2c3d4e5f6a7b",
@@ -1295,6 +1546,29 @@
           "status": "pending",
           "to": "+14155551234"
         }
+      },
+      "MessageList": {
+        "properties": {
+          "data": {
+            "items": {
+              "$ref": "#/components/schemas/Message"
+            },
+            "type": "array",
+            "title": "Data",
+            "description": "Up to `limit` messages, newest first: by `created_at`, then by `id` for messages recorded in the same microsecond."
+          },
+          "has_more": {
+            "type": "boolean",
+            "title": "Has More",
+            "description": "Whether more messages match after the last one in `data`. To get them, repeat the request with `starting_after` set to that message's `id`."
+          }
+        },
+        "type": "object",
+        "required": [
+          "data",
+          "has_more"
+        ],
+        "title": "MessageList"
       },
       "ContactUpdate": {
         "properties": {

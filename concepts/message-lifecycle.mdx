@@ -61,7 +61,7 @@ Both are `null` when the message isn't held. iBubbl marks holds within about 10 
 
 ## Events that don't fire
 
-These changes happen without a webhook. If you need to know about them, poll `GET /v1/messages/{id}`.
+These changes happen without a webhook. If you need to know about them, poll `GET /v1/messages/{id}`, or list recent messages with [`GET /v1/messages`](/api-reference/messages/list), which returns each one's current status. To catch up on webhooks you missed, see [Recover from downtime](/guides/webhook-retries#recover-from-downtime).
 
 - **`queued` → `pending`.** The capacity hold cleared and the message is on its way. The next event is `message.sent`.
 - **A group send is accepted.** Groups never fire `message.queued`. Their first event is `message.sent`.

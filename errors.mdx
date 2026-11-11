@@ -86,7 +86,11 @@ if not res.ok:
 </ResponseField>
 
 <ResponseField name="validation_error" type="422">
-  Generic request-shape failure. The `message` will identify the field. Common causes: missing required body field, malformed E.164 phone, body length zero, `to` and `contact_id` both omitted.
+  Generic request-shape failure. The `message` will identify the field. Common causes: missing required body field, malformed E.164 phone, body length zero, `to` and `contact_id` both omitted. On a list endpoint: an unknown or repeated query parameter, `limit` outside 1–100, or a time without a time zone.
+</ResponseField>
+
+<ResponseField name="invalid_cursor" type="422">
+  List endpoints only: `starting_after` is a UUID but not the `id` of one of your items (another account's ID is answered the same way). Pass the `id` of the last item from the previous page, with the same endpoint. See [Pagination](/concepts/pagination).
 </ResponseField>
 
 <ResponseField name="contact_opted_out" type="422">
@@ -204,7 +208,8 @@ if not res.ok:
 | `not_found` | 404 | ❌ Verify the ID. |
 | `group_not_found` | 404 | ❌ Use the group's current `chat_guid`. |
 | `idempotency_conflict` | 409 | ❌ Fix the retry logic. |
-| `validation_error` | 422 | ❌ Fix the payload. |
+| `validation_error` | 422 | ❌ Fix the payload or query parameters. |
+| `invalid_cursor` | 422 | ❌ Use the last `id` from the previous page. |
 | `contact_opted_out` | 422 | ❌ Cannot bypass. |
 | `contact_blocked` | 422 | ❌ Not until the contact is unblocked in the dashboard. |
 | `unresponsive_contact` | 422 | ❌ Not until the contact replies. |

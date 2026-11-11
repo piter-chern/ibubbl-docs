@@ -32,7 +32,7 @@ Every attempt carries the **same body** and the same event `id`, but a **new sig
 ### What iBubbl does not do
 
 - **No auto-disable.** However many deliveries fail, your subscription stays active, and new events keep trying. Only you can turn it off, by [revoking it](/api-reference/webhooks/revoke).
-- **No replay.** A dead delivery isn't resent, and there's no endpoint to resend it. To catch up after an outage, read the current state with [`GET /v1/messages/{id}`](/api-reference/messages/retrieve) for the messages you care about.
+- **No replay.** A dead delivery isn't resent, and there's no endpoint to resend it. To catch up after an outage, list what you missed with [`GET /v1/messages`](/api-reference/messages/list): see [Recover from downtime](#recover-from-downtime).
 - **No delivery to revoked or later subscriptions.** Revoking a subscription stops its pending retries. A subscription you create after an event doesn't receive that event.
 
 ### Watching deliveries
@@ -111,6 +111,106 @@ Events can arrive in a different order than they happened: a retry of an older e
 - Don't let a late event move a message backwards in your store: once you've recorded `read`, ignore a later-arriving `delivered`. A message can genuinely move from `sent` to `failed`, though; see [Statuses that move backwards](/concepts/message-lifecycle#statuses-that-move-backwards).
 - When in doubt, [`GET /v1/messages/{id}`](/api-reference/messages/retrieve) returns the current state.
 
+## Recover from downtime
+
+After about 37 minutes of failures a delivery is dead, and iBubbl never resends it. If your endpoint was down longer than that, or you shipped a handler with a bug, webhooks alone won't tell you what you missed. [List messages](/api-reference/messages/list) will: it returns every message, inbound and outbound, with its current status.
+
+The recipe: keep a **checkpoint**, the newest `created_at` you've processed. To catch up, list everything created since a little before the checkpoint, handle what you haven't seen, update what changed, then move the checkpoint forward.
+
+1. **Start a few minutes early.** Messages arriving at the same moment can become visible in either order, so one with a slightly older `created_at` can show up after you've read a newer one. Starting 5 minutes before the checkpoint covers that; the overlap is harmless because of step 2.
+2. **De-duplicate by message.** A message can reach you here and also as a late webhook retry. The samples pass each inbound message through the same [`isFirstDelivery`](#at-least-once-de-duplicate) check as the webhook handler, with the same `message_key` (`<message id>:message.inbound`), so whichever arrives second is skipped.
+3. **Overwrite the status.** The list returns each message's *current* status, so unlike a webhook it can't be out of date: store it as it is.
+4. **Save the checkpoint only after the last page.** If a run fails part-way, the next one starts from the old checkpoint, and step 2 makes the repeat safe.
+
+<CodeGroup>
+
+```typescript TypeScript
+import { listMessages } from "./list-messages"; // the loop from the Pagination page
+import { isFirstDelivery } from "./webhook-dedup"; // from the section above
+import { handleInbound } from "./handlers"; // what your message.inbound handler does
+// Your own storage; replace these with your database calls.
+import { db, getCheckpoint, saveCheckpoint, findMessage, saveMessage } from "./store";
+
+const OVERLAP_MS = 5 * 60 * 1000;
+
+export async function reconcile(): Promise<void> {
+  // e.g. "2026-11-10T15:04:10.112730Z"; on the first run, look back 24 hours
+  const checkpoint = await getCheckpoint();
+  const from = checkpoint ? Date.parse(checkpoint) : Date.now() - 24 * 60 * 60 * 1000;
+  const since = new Date(from - OVERLAP_MS).toISOString();
+
+  let newest = checkpoint;
+  for await (const message of listMessages({ created_after: since })) {
+    const known = await findMessage(message.id);
+    if (!known || known.status !== message.status) {
+      await saveMessage(message); // new, or its status changed while you were away
+    }
+    if (message.direction === "inbound") {
+      const first = await isFirstDelivery(db, {
+        id: `reconcile:${message.id}`,
+        type: "message.inbound",
+        data: { message_id: message.id },
+      });
+      if (first) await handleInbound(message);
+    }
+    if (!newest || message.created_at > newest) newest = message.created_at;
+  }
+  if (newest) await saveCheckpoint(newest);
+}
+```
+
+```python Python
+from datetime import datetime, timedelta, timezone
+
+from handlers import handle_inbound  # what your message.inbound handler does
+from list_messages import list_messages  # the loop from the Pagination page
+from webhook_dedup import is_first_delivery  # from the section above
+
+# Your own storage; replace these with your database calls.
+from store import conn, find_message, get_checkpoint, save_checkpoint, save_message
+
+OVERLAP = timedelta(minutes=5)
+
+
+def reconcile():
+    # e.g. "2026-11-10T15:04:10.112730Z"; on the first run, look back 24 hours
+    checkpoint = get_checkpoint()
+    if checkpoint:
+        start = datetime.fromisoformat(checkpoint.replace("Z", "+00:00"))
+    else:
+        start = datetime.now(timezone.utc) - timedelta(hours=24)
+    since = (start - OVERLAP).strftime("%Y-%m-%dT%H:%M:%S.%fZ")
+
+    newest = checkpoint
+    for message in list_messages(created_after=since):
+        known = find_message(message["id"])
+        if known is None or known["status"] != message["status"]:
+            save_message(message)  # new, or its status changed while you were away
+        if message["direction"] == "inbound":
+            first = is_first_delivery(conn, {
+                "id": f"reconcile:{message['id']}",
+                "type": "message.inbound",
+                "data": {"message_id": message["id"]},
+            })
+            if first:
+                handle_inbound(message)
+        if newest is None or message["created_at"] > newest:
+            newest = message["created_at"]
+    if newest:
+        save_checkpoint(newest)
+```
+
+</CodeGroup>
+
+The `reconcile:` prefix keeps the made-up event `id` apart from real `evt_…` IDs; the `message_key` is what matches a webhook for the same message.
+
+Run it when your endpoint comes back from an outage, or on a schedule (every 15 minutes, say) as a safety net. `created_at` values are fixed-width UTC strings ending in `Z`, so comparing them as text, as the samples do, gives the right order.
+
+Two limits to know:
+
+- **It finds messages *created* since the checkpoint.** A message created earlier whose status changed during the outage (yesterday's `sent` that became `delivered`) isn't in that window. If you need those, look back further with `created_after`, or check the messages you still hold as `queued`, `pending` or `sent` with [`GET /v1/messages/{id}`](/api-reference/messages/retrieve).
+- **Missed inbound messages can be hours old.** Before an automated reply to one, check its `created_at`: an answer hours after the contact wrote can be worse than none.
+
 ## Next
 
 <CardGroup cols={2}>
@@ -119,5 +219,8 @@ Events can arrive in a different order than they happened: a retry of an older e
   </Card>
   <Card title="Webhook events" icon="list" href="/webhooks/events">
     Every event type and its payload.
+  </Card>
+  <Card title="Pagination" icon="layer-group" href="/concepts/pagination">
+    The `listMessages` loop the recovery recipe uses.
   </Card>
 </CardGroup>

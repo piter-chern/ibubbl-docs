@@ -1,0 +1,213 @@
+---
+title: 'List messages'
+openapi: 'GET /v1/messages'
+---
+
+### List messages
+
+**Method:** `GET` | **Endpoint:** `/v1/messages`
+
+**Description:** List your messages, inbound and outbound, newest first. Use it to catch up after your webhook endpoint was down (see [Recover from downtime](/guides/webhook-retries#recover-from-downtime)), or to read a conversation's history.
+
+**Authentication:** API key in the `Authorization` header: `Authorization: Bearer ib_pk_<64 hex>`. Create keys in the dashboard under **Settings → API access**.
+
+#### Query parameters
+All optional. Filters combine with AND.
+
+| Parameter | Type | Description |
+| --------- | ---- | ----------- |
+| `limit` | integer | How many messages to return, `1` to `100`. Defaults to `50`. Outside that range is `422 validation_error`, not rounded. |
+| `starting_after` | string (UUID) | The `id` of the last message on the page you already have. Returns the messages after it. Leave it out for the first page. See [Pagination](/concepts/pagination). |
+| `contact_id` | string (UUID) | Messages with this contact: the one-to-one conversation, plus group messages they sent or that were addressed to them as the group's primary contact. For one whole conversation, use `conversation_id`. |
+| `conversation_id` | string (UUID) | Messages in this conversation, one-to-one or group. |
+| `chat_guid` | string | Messages in the iMessage group with this `chat_guid`. It changes when someone is added to the group; the group's `conversation_id` doesn't. |
+| `direction` | string | `inbound` (from contacts) or `outbound` (from your line, sent through the API, the dashboard or an automation). |
+| `status` | string | One of `queued`, `pending`, `sent`, `delivered`, `read`, `failed`, `expired`, `cancelled`. |
+| `created_after` | string (ISO 8601) | Messages with `created_at` strictly after this time. Include a time zone: `2026-11-10T09:30:00Z`. In a URL, write `Z`, or encode `+` as `%2B` (an unencoded `+` reads as a space and is rejected). |
+| `created_before` | string (ISO 8601) | Messages with `created_at` strictly before this time. Same format. |
+
+Any other query parameter, or one given twice, returns `422 validation_error` naming it. A misspelt `startingAfter` is refused instead of quietly returning the first page again.
+
+A filter that matches nothing returns an empty page, including a `contact_id`, `conversation_id` or `chat_guid` from another account. Messages stay listed after their contact is deleted or blocked.
+
+<RequestExample>
+
+```bash cURL
+# Sent as ?limit=50&created_after=2026-11-10T09%3A30%3A00Z
+curl -G https://api.ibubbl.com/v1/messages \
+  -H "Authorization: Bearer $IBUBBL_API_KEY" \
+  --data-urlencode "limit=50" \
+  --data-urlencode "created_after=2026-11-10T09:30:00Z"
+
+# Next page: add the id of the last message you received.
+#   --data-urlencode "starting_after=8b3a4e72-1c2d-4e5f-9a0b-2c3d4e5f6a7b"
+```
+
+```typescript TypeScript
+const params = new URLSearchParams({
+  limit: "50",
+  created_after: "2026-11-10T09:30:00Z",
+});
+
+const res = await fetch(`https://api.ibubbl.com/v1/messages?${params}`, {
+  headers: { Authorization: `Bearer ${process.env.IBUBBL_API_KEY}` },
+  signal: AbortSignal.timeout(10_000),
+});
+
+const data = await res.json();
+if (!res.ok) throw new Error(`${res.status} ${data.detail?.error}`);
+for (const message of data.data) {
+  console.log(message.created_at, message.direction, message.status, message.body);
+}
+// More? Repeat with starting_after = data.data[data.data.length - 1].id
+console.log("has_more:", data.has_more);
+```
+
+```python Python
+import os
+
+import requests
+
+API_KEY = os.environ["IBUBBL_API_KEY"]
+
+res = requests.get(
+    "https://api.ibubbl.com/v1/messages",
+    headers={"Authorization": f"Bearer {API_KEY}"},
+    params={"limit": 50, "created_after": "2026-11-10T09:30:00Z"},
+    timeout=10,
+)
+data = res.json()
+if not res.ok:
+    raise RuntimeError(f"{res.status_code} {data['detail']['error']}")
+for message in data["data"]:
+    print(message["created_at"], message["direction"], message["status"], message["body"])
+# More? Repeat with starting_after = data["data"][-1]["id"]
+print("has_more:", data["has_more"])
+```
+
+</RequestExample>
+
+<ResponseExample>
+
+```json 200 OK
+{
+  "data": [
+    {
+      "id": "5f6a7b8c-9d0e-4f1a-8b2c-3d4e5f6a7b8c",
+      "direction": "inbound",
+      "created_at": "2026-11-10T15:06:41.518204Z",
+      "status": "delivered",
+      "to": "+14155551234",
+      "body": "Thanks! Can we talk tomorrow?",
+      "contact_id": "c8a1f4e2-3b9d-4f7c-a8e5-1d2c3b4a5e6f",
+      "conversation_id": "3a4b5c6d-7e8f-9a0b-1c2d-3e4f5a6b7c8d",
+      "conversation_kind": "one_to_one",
+      "chat_guid": null,
+      "channel": "imessage",
+      "sent_at": "2026-11-10T15:06:40.902Z",
+      "held_until": null,
+      "held_reason": null,
+      "effect": null,
+      "reply_to_message_id": null
+    },
+    {
+      "id": "8b3a4e72-1c2d-4e5f-9a0b-2c3d4e5f6a7b",
+      "direction": "outbound",
+      "created_at": "2026-11-10T15:04:10.112730Z",
+      "status": "read",
+      "to": "+14155551234",
+      "body": "Hey Sam — quick check-in about your order.",
+      "contact_id": "c8a1f4e2-3b9d-4f7c-a8e5-1d2c3b4a5e6f",
+      "conversation_id": "3a4b5c6d-7e8f-9a0b-1c2d-3e4f5a6b7c8d",
+      "conversation_kind": "one_to_one",
+      "chat_guid": null,
+      "channel": "imessage",
+      "sent_at": "2026-11-10T15:04:12.381Z",
+      "held_until": null,
+      "held_reason": null,
+      "effect": null,
+      "reply_to_message_id": null
+    }
+  ],
+  "has_more": true
+}
+```
+
+```json 422 Unprocessable Entity
+{
+  "detail": {
+    "error": "invalid_cursor",
+    "message": "starting_after is not the id of one of your items"
+  }
+}
+```
+
+</ResponseExample>
+
+#### Responses
+**200 OK**
+
+`data` holds up to `limit` messages, newest first: by `created_at`, then by `id` for messages recorded in the same microsecond. Each item is exactly what [Retrieve a message](/api-reference/messages/retrieve) returns for that message. `has_more` is `true` when more messages match; to get them, repeat the request with `starting_after` set to the `id` of the last item in `data`. An empty `data` comes with `has_more: false`.
+
+- `direction` is `inbound` or `outbound`.
+- `created_at` is when iBubbl recorded the message, in UTC with microseconds. It never changes, which is why the list sorts and filters by it. `sent_at` is when the message went out or arrived, and can be earlier than `created_at` for an inbound message.
+- For an inbound message, `status` is `delivered`, or `read` once someone on your account has read it in the dashboard. `to` is the contact's number (who sent it), and `channel` is how it arrived.
+
+```json
+{
+  "data": [
+    {
+      "id": "8b3a4e72-1c2d-4e5f-9a0b-2c3d4e5f6a7b",
+      "direction": "outbound",
+      "created_at": "2026-11-10T15:04:10.112730Z",
+      "status": "read",
+      "to": "+14155551234",
+      "body": "Hey Sam — quick check-in about your order.",
+      "contact_id": "c8a1f4e2-3b9d-4f7c-a8e5-1d2c3b4a5e6f",
+      "conversation_id": "3a4b5c6d-7e8f-9a0b-1c2d-3e4f5a6b7c8d",
+      "conversation_kind": "one_to_one",
+      "chat_guid": null,
+      "channel": "imessage",
+      "sent_at": "2026-11-10T15:04:12.381Z",
+      "held_until": null,
+      "held_reason": null,
+      "effect": null,
+      "reply_to_message_id": null
+    }
+  ],
+  "has_more": false
+}
+```
+
+**401 Unauthorized**
+```json
+{
+  "detail": {
+    "error": "unauthorized",
+    "message": "Invalid or revoked API key"
+  }
+}
+```
+Other `message` values: `Authorization Bearer token required`, `API key required (use Authorization: Bearer ib_pk_…)`, `Invalid API key format`, `Customer account not found`.
+
+**403 Forbidden**
+```json
+{
+  "detail": {
+    "error": "forbidden",
+    "message": "Account is suspended"
+  }
+}
+```
+Your iBubbl account is suspended or cancelled (`message` is then `Account is cancelled`). Every API-key endpoint returns this.
+
+**422 Unprocessable Entity**
+```json
+{
+  "detail": {
+    "error": "validation_error",
+    "message": "Unknown query parameter: startingAfter. Allowed: chat_guid, contact_id, conversation_id, created_after, created_before, direction, limit, starting_after, status"
+  }
+}
+```
+`validation_error`: a query parameter is unknown, repeated or invalid (`limit` outside 1–100, an ID that isn't a UUID, a time without a time zone, an unknown `direction` or `status`). `invalid_cursor`: `starting_after` is a UUID but not the ID of one of your messages.

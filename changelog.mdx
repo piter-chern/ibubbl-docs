@@ -7,6 +7,8 @@ description: 'Changes to the iBubbl API and these docs, newest first.'
 
 | Date | Change | Type |
 | ---- | ------ | ---- |
+| 2026-11-11 | New endpoint: [List messages](/api-reference/messages/list) (`GET /v1/messages`) returns your inbound and outbound messages, newest first, with filters for contact, conversation, group, direction, status and creation time. Results are paginated with `starting_after` and `has_more`; see [Pagination](/concepts/pagination). New error `invalid_cursor`. New recipe: [Recover from downtime](/guides/webhook-retries#recover-from-downtime) after missed webhooks. | New |
+| 2026-11-11 | Every message object ([Send](/api-reference/messages/send), [Retrieve](/api-reference/messages/retrieve), [List](/api-reference/messages/list)) now has `direction` (`inbound` or `outbound`) and `created_at` (when iBubbl recorded it, UTC with microseconds). | New |
 | 2026-11-11 | Webhooks now carry `channel` (`imessage` or `sms`): `message.sent`, `message.delivered`, `message.read`, `message.failed`, `message.cancelled` and `message.inbound`. [Retrieve a message](/api-reference/messages/retrieve) now returns `channel` for inbound messages too, where it was always `null`. See [The `channel` field](/webhooks/events#the-channel-field). | New |
 | 2026-11-11 | A `queued` message that expires now fires [`message.failed`](/webhooks/events#message-failed), with `status: "expired"` and `failed_reason: "queue_expired"`; before, it fired no webhook. A queued message the queue's retry fails also fires `message.failed` now. | Changed |
 | 2026-11-11 | Every API response carries an `X-Request-Id` header, and a request can send its own. Quote it to support instead of a timestamp and request body. See [Request IDs](/errors#request-ids). | New |

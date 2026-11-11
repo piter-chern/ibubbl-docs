@@ -286,6 +286,7 @@ A few notes on the design:
 - **Why both de-duplication and a deterministic key?** The event-`id` check skips work you've already done. The key is the guarantee: even if two instances of your app process the same event at the same moment, iBubbl sends that reply once. The [Idempotency](/idempotency) page explains replays.
 - **STOP needs no special case.** The opt-out is recorded before `message.inbound` fires, so a reply to a STOP comes back `422 contact_opted_out` and the code stops.
 - **Working hours still apply.** An auto-reply sent outside the contact's [sending hours](/concepts/working-hours) waits as `pending` until they open. The one thing allowed to answer straight away outside sending hours is the built-in [after-hours auto-reply](/concepts/after-hours-reply) workflow; use it for "we're closed" replies instead of building your own.
+- **Missed webhooks.** If your endpoint is down for longer than the ~37-minute retry window, those events are gone. [Recover from downtime](/guides/webhook-retries#recover-from-downtime) lists the messages you missed with `GET /v1/messages` and runs them through the same de-duplication.
 - **Groups.** The sample replies into groups too. Many integrations prefer to auto-reply only in `one_to_one` conversations: return early when `conversation_kind` is `"group"`.
 
 ## Next

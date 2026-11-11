@@ -46,6 +46,7 @@
           "concepts/limits",
           "concepts/lines-and-routing",
           "idempotency",
+          "concepts/pagination",
           "concepts/working-hours",
           "concepts/after-hours-reply",
           "concepts/suppression",
@@ -77,6 +78,7 @@
             "group": "Messages",
             "pages": [
               "api-reference/messages/send",
+              "api-reference/messages/list",
               "api-reference/messages/retrieve"
             ]
           },

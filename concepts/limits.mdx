@@ -81,7 +81,7 @@ So a burst gains nothing. If you send 500 messages in one second, iBubbl accepts
 - **Send one message at a time per line**, or keep only a few requests in flight. Faster sending only builds a longer queue.
 - **For outreach to new contacts, plan for 30 an hour and 50 a day per line.** One new contact every 2 minutes, spread over the contact's sending hours, stays inside both limits.
 - **Stop on a cap.** After `cold_cap_exhausted` or `daily_cap_exhausted`, stop that kind of send until midnight ET, instead of trying every remaining contact.
-- **Follow webhooks rather than polling.** If you must poll `GET /v1/messages/{id}`, poll each message at most every 30 seconds.
+- **Follow webhooks rather than polling.** If you must poll `GET /v1/messages/{id}`, poll each message at most every 30 seconds. To check many messages at once, page through [`GET /v1/messages`](/api-reference/messages/list) with `created_after` instead of polling each one.
 
 ## Duplicates and retries
 
