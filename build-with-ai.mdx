@@ -97,10 +97,10 @@ LIMITS (per line; https://docs.ibubbl.com/concepts/limits)
   daily_cap_exhausted.
 - 6 unanswered messages in a row to a contact who never replied; the 7th gets
   422 unresponsive_contact.
-- No HTTP rate limit on POST /v1/messages, but a line sends one message at a
-  time (about one a second). Send one request at a time per line; bursts only
-  build a queue. Pace outreach to new contacts at about one every 2 minutes
-  per line.
+- No HTTP rate limit on POST /v1/messages (a send never gets a 429), but a
+  line sends one message at a time (about one a second). Send one request at
+  a time per line; bursts only build a queue. Pace outreach to new contacts
+  at about one every 2 minutes per line.
 - A "queued" message (line offline) that expires after about an hour fires
   message.failed with status "expired" and failed_reason "queue_expired".
   Branch on failed_reason, not status. Its idempotency_key is released.
@@ -117,6 +117,11 @@ READING HISTORY (GET /v1/messages)
 - An unknown or repeated query parameter is 422 validation_error, and a
   starting_after that isn't one of your ids is 422 invalid_cursor. Use the
   exact parameter names above.
+- Rate limit: 120 list requests per 60 seconds per account, shared by all
+  API keys and all list endpoints. Over it: 429 rate_limited with a
+  Retry-After header (seconds). Sleep that long, then send the SAME request
+  again (same starting_after); the refused request didn't count. Fetch
+  pages one at a time; don't run parallel loops to go faster.
 - To catch up after missed webhooks: list with created_after = your last
   processed created_at minus 5 minutes, skip message ids you already have,
   and store each message's status as returned (it is current).
@@ -129,7 +134,9 @@ RETRIES AND ERRORS
 - Network error, timeout or 5xx: retry with the SAME idempotency_key and
   the same payload, with exponential backoff (1 s, 2 s, 4 s) and a small cap
   on attempts. Exception: 500 no_owner_rep will not succeed on retry.
-- Never retry a 4xx automatically. Fix the request instead.
+- Never retry a 4xx automatically. Fix the request instead. The one
+  exception: 429 rate_limited on a list; wait Retry-After seconds, then
+  repeat the request.
 - 422 unresponsive_contact: the contact has not replied to 6 messages in a
   row. Stop messaging them until they reply.
 - 422 contact_opted_out: final. Never message this contact again, and never

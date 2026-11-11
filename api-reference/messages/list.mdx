@@ -30,6 +30,8 @@ Any other query parameter, or one given twice, returns `422 validation_error` na
 
 A filter that matches nothing returns an empty page, including a `contact_id`, `conversation_id` or `chat_guid` from another account. Messages stay listed after their contact is deleted or blocked.
 
+**Rate limit:** 120 list requests per 60 seconds per account, across all your API keys and all list endpoints. Over that, you get `429 rate_limited` with a `Retry-After` header; see [Rate limits](/concepts/limits#rate-limits).
+
 <RequestExample>
 
 ```bash cURL
@@ -142,6 +144,15 @@ print("has_more:", data["has_more"])
 }
 ```
 
+```json 429 Too Many Requests
+{
+  "detail": {
+    "error": "rate_limited",
+    "message": "Too many list requests; wait 18s (limit 120 a minute per account)."
+  }
+}
+```
+
 </ResponseExample>
 
 #### Responses
@@ -211,3 +222,17 @@ Your iBubbl account is suspended or cancelled (`message` is then `Account is can
 }
 ```
 `validation_error`: a query parameter is unknown, repeated or invalid (`limit` outside 1–100, an ID that isn't a UUID, a time without a time zone, an unknown `direction` or `status`). `invalid_cursor`: `starting_after` is a UUID but not the ID of one of your messages.
+
+**429 Too Many Requests**
+```text
+Retry-After: 18
+```
+```json
+{
+  "detail": {
+    "error": "rate_limited",
+    "message": "Too many list requests; wait 18s (limit 120 a minute per account)."
+  }
+}
+```
+Your account made more than 120 list requests in the last 60 seconds. `Retry-After` is the number of whole seconds until the oldest of them stops counting. Wait that long, then send the same request again; the refused request didn't count. The limit is checked after the API key, so a bad key is still `401`.

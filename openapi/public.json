@@ -102,7 +102,7 @@
           "Messages"
         ],
         "summary": "List messages",
-        "description": "List your messages, inbound and outbound, newest first. Use it to catch up after your webhook endpoint was down, or to read a conversation's history.\n\nResults are paginated: `has_more` tells you whether there is another page, and you get it by passing the `id` of the last message as `starting_after`. Pages are stable while new messages arrive: nothing is skipped or repeated. See [Pagination](/concepts/pagination).\n\nFilters combine with AND. A filter value that matches nothing (including another account's `contact_id` or `chat_guid`) returns an empty page. An unknown or repeated query parameter returns `422 validation_error`.\n\nMessages stay listed after their contact is deleted or blocked.",
+        "description": "List your messages, inbound and outbound, newest first. Use it to catch up after your webhook endpoint was down, or to read a conversation's history.\n\nResults are paginated: `has_more` tells you whether there is another page, and you get it by passing the `id` of the last message as `starting_after`. Pages are stable while new messages arrive: nothing is skipped or repeated. See [Pagination](/concepts/pagination).\n\nFilters combine with AND. A filter value that matches nothing (including another account's `contact_id` or `chat_guid`) returns an empty page. An unknown or repeated query parameter returns `422 validation_error`.\n\nMessages stay listed after their contact is deleted or blocked.\n\nLists allow 120 requests a minute per account, across all your API keys and all lists. Over that, the answer is `429 rate_limited` with a `Retry-After` header in seconds.",
         "operationId": "v1_list_messages_v1_messages_get",
         "parameters": [
           {
@@ -307,6 +307,24 @@
           },
           "422": {
             "description": "`validation_error` (a bad, unknown or repeated query parameter, or `limit` outside 1\u2013100) or `invalid_cursor` (`starting_after` is not one of your messages).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "`rate_limited`: more than 120 list requests in 60 seconds from your account (all keys and all lists count together). Wait `Retry-After` seconds, then send the same request again.",
+            "headers": {
+              "Retry-After": {
+                "description": "Seconds to wait before retrying.",
+                "schema": {
+                  "type": "integer"
+                }
+              }
+            },
             "content": {
               "application/json": {
                 "schema": {

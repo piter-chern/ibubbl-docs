@@ -196,7 +196,12 @@ if not res.ok:
 </ResponseField>
 
 <ResponseField name="rate_limited" type="429">
-  `/v1/events` only: a secret-URL [inbound event](/inbound-events/overview) source received more than 60 events in 60 seconds. There is no `Retry-After` header; send again after about a minute. No other `/v1` endpoint returns this.
+  Returned in two places, and nowhere else:
+
+  - **List endpoints** such as [List messages](/api-reference/messages/list): your account made more than 120 list requests in 60 seconds (all API keys and all lists together). The response has a `Retry-After` header with the seconds to wait; then send the same request again. See [Rate limits](/concepts/limits#rate-limits).
+  - **`/v1/events`**: a secret-URL [inbound event](/inbound-events/overview) source received more than 60 events in 60 seconds. There is no `Retry-After` header here; send again after about a minute.
+
+  Sends (`POST /v1/messages`) never return it.
 </ResponseField>
 
 ## When to retry
@@ -224,13 +229,13 @@ if not res.ok:
 | `daily_cap_exhausted` / `cold_cap_exhausted` | 422 | ⚠️ Not queued. Send again after the limit resets (midnight ET). |
 | `hourly_cap_hit` / `followup_cap_exhausted` | — | Legacy: not used on any current line. |
 | `no_eligible_line` | 422 | ⚠️ Send again once your line is back online. |
-| `rate_limited` | 429 | ✅ Send again after about a minute (`/v1/events` only). |
+| `rate_limited` | 429 | ✅ Lists: send the same request again after `Retry-After` seconds. `/v1/events`: after about a minute. |
 | `invalid_signature` | 403 | ❌ Fix the signing secret. |
 | `payload_too_large` | 413 | ❌ Fix the payload size. |
 | `no_owner_rep` | 500 | ❌ Not until your account has an active owner rep; email [support@ibubbl.com](mailto:support@ibubbl.com). |
 | `internal_error` | 500 | ✅ Retry with the same idempotency key after a short backoff. |
 
-The general rule: **don't retry 4xx**. Most 4xxes are payload-level problems that retrying won't fix. The limit 422s (`daily_cap_exhausted`, `cold_cap_exhausted`) are retryable only after the limit resets at midnight ET; iBubbl does not queue them for you. The hourly new-contact limit and an offline line are different: those sends are accepted and wait (`pending` with `held_reason: "hourly_limit"`, or `queued`), so resending just creates a duplicate. The numbers are on [Limits and queues](/concepts/limits). A send refused with a `404` or `422` creates no message, so its `idempotency_key` stays unused and you can reuse it when you send again.
+The general rule: **don't retry 4xx**. Most 4xxes are payload-level problems that retrying won't fix. The exception is `429 rate_limited`: wait, then send the same request again (on a list, `Retry-After` says how long). The limit 422s (`daily_cap_exhausted`, `cold_cap_exhausted`) are retryable only after the limit resets at midnight ET; iBubbl does not queue them for you. The hourly new-contact limit and an offline line are different: those sends are accepted and wait (`pending` with `held_reason: "hourly_limit"`, or `queued`), so resending just creates a duplicate. The numbers are on [Limits and queues](/concepts/limits). A send refused with a `404` or `422` creates no message, so its `idempotency_key` stays unused and you can reuse it when you send again.
 
 ## HTTP status mapping summary
 
@@ -243,6 +248,6 @@ The general rule: **don't retry 4xx**. Most 4xxes are payload-level problems tha
 | `409` | Idempotency conflict. |
 | `413` | Inbound event body over 256 KB. |
 | `422` | Validation, routing or send-limit failure. |
-| `429` | Too many inbound events for one source (`rate_limited`, `/v1/events` only). |
+| `429` | `rate_limited`: too many list requests from your account (with `Retry-After`), or too many inbound events for one source on `/v1/events`. |
 | `500` | No owner rep (`no_owner_rep`) or an unexpected iBubbl error (`internal_error`). |
 | `502` / `503` | Never returned by iBubbl itself: only by the network edge during a deployment blip. Retry with the same idempotency key after a short backoff. |
