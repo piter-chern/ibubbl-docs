@@ -433,7 +433,7 @@
           "Contacts"
         ],
         "summary": "Create or update a contact",
-        "description": "Upsert a contact by E.164 phone number. Returns `201 Created` on a new contact, `200 OK` on an existing match. A number whose only match is a deleted contact creates a new contact.\n\nOptional fields (`first_name`, `last_name`, `email`, `city`, `state`, `timezone`) apply only when the existing record's value is null \u2014 values set previously by a rep or by a prior API call are preserved. This protects human-edited data from being clobbered by automation; to overwrite, use `PATCH /v1/contacts/{id}`.\n\n`tags` only ever adds tags. Every value is checked before anything is saved.\n\nIf `timezone` is provided, it must be one of the 20 supported IANA timezones (US, Canada, and a few international zones such as `Europe/London`); anything else returns `422 invalid_timezone`.\n\nv1 has no endpoint to list or delete contacts.",
+        "description": "Upsert a contact by E.164 phone number. Returns `201 Created` on a new contact, `200 OK` on an existing match. A number whose only match is a deleted contact creates a new contact.\n\nOptional fields (`first_name`, `last_name`, `email`, `city`, `state`, `timezone`) apply only when the existing record's value is null \u2014 values set previously by a rep or by a prior API call are preserved. This protects human-edited data from being clobbered by automation; to overwrite, use `PATCH /v1/contacts/{id}`.\n\n`tags` only ever adds tags. Every value is checked before anything is saved.\n\nIf `timezone` is provided, it must be one of the 20 supported IANA timezones (US, Canada, and a few international zones such as `Europe/London`); anything else returns `422 invalid_timezone`.\n\nA new contact for a number that opted out earlier (for example, one you deleted after an opt-out) starts with `opted_out: true`.",
         "operationId": "v1_upsert_contact_v1_contacts_post",
         "requestBody": {
           "required": true,
@@ -488,6 +488,185 @@
           },
           "500": {
             "description": "`internal_error`: a tag was deleted twice while it was being added. Retry.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "`forbidden`: your iBubbl account is suspended or cancelled.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "get": {
+        "tags": [
+          "Contacts"
+        ],
+        "summary": "List contacts",
+        "description": "List your contacts, newest first. Deleted contacts are never listed.\n\nResults are paginated: `has_more` tells you whether there is another page, and you get it by passing the `id` of the last contact as `starting_after`. Pages are stable while contacts are added: nothing is skipped or repeated. See [Pagination](/concepts/pagination).\n\nFilters combine with AND. A filter value that matches nothing (including a tag you don't have) returns an empty page. An unknown or repeated query parameter returns `422 validation_error`.\n\nLists allow 120 requests a minute per account, across all your API keys and all lists. Over that, the answer is `429 rate_limited` with a `Retry-After` header in seconds.",
+        "operationId": "v1_list_contacts_v1_contacts_get",
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 100,
+              "minimum": 1,
+              "description": "How many items to return, 1 to 100. Defaults to 50.",
+              "default": 50,
+              "title": "Limit"
+            },
+            "description": "How many items to return, 1 to 100. Defaults to 50."
+          },
+          {
+            "name": "starting_after",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "The `id` of the last item on the page you already have. Returns the items that come after it, in the same order. Leave it out for the first page. An `id` that isn't one of yours returns `422 invalid_cursor`. A contact deleted since is no longer a valid cursor.",
+              "title": "Starting After"
+            },
+            "description": "The `id` of the last item on the page you already have. Returns the items that come after it, in the same order. Leave it out for the first page. An `id` that isn't one of yours returns `422 invalid_cursor`. A contact deleted since is no longer a valid cursor."
+          },
+          {
+            "name": "search",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 100
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Only contacts matching every word, case-insensitively, as part of the first name, last name, email or phone number: `sam rivera` finds Sam Rivera. A word written like a phone number also matches by its digits, so `415-555-1234` finds `+14155551234`. The characters `\"`, `\\` and `*` are ignored. Up to 100 characters.",
+              "title": "Search"
+            },
+            "description": "Only contacts matching every word, case-insensitively, as part of the first name, last name, email or phone number: `sam rivera` finds Sam Rivera. A word written like a phone number also matches by its digits, so `415-555-1234` finds `+14155551234`. The characters `\"`, `\\` and `*` are ignored. Up to 100 characters."
+          },
+          {
+            "name": "opted_out",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "`true`: only opted-out contacts. `false`: only the others.",
+              "title": "Opted Out"
+            },
+            "description": "`true`: only opted-out contacts. `false`: only the others."
+          },
+          {
+            "name": "blocked",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "`true`: only blocked contacts. `false`: only the others.",
+              "title": "Blocked"
+            },
+            "description": "`true`: only blocked contacts. `false`: only the others."
+          },
+          {
+            "name": "tag",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 64
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Only contacts with this tag, matched trimmed and case-insensitively (`vip` matches `VIP`).",
+              "title": "Tag"
+            },
+            "description": "Only contacts with this tag, matched trimmed and case-insensitively (`vip` matches `VIP`)."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "A page of contacts.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ContactList"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid API key.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "`validation_error` (a bad, unknown or repeated query parameter, `limit` outside 1\u2013100, or a `search` with nothing to match) or `invalid_cursor` (`starting_after` is not one of your contacts).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "`rate_limited`: more than 120 list requests in 60 seconds from your account (all keys and all lists count together). Wait `Retry-After` seconds, then send the same request again.",
+            "headers": {
+              "Retry-After": {
+                "description": "Seconds to wait before retrying.",
+                "schema": {
+                  "type": "integer"
+                }
+              }
+            },
             "content": {
               "application/json": {
                 "schema": {
@@ -651,6 +830,60 @@
             }
           }
         }
+      },
+      "delete": {
+        "tags": [
+          "Contacts"
+        ],
+        "summary": "Delete a contact",
+        "description": "Delete a contact. It disappears from the list and from `GET /v1/contacts/{id}`, and every endpoint that takes its `id` (including `POST /v1/messages` with `contact_id`) returns `404 not_found`. Deleting it again also returns `404`.\n\nWhat stays: its messages and conversations, which `GET /v1/messages` still lists under the old `contact_id`; messages already accepted for it and still waiting, which still go out (cancel them in the dashboard to stop them); and its opt-out, which belongs to the number.\n\nUpserting the same number, sending to it with `to`, or an inbound message from it creates a **new** contact with a new `id`. Names, tags and a block are not carried over; an opt-out is.",
+        "operationId": "v1_delete_contact_v1_contacts__contact_id__delete",
+        "parameters": [
+          {
+            "name": "contact_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Contact Id"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Deleted."
+          },
+          "401": {
+            "description": "Missing or invalid API key.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Contact not found.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "`forbidden`: your iBubbl account is suspended or cancelled.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        }
       }
     },
     "/v1/contacts/{contact_id}/tags": {
@@ -777,6 +1010,193 @@
         "responses": {
           "200": {
             "description": "The contact, with its tags.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Contact"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid API key.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Contact not found.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "`forbidden`: your iBubbl account is suspended or cancelled.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/contacts/{contact_id}/opt-out": {
+      "post": {
+        "tags": [
+          "Contacts"
+        ],
+        "summary": "Opt a contact out",
+        "description": "Record that this person opted out of messages, as a STOP reply does. **This can't be undone**, through the API or the dashboard: every later send to this number answers `422 contact_opted_out`, even after the contact is deleted and created again.\n\nThe first opt-out fires a `contact.opted_out` webhook with `source: \"api\"`. New sends are refused from then on, but a message accepted earlier and still waiting (held for sending hours, or queued) can still go out; cancel it in the dashboard to stop it.\n\nIdempotent: a contact already opted out (in any way) answers `200` with its current state, and no second webhook fires.",
+        "operationId": "v1_opt_out_contact_v1_contacts__contact_id__opt_out_post",
+        "parameters": [
+          {
+            "name": "contact_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Contact Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The contact, now opted out.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Contact"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid API key.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Contact not found.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "`forbidden`: your iBubbl account is suspended or cancelled.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/contacts/{contact_id}/block": {
+      "post": {
+        "tags": [
+          "Contacts"
+        ],
+        "summary": "Block a contact",
+        "description": "A block is yours, on this contact: sends to them return `422 contact_blocked` (group conversations they're in are not affected). Their inbound messages are still stored and still fire `message.inbound`, but don't mark the conversation unread, notify anyone or start workflows. Unlike an opt-out, a block fires no webhook and can be undone with `DELETE /v1/contacts/{id}/block`. A contact deleted and created again starts unblocked.\n\nIdempotent: blocking a blocked contact answers `200` and keeps the original `blocked_at`.",
+        "operationId": "v1_block_contact_v1_contacts__contact_id__block_post",
+        "parameters": [
+          {
+            "name": "contact_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Contact Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The contact, now blocked.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Contact"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid API key.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Contact not found.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "`forbidden`: your iBubbl account is suspended or cancelled.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "Contacts"
+        ],
+        "summary": "Unblock a contact",
+        "description": "Undo a block: sends to this contact are accepted again. An opt-out is not affected.\n\nIdempotent: unblocking a contact that isn't blocked answers `200` unchanged.",
+        "operationId": "v1_unblock_contact_v1_contacts__contact_id__block_delete",
+        "parameters": [
+          {
+            "name": "contact_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Contact Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The contact, now unblocked.",
             "content": {
               "application/json": {
                 "schema": {
@@ -1274,7 +1694,7 @@
           "opted_out": {
             "type": "boolean",
             "title": "Opted Out",
-            "description": "True if this contact has opted out (STOP reply or manual opt-out). When true, all send attempts to this contact return `422 contact_opted_out`."
+            "description": "True if this person has opted out: a STOP reply, a rep in the dashboard, a Do Not Disturb in your connected GoHighLevel account, or `POST /v1/contacts/{id}/opt-out`. When true, every send to this contact returns `422 contact_opted_out`. An opt-out can't be undone, and it belongs to the number: a contact deleted and created again is still opted out."
           },
           "opted_out_at": {
             "anyOf": [
@@ -1287,6 +1707,24 @@
             ],
             "title": "Opted Out At",
             "description": "ISO 8601 UTC timestamp of the opt-out, or null."
+          },
+          "blocked": {
+            "type": "boolean",
+            "title": "Blocked",
+            "description": "True if you blocked this contact (dashboard or `POST /v1/contacts/{id}/block`). Sends to them return `422 contact_blocked` until you unblock them. Unlike an opt-out, a block is yours to undo, and it fires no webhook.",
+            "default": false
+          },
+          "blocked_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Blocked At",
+            "description": "ISO 8601 UTC timestamp of the block, or null."
           },
           "created_at": {
             "type": "string",
@@ -1303,6 +1741,7 @@
         ],
         "title": "Contact",
         "example": {
+          "blocked": false,
           "city": "Brooklyn",
           "created_at": "2026-05-17T14:23:45.123Z",
           "email": "sam@example.com",
@@ -1318,6 +1757,29 @@
           ],
           "timezone": "America/Los_Angeles"
         }
+      },
+      "ContactList": {
+        "properties": {
+          "data": {
+            "items": {
+              "$ref": "#/components/schemas/Contact"
+            },
+            "type": "array",
+            "title": "Data",
+            "description": "Up to `limit` contacts, newest first: by `created_at`, then by `id` for contacts created in the same microsecond."
+          },
+          "has_more": {
+            "type": "boolean",
+            "title": "Has More",
+            "description": "Whether more contacts match after the last one in `data`. To get them, repeat the request with `starting_after` set to that contact's `id`."
+          }
+        },
+        "type": "object",
+        "required": [
+          "data",
+          "has_more"
+        ],
+        "title": "ContactList"
       },
       "EventAck": {
         "properties": {

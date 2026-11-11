@@ -118,6 +118,8 @@ print(res.status_code, data["id"], data["tags"])
   ],
   "opted_out": false,
   "opted_out_at": null,
+  "blocked": false,
+  "blocked_at": null,
   "created_at": "2026-11-05T00:00:00+00:00"
 }
 ```
@@ -151,10 +153,12 @@ print(res.status_code, data["id"], data["tags"])
   ],
   "opted_out": false,
   "opted_out_at": null,
+  "blocked": false,
+  "blocked_at": null,
   "created_at": "2026-11-05T00:00:00+00:00"
 }
 ```
-A new contact was created. A number whose only match is a deleted contact also creates a new one. `tags` lists the contact's tag names, sorted.
+A new contact was created. A number whose only match is a [deleted contact](/api-reference/contacts/delete) also creates a new one, with a new `id`; if that number had opted out, the new contact starts with `opted_out: true`. `tags` lists the contact's tag names, sorted.
 
 **200 OK**
 ```json
@@ -172,6 +176,8 @@ A new contact was created. A number whose only match is a deleted contact also c
   ],
   "opted_out": false,
   "opted_out_at": null,
+  "blocked": false,
+  "blocked_at": null,
   "created_at": "2026-11-05T14:23:45.123Z"
 }
 ```

@@ -1,0 +1,217 @@
+---
+title: 'List contacts'
+openapi: 'GET /v1/contacts'
+---
+
+### List contacts
+
+**Method:** `GET` | **Endpoint:** `/v1/contacts`
+
+**Description:** List your contacts, newest first, with their tags, opt-out and block state. Search by name, email or phone, or filter by tag, opt-out or block. Deleted contacts are never listed.
+
+**Authentication:** API key in the `Authorization` header: `Authorization: Bearer ib_pk_<64 hex>`. Create keys in the dashboard under **Settings → API access**.
+
+#### Query parameters
+All optional. Filters combine with AND.
+
+| Parameter | Type | Description |
+| --------- | ---- | ----------- |
+| `limit` | integer | How many contacts to return, `1` to `100`. Defaults to `50`. Outside that range is `422 validation_error`, not rounded. |
+| `starting_after` | string (UUID) | The `id` of the last contact on the page you already have. Returns the contacts after it. Leave it out for the first page. See [Pagination](/concepts/pagination). |
+| `search` | string | Contacts matching **every** word, ignoring case, as part of the first name, last name, email or phone number: `sam rivera` finds Sam Rivera, and `example.com` finds everyone with an email there. A word written like a phone number also matches by its digits, so `415-555-1234` and `(415)` find `+14155551234`. `%` and `_` match themselves. The characters `"`, `\` and `*` are ignored. Up to 100 characters. |
+| `tag` | string | Contacts with this tag, matched ignoring case and outer spaces: `vip` finds contacts tagged `VIP`. If you have two tags that differ only by case, contacts with either are listed (once each). |
+| `opted_out` | boolean | `true`: only contacts who have [opted out](/concepts/suppression). `false`: only the others. |
+| `blocked` | boolean | `true`: only contacts you've [blocked](/api-reference/contacts/block). `false`: only the others. |
+
+Any other query parameter, or one given twice, returns `422 validation_error` naming it. A misspelt `startingAfter` is refused instead of quietly returning the first page again.
+
+A filter that matches nothing returns an empty page, including a `tag` you don't have. A contact deleted since you received it is no longer a valid `starting_after` (`422 invalid_cursor`): restart from the first page.
+
+**Rate limit:** 120 list requests per 60 seconds per account, across all your API keys and all list endpoints. Over that, you get `429 rate_limited` with a `Retry-After` header; see [Rate limits](/concepts/limits#rate-limits).
+
+<RequestExample>
+
+```bash cURL
+# Sent as ?limit=50&search=sam%20rivera&tag=VIP
+curl -G https://api.ibubbl.com/v1/contacts \
+  -H "Authorization: Bearer $IBUBBL_API_KEY" \
+  --data-urlencode "limit=50" \
+  --data-urlencode "search=sam rivera" \
+  --data-urlencode "tag=VIP"
+
+# Next page: add the id of the last contact you received.
+#   --data-urlencode "starting_after=c8a1f4e2-3b9d-4f7c-a8e5-1d2c3b4a5e6f"
+```
+
+```typescript TypeScript
+const params = new URLSearchParams({
+  limit: "50",
+  search: "sam rivera",
+  tag: "VIP",
+});
+
+const res = await fetch(`https://api.ibubbl.com/v1/contacts?${params}`, {
+  headers: { Authorization: `Bearer ${process.env.IBUBBL_API_KEY}` },
+  signal: AbortSignal.timeout(10_000),
+});
+
+const data = await res.json();
+if (!res.ok) throw new Error(`${res.status} ${data.detail?.error}`);
+for (const contact of data.data) {
+  console.log(contact.id, contact.phone, contact.first_name, contact.opted_out);
+}
+// More? Repeat with starting_after = data.data[data.data.length - 1].id
+console.log("has_more:", data.has_more);
+```
+
+```python Python
+import os
+
+import requests
+
+API_KEY = os.environ["IBUBBL_API_KEY"]
+
+res = requests.get(
+    "https://api.ibubbl.com/v1/contacts",
+    headers={"Authorization": f"Bearer {API_KEY}"},
+    params={"limit": 50, "search": "sam rivera", "tag": "VIP"},
+    timeout=10,
+)
+data = res.json()
+if not res.ok:
+    raise RuntimeError(f"{res.status_code} {data['detail']['error']}")
+for contact in data["data"]:
+    print(contact["id"], contact["phone"], contact["first_name"], contact["opted_out"])
+# More? Repeat with starting_after = data["data"][-1]["id"]
+print("has_more:", data["has_more"])
+```
+
+</RequestExample>
+
+<ResponseExample>
+
+```json 200 OK
+{
+  "data": [
+    {
+      "id": "c8a1f4e2-3b9d-4f7c-a8e5-1d2c3b4a5e6f",
+      "phone": "+14155551234",
+      "first_name": "Sam",
+      "last_name": "Rivera",
+      "email": "sam@example.com",
+      "city": "Brooklyn",
+      "state": "NY",
+      "timezone": "America/New_York",
+      "tags": [
+        "Spring promo",
+        "VIP"
+      ],
+      "opted_out": false,
+      "opted_out_at": null,
+      "blocked": false,
+      "blocked_at": null,
+      "created_at": "2026-11-05T14:23:45.123+00:00"
+    }
+  ],
+  "has_more": false
+}
+```
+
+```json 422 Unprocessable Entity
+{
+  "detail": {
+    "error": "invalid_cursor",
+    "message": "starting_after is not the id of one of your items"
+  }
+}
+```
+
+```json 429 Too Many Requests
+{
+  "detail": {
+    "error": "rate_limited",
+    "message": "Too many list requests; wait 18s (limit 120 a minute per account)."
+  }
+}
+```
+
+</ResponseExample>
+
+#### Responses
+**200 OK**
+
+`data` holds up to `limit` contacts, newest first: by `created_at` (when the contact was created), then by `id` for contacts created in the same microsecond. Each item is exactly what [Retrieve a contact](/api-reference/contacts/retrieve) returns for that contact. `has_more` is `true` when more contacts match; to get them, repeat the request with `starting_after` set to the `id` of the last item in `data`. An empty `data` comes with `has_more: false`.
+
+```json
+{
+  "data": [
+    {
+      "id": "c8a1f4e2-3b9d-4f7c-a8e5-1d2c3b4a5e6f",
+      "phone": "+14155551234",
+      "first_name": "Sam",
+      "last_name": "Rivera",
+      "email": "sam@example.com",
+      "city": "Brooklyn",
+      "state": "NY",
+      "timezone": "America/New_York",
+      "tags": [
+        "Spring promo",
+        "VIP"
+      ],
+      "opted_out": false,
+      "opted_out_at": null,
+      "blocked": false,
+      "blocked_at": null,
+      "created_at": "2026-11-05T14:23:45.123+00:00"
+    }
+  ],
+  "has_more": false
+}
+```
+
+**401 Unauthorized**
+```json
+{
+  "detail": {
+    "error": "unauthorized",
+    "message": "Invalid or revoked API key"
+  }
+}
+```
+Other `message` values: `Authorization Bearer token required`, `API key required (use Authorization: Bearer ib_pk_…)`, `Invalid API key format`, `Customer account not found`.
+
+**403 Forbidden**
+```json
+{
+  "detail": {
+    "error": "forbidden",
+    "message": "Account is suspended"
+  }
+}
+```
+Your iBubbl account is suspended or cancelled (`message` is then `Account is cancelled`). Every API-key endpoint returns this.
+
+**422 Unprocessable Entity**
+```json
+{
+  "detail": {
+    "error": "validation_error",
+    "message": "Unknown query parameter: startingAfter. Allowed: blocked, limit, opted_out, search, starting_after, tag"
+  }
+}
+```
+`validation_error`: a query parameter is unknown, repeated or invalid (`limit` outside 1–100, a `starting_after` that isn't a UUID, `opted_out` or `blocked` other than `true` / `false`, an empty or over-long `search` or `tag`, or a `search` with nothing left to match once `"`, `\` and `*` are removed). `invalid_cursor`: `starting_after` is a UUID but not the ID of one of your contacts, or that contact has been deleted.
+
+**429 Too Many Requests**
+```text
+Retry-After: 18
+```
+```json
+{
+  "detail": {
+    "error": "rate_limited",
+    "message": "Too many list requests; wait 18s (limit 120 a minute per account)."
+  }
+}
+```
+Your account made more than 120 list requests in the last 60 seconds. `Retry-After` is the number of whole seconds until the oldest of them stops counting. Wait that long, then send the same request again; the refused request didn't count. The limit is checked after the API key, so a bad key is still `401`.

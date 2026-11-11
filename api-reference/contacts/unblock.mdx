@@ -1,0 +1,153 @@
+---
+title: 'Unblock a contact'
+openapi: 'DELETE /v1/contacts/{contact_id}/block'
+---
+
+### Unblock a contact
+
+**Method:** `DELETE` | **Endpoint:** `/v1/contacts/{contact_id}/block`
+
+**Description:** Undo a [block](/api-reference/contacts/block): sends to the contact are accepted again, and their messages count as unread and start workflows as before. An opt-out is not affected: if the contact has opted out, sends still return `422 contact_opted_out`.
+
+**Authentication:** API key in the `Authorization` header: `Authorization: Bearer ib_pk_<64 hex>`. Create keys in the dashboard under **Settings → API access**.
+
+#### Request Body
+None. The path parameter `contact_id` is the contact's ID (a UUID). Unblocking a contact that isn't blocked answers `200` unchanged. No webhook fires.
+
+<RequestExample>
+
+```bash cURL
+curl -X DELETE https://api.ibubbl.com/v1/contacts/c8a1f4e2-3b9d-4f7c-a8e5-1d2c3b4a5e6f/block \
+  -H "Authorization: Bearer $IBUBBL_API_KEY"
+```
+
+```typescript TypeScript
+const contactId = "c8a1f4e2-3b9d-4f7c-a8e5-1d2c3b4a5e6f";
+
+const res = await fetch(`https://api.ibubbl.com/v1/contacts/${contactId}/block`, {
+  method: "DELETE",
+  headers: { Authorization: `Bearer ${process.env.IBUBBL_API_KEY}` },
+  signal: AbortSignal.timeout(10_000),
+});
+
+const data = await res.json();
+if (!res.ok) throw new Error(`${res.status} ${data.detail?.error}`);
+console.log(data.blocked);
+```
+
+```python Python
+import os
+
+import requests
+
+API_KEY = os.environ["IBUBBL_API_KEY"]
+
+contact_id = "c8a1f4e2-3b9d-4f7c-a8e5-1d2c3b4a5e6f"
+
+res = requests.delete(
+    f"https://api.ibubbl.com/v1/contacts/{contact_id}/block",
+    headers={"Authorization": f"Bearer {API_KEY}"},
+    timeout=10,
+)
+data = res.json()
+if not res.ok:
+    raise RuntimeError(f"{res.status_code} {data['detail']['error']}")
+print(data["blocked"])
+```
+
+</RequestExample>
+
+<ResponseExample>
+
+```json 200 OK
+{
+  "id": "c8a1f4e2-3b9d-4f7c-a8e5-1d2c3b4a5e6f",
+  "phone": "+14155551234",
+  "first_name": "Sam",
+  "last_name": "Rivera",
+  "email": "sam@example.com",
+  "city": "Brooklyn",
+  "state": "NY",
+  "timezone": "America/New_York",
+  "tags": [
+    "Spring promo",
+    "VIP"
+  ],
+  "opted_out": false,
+  "opted_out_at": null,
+  "blocked": false,
+  "blocked_at": null,
+  "created_at": "2026-11-05T14:23:45.123+00:00"
+}
+```
+
+```json 404 Not Found
+{
+  "detail": {
+    "error": "not_found",
+    "message": "Contact not found"
+  }
+}
+```
+
+</ResponseExample>
+
+#### Responses
+**200 OK**
+
+The contact, with `blocked: false` and `blocked_at: null`.
+
+```json
+{
+  "id": "c8a1f4e2-3b9d-4f7c-a8e5-1d2c3b4a5e6f",
+  "phone": "+14155551234",
+  "first_name": "Sam",
+  "last_name": "Rivera",
+  "email": "sam@example.com",
+  "city": "Brooklyn",
+  "state": "NY",
+  "timezone": "America/New_York",
+  "tags": [
+    "Spring promo",
+    "VIP"
+  ],
+  "opted_out": false,
+  "opted_out_at": null,
+  "blocked": false,
+  "blocked_at": null,
+  "created_at": "2026-11-05T14:23:45.123+00:00"
+}
+```
+
+**401 Unauthorized**
+```json
+{
+  "detail": {
+    "error": "unauthorized",
+    "message": "Invalid or revoked API key"
+  }
+}
+```
+Other `message` values: `Authorization Bearer token required`, `API key required (use Authorization: Bearer ib_pk_…)`, `Invalid API key format`, `Customer account not found`.
+
+**403 Forbidden**
+```json
+{
+  "detail": {
+    "error": "forbidden",
+    "message": "Account is suspended"
+  }
+}
+```
+Your iBubbl account is suspended or cancelled (`message` is then `Account is cancelled`). Every API-key endpoint returns this.
+
+**404 Not Found**
+```json
+{
+  "detail": {
+    "error": "not_found",
+    "message": "Contact not found"
+  }
+}
+```
+Also returned for a malformed ID, a deleted contact, and a contact that belongs to another account.

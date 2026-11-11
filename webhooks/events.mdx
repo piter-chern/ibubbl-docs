@@ -412,7 +412,7 @@ Fired when a contact opts out.
 - `auto_keyword` — auto-detected from a STOP-pattern inbound reply
 - `manual` — marked opted out by a rep from the dashboard
 - `ghl_dnd` — the contact was marked Do Not Disturb (SMS or all channels) in your connected GoHighLevel sub-account
-- `api` — an internal iBubbl process (not available on the public `/v1/` API)
+- `api` — opted out through the API with [`POST /v1/contacts/{id}/opt-out`](/api-reference/contacts/opt-out)
 
 `triggered_by_message_id` is the inbound message that triggered the keyword detection (for `auto_keyword`), or null otherwise.
 

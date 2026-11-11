@@ -14,7 +14,7 @@ openapi: 'POST /v1/messages'
 #### Request Body
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
-| `contact_id` | string (UUID) | Exactly one of these four | Send one-to-one to an existing contact. |
+| `contact_id` | string (UUID) | Exactly one of these four | Send one-to-one to an existing contact. A deleted contact's ID returns `404 not_found`. |
 | `to` | string (E.164, e.g. `+14155551234`) | Exactly one of these four | Send one-to-one by phone number. If no contact has this number, one is created. |
 | `chat_guid` | string | Exactly one of these four | Send into an existing group. Read it from the response to a send into the group, or from [Retrieve a message](/api-reference/messages/retrieve) for any message in it. It changes when a participant is added; an old value returns `404 group_not_found`. |
 | `participant_phones` | array of strings (E.164) | Exactly one of these four | Create a new group and send the first message. At least 2 numbers; your iBubbl line is added automatically, so don't include it. |
@@ -200,7 +200,7 @@ Your iBubbl account is suspended or cancelled (`message` is then `Account is can
   }
 }
 ```
-Other `error` value: `group_not_found` (no group with that `chat_guid` on your account).
+Also returned for a `contact_id` that is malformed, belongs to another account, or was [deleted](/api-reference/contacts/delete); send with `to` to reach the number again (that creates a new contact). Other `error` value: `group_not_found` (no group with that `chat_guid` on your account).
 
 **409 Conflict**
 ```json

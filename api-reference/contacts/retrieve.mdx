@@ -74,6 +74,8 @@ print(data["phone"], data["opted_out"])
   ],
   "opted_out": false,
   "opted_out_at": null,
+  "blocked": false,
+  "blocked_at": null,
   "created_at": "2026-11-05T14:23:45.123Z"
 }
 ```
@@ -107,10 +109,12 @@ print(data["phone"], data["opted_out"])
   ],
   "opted_out": false,
   "opted_out_at": null,
+  "blocked": false,
+  "blocked_at": null,
   "created_at": "2026-11-05T14:23:45.123Z"
 }
 ```
-When `opted_out` is `true`, every send to this contact returns `422 contact_opted_out`.
+When `opted_out` is `true`, every send to this contact returns `422 contact_opted_out`. When `blocked` is `true`, one-to-one sends return `422 contact_blocked` until you [unblock](/api-reference/contacts/unblock) them.
 
 **401 Unauthorized**
 ```json

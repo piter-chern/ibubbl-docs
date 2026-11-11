@@ -78,7 +78,7 @@ if not res.ok:
 </ResponseField>
 
 <ResponseField name="not_found" type="404">
-  The requested resource doesn't exist, OR it exists but belongs to a different customer (existence is hidden across tenants). Verify the resource ID is correct and was created on the same account whose key you're using.
+  The requested resource doesn't exist, OR it exists but belongs to a different customer (existence is hidden across tenants). Verify the resource ID is correct and was created on the same account whose key you're using. A [deleted contact](/api-reference/contacts/delete) answers `404` too, including as the `contact_id` of a send.
 </ResponseField>
 
 <ResponseField name="idempotency_conflict" type="409">
@@ -90,7 +90,7 @@ if not res.ok:
 </ResponseField>
 
 <ResponseField name="invalid_cursor" type="422">
-  List endpoints only: `starting_after` is a UUID but not the `id` of one of your items (another account's ID is answered the same way). Pass the `id` of the last item from the previous page, with the same endpoint. See [Pagination](/concepts/pagination).
+  List endpoints only: `starting_after` is a UUID but not the `id` of one of your items (another account's ID, and a contact deleted since, are answered the same way). Pass the `id` of the last item from the previous page, with the same endpoint. See [Pagination](/concepts/pagination).
 </ResponseField>
 
 <ResponseField name="contact_opted_out" type="422">
@@ -98,7 +98,7 @@ if not res.ok:
 </ResponseField>
 
 <ResponseField name="contact_blocked" type="422">
-  A one-to-one send to a contact that a rep on your account has blocked in the dashboard. Nothing was sent. The send works again once the contact is unblocked in the dashboard; there is no API endpoint for that. If a contact is both opted out and blocked, you get `contact_opted_out`.
+  A one-to-one send to a contact your account has blocked, in the dashboard or with [Block a contact](/api-reference/contacts/block). Nothing was sent. The send works again once the contact is [unblocked](/api-reference/contacts/unblock). If a contact is both opted out and blocked, you get `contact_opted_out`.
 </ResponseField>
 
 <ResponseField name="unresponsive_contact" type="422">
@@ -218,7 +218,7 @@ if not res.ok:
 <ResponseField name="rate_limited" type="429">
   Returned in three places, and nowhere else:
 
-  - **List endpoints** such as [List messages](/api-reference/messages/list): your account made more than 120 list requests in 60 seconds (all API keys and all lists together). The response has a `Retry-After` header with the seconds to wait; then send the same request again. See [Rate limits](/concepts/limits#rate-limits).
+  - **List endpoints** ([List messages](/api-reference/messages/list), [List contacts](/api-reference/contacts/list)): your account made more than 120 list requests in 60 seconds (all API keys and all lists together). The response has a `Retry-After` header with the seconds to wait; then send the same request again. See [Rate limits](/concepts/limits#rate-limits).
   - **Sends with `attachments`**, rarely: iBubbl was already downloading as many attachment sends as it can, and no slot freed within 10 seconds. `Retry-After` is `5`; then send the same request with the same `idempotency_key`. Nothing was created.
   - **`/v1/events`**: a secret-URL [inbound event](/inbound-events/overview) source received more than 60 events in 60 seconds. There is no `Retry-After` header here; send again after about a minute.
 
@@ -237,7 +237,7 @@ if not res.ok:
 | `validation_error` | 422 | ❌ Fix the payload or query parameters. |
 | `invalid_cursor` | 422 | ❌ Use the last `id` from the previous page. |
 | `contact_opted_out` | 422 | ❌ Cannot bypass. |
-| `contact_blocked` | 422 | ❌ Not until the contact is unblocked in the dashboard. |
+| `contact_blocked` | 422 | ❌ Not until the contact is [unblocked](/api-reference/contacts/unblock). |
 | `unresponsive_contact` | 422 | ❌ Not until the contact replies. |
 | `group_outbound_blocked_suppression` | 422 | ❌ Cannot bypass; leave out the opted-out participants. |
 | `insufficient_participants` | 422 | ❌ Fix the participant list, or send one-to-one. |
@@ -265,7 +265,7 @@ The general rule: **don't retry 4xx**. Most 4xxes are payload-level problems tha
 
 | Status | When |
 | ------ | ---- |
-| `200` / `201` / `202` | Success. `202` for accepted-but-queued sends; `201` for created resources; `200` everywhere else. |
+| `200` / `201` / `202` / `204` | Success. `202` for accepted-but-queued sends; `201` for created resources; `204` (no body) for [Delete a contact](/api-reference/contacts/delete); `200` everywhere else. |
 | `401` | Auth failure. |
 | `403` | Account suspended or cancelled (`forbidden`), or an inbound event's signature failed (`invalid_signature`). |
 | `404` | Resource not found (or hidden across tenants), or `group_not_found`. |

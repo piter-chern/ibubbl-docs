@@ -87,10 +87,15 @@
             "group": "Contacts",
             "pages": [
               "api-reference/contacts/upsert",
+              "api-reference/contacts/list",
               "api-reference/contacts/retrieve",
               "api-reference/contacts/update",
+              "api-reference/contacts/delete",
               "api-reference/contacts/add-tag",
-              "api-reference/contacts/remove-tag"
+              "api-reference/contacts/remove-tag",
+              "api-reference/contacts/opt-out",
+              "api-reference/contacts/block",
+              "api-reference/contacts/unblock"
             ]
           },
           {

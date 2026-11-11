@@ -1,0 +1,127 @@
+---
+title: 'Delete a contact'
+openapi: 'DELETE /v1/contacts/{contact_id}'
+---
+
+### Delete a contact
+
+**Method:** `DELETE` | **Endpoint:** `/v1/contacts/{contact_id}`
+
+**Description:** Remove a contact from your account. It disappears from [List contacts](/api-reference/contacts/list) and from every endpoint that takes its ID. Its message history stays.
+
+**Authentication:** API key in the `Authorization` header: `Authorization: Bearer ib_pk_<64 hex>`. Create keys in the dashboard under **Settings → API access**.
+
+#### Request Body
+None. The path parameter `contact_id` is the contact's ID (a UUID).
+
+#### What deleting does
+
+- **The ID stops working.** [Retrieve](/api-reference/contacts/retrieve), [Update](/api-reference/contacts/update), the tag, opt-out and block endpoints, and [Send a message](/api-reference/messages/send) with this `contact_id` all return `404 not_found`. Deleting it again also returns `404`.
+- **History stays.** Its messages and conversations are kept, and [List messages](/api-reference/messages/list) still returns them with the old `contact_id`.
+- **Waiting messages still go out.** A message already accepted for the contact and still waiting (held for [sending hours](/concepts/working-hours), or queued) is not cancelled. Cancel it in the dashboard first if it shouldn't be sent.
+- **The number can come back as a new contact.** [Creating or updating a contact](/api-reference/contacts/upsert) with the same number, sending to it with `to`, or an inbound message from it creates a **new** contact with a new `id`. Names, tags and a [block](/api-reference/contacts/block) are not carried over.
+- **An opt-out is never lost.** An [opt-out](/api-reference/contacts/opt-out) belongs to the phone number, not the contact. A new contact for an opted-out number starts with `opted_out: true`, and sends to it return `422 contact_opted_out`. Deleting a contact is not a way to message someone who opted out.
+
+No webhook fires for a deletion.
+
+<RequestExample>
+
+```bash cURL
+curl -X DELETE https://api.ibubbl.com/v1/contacts/c8a1f4e2-3b9d-4f7c-a8e5-1d2c3b4a5e6f \
+  -H "Authorization: Bearer $IBUBBL_API_KEY"
+```
+
+```typescript TypeScript
+const contactId = "c8a1f4e2-3b9d-4f7c-a8e5-1d2c3b4a5e6f";
+
+const res = await fetch(`https://api.ibubbl.com/v1/contacts/${contactId}`, {
+  method: "DELETE",
+  headers: { Authorization: `Bearer ${process.env.IBUBBL_API_KEY}` },
+  signal: AbortSignal.timeout(10_000),
+});
+
+// 204 has no body; only an error does.
+if (!res.ok) {
+  const data = await res.json();
+  throw new Error(`${res.status} ${data.detail?.error}`);
+}
+console.log("deleted:", res.status);
+```
+
+```python Python
+import os
+
+import requests
+
+API_KEY = os.environ["IBUBBL_API_KEY"]
+
+contact_id = "c8a1f4e2-3b9d-4f7c-a8e5-1d2c3b4a5e6f"
+
+res = requests.delete(
+    f"https://api.ibubbl.com/v1/contacts/{contact_id}",
+    headers={"Authorization": f"Bearer {API_KEY}"},
+    timeout=10,
+)
+# 204 has no body; only an error does.
+if not res.ok:
+    data = res.json()
+    raise RuntimeError(f"{res.status_code} {data['detail']['error']}")
+print("deleted:", res.status_code)
+```
+
+</RequestExample>
+
+<ResponseExample>
+
+```text 204 No Content
+(empty body)
+```
+
+```json 404 Not Found
+{
+  "detail": {
+    "error": "not_found",
+    "message": "Contact not found"
+  }
+}
+```
+
+</ResponseExample>
+
+#### Responses
+**204 No Content**
+
+The contact is deleted. The response has no body.
+
+**401 Unauthorized**
+```json
+{
+  "detail": {
+    "error": "unauthorized",
+    "message": "Invalid or revoked API key"
+  }
+}
+```
+Other `message` values: `Authorization Bearer token required`, `API key required (use Authorization: Bearer ib_pk_…)`, `Invalid API key format`, `Customer account not found`.
+
+**403 Forbidden**
+```json
+{
+  "detail": {
+    "error": "forbidden",
+    "message": "Account is suspended"
+  }
+}
+```
+Your iBubbl account is suspended or cancelled (`message` is then `Account is cancelled`). Every API-key endpoint returns this.
+
+**404 Not Found**
+```json
+{
+  "detail": {
+    "error": "not_found",
+    "message": "Contact not found"
+  }
+}
+```
+Also returned for a malformed ID, a contact that is already deleted, and a contact that belongs to another account. If a retried delete gets `404`, the first attempt already deleted it.

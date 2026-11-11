@@ -3,7 +3,7 @@ title: 'Pagination'
 description: 'How list endpoints page through results: newest first, a starting_after cursor, has_more, and the rules every list follows.'
 ---
 
-List endpoints return results a page at a time. Every paginated list in the iBubbl API works the same way, so one loop covers all of them. [List messages](/api-reference/messages/list) is the first; lists added later follow the same rules.
+List endpoints return results a page at a time. Every paginated list in the iBubbl API works the same way, so one loop covers all of them. [List messages](/api-reference/messages/list) and [List contacts](/api-reference/contacts/list) follow these rules, and lists added later will too.
 
 ## How it works
 
@@ -32,8 +32,8 @@ The next request adds `starting_after=8b3a4e72-1c2d-4e5f-9a0b-2c3d4e5f6a7b`.
 - **`has_more` is exact.** When it's `false` there is nothing after the last item. A page can be shorter than `limit` only when it's the last one, and an empty `data` always comes with `has_more: false`.
 - **`limit` is strict.** Outside 1–100 is `422 validation_error`, not rounded to the nearest valid value.
 - **Unknown parameters are refused.** A query parameter the endpoint doesn't know, or one given twice, returns `422 validation_error` naming it. This is stricter than request bodies on purpose: a misspelt cursor such as `startingAfter`, quietly ignored, would return the first page forever and your loop would never end.
-- **An unknown cursor is an error.** A `starting_after` that isn't one of your items' IDs returns `422 invalid_cursor`. Another account's ID is answered the same way.
-- **Time filters are exclusive and need a time zone.** `created_after` and `created_before` exclude the exact time given. Write times as ISO 8601 with `Z` (`2026-11-10T09:30:00Z`); `created_at` values come back in that form, so you can pass them back unchanged. In a URL, an unencoded `+` (as in `+00:00`) reads as a space, so encode it as `%2B` or use `Z`.
+- **An unknown cursor is an error.** A `starting_after` that isn't one of your items' IDs returns `422 invalid_cursor`. Another account's ID is answered the same way, and so is a contact deleted after you received it: start again from the first page.
+- **Time filters are exclusive and need a time zone** (on lists that have them, such as List messages). `created_after` and `created_before` exclude the exact time given. Write times as ISO 8601 with `Z` (`2026-11-10T09:30:00Z`); `created_at` values come back in that form, so you can pass them back unchanged. In a URL, an unencoded `+` (as in `+00:00`) reads as a space, so encode it as `%2B` or use `Z`.
 - **Filters are applied before paging.** A rare filter value still returns every match across pages. A filter that matches nothing returns an empty page, not `404`.
 
 ## Read every page
@@ -137,6 +137,9 @@ A few notes:
 <CardGroup cols={2}>
   <Card title="List messages" icon="list" href="/api-reference/messages/list">
     Every filter and the response shape.
+  </Card>
+  <Card title="List contacts" icon="address-book" href="/api-reference/contacts/list">
+    Search, tag, opt-out and block filters.
   </Card>
   <Card title="Recover from downtime" icon="rotate" href="/guides/webhook-retries#recover-from-downtime">
     Catch up on what your webhook endpoint missed.

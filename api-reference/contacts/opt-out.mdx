@@ -1,0 +1,166 @@
+---
+title: 'Opt a contact out'
+openapi: 'POST /v1/contacts/{contact_id}/opt-out'
+---
+
+### Opt a contact out
+
+**Method:** `POST` | **Endpoint:** `/v1/contacts/{contact_id}/opt-out`
+
+**Description:** Record that this person doesn't want your messages, the same as when they reply STOP. Use it to bring opt-outs from your CRM or another channel into iBubbl.
+
+<Warning>
+**An opt-out can't be undone.** There is no opt-in endpoint, and the dashboard can't reverse it either. From then on every send to this number answers `422 contact_opted_out`, from the API, the dashboard and automations alike. It belongs to the phone number: deleting the contact and creating it again doesn't clear it. Only call this for a person who asked not to be messaged.
+</Warning>
+
+**Authentication:** API key in the `Authorization` header: `Authorization: Bearer ib_pk_<64 hex>`. Create keys in the dashboard under **Settings → API access**.
+
+#### Request Body
+None. The path parameter `contact_id` is the contact's ID (a UUID).
+
+#### What happens
+
+- `opted_out` becomes `true` and `opted_out_at` is set.
+- The first opt-out for this person fires a [`contact.opted_out`](/webhooks/events) webhook with `source: "api"`.
+- **It's safe to call twice.** If the person has already opted out, in any way and under any form of their number (a STOP reply, a rep, GoHighLevel Do Not Disturb, or an earlier call), you get `200` with the contact as it is, and no second webhook fires.
+- **Messages already accepted can still go out.** New sends are refused from now on, but a message accepted earlier and still waiting (held for [sending hours](/concepts/working-hours), or queued) is not withdrawn. Cancel it in the dashboard if it must not be sent. See [Suppression & Opt-Outs](/concepts/suppression).
+
+To stop messaging someone only for now, [block](/api-reference/contacts/block) them instead: a block can be undone.
+
+<RequestExample>
+
+```bash cURL
+curl -X POST https://api.ibubbl.com/v1/contacts/c8a1f4e2-3b9d-4f7c-a8e5-1d2c3b4a5e6f/opt-out \
+  -H "Authorization: Bearer $IBUBBL_API_KEY"
+```
+
+```typescript TypeScript
+const contactId = "c8a1f4e2-3b9d-4f7c-a8e5-1d2c3b4a5e6f";
+
+const res = await fetch(`https://api.ibubbl.com/v1/contacts/${contactId}/opt-out`, {
+  method: "POST",
+  headers: { Authorization: `Bearer ${process.env.IBUBBL_API_KEY}` },
+  signal: AbortSignal.timeout(10_000),
+});
+
+const data = await res.json();
+if (!res.ok) throw new Error(`${res.status} ${data.detail?.error}`);
+console.log(data.opted_out, data.opted_out_at);
+```
+
+```python Python
+import os
+
+import requests
+
+API_KEY = os.environ["IBUBBL_API_KEY"]
+
+contact_id = "c8a1f4e2-3b9d-4f7c-a8e5-1d2c3b4a5e6f"
+
+res = requests.post(
+    f"https://api.ibubbl.com/v1/contacts/{contact_id}/opt-out",
+    headers={"Authorization": f"Bearer {API_KEY}"},
+    timeout=10,
+)
+data = res.json()
+if not res.ok:
+    raise RuntimeError(f"{res.status_code} {data['detail']['error']}")
+print(data["opted_out"], data["opted_out_at"])
+```
+
+</RequestExample>
+
+<ResponseExample>
+
+```json 200 OK
+{
+  "id": "c8a1f4e2-3b9d-4f7c-a8e5-1d2c3b4a5e6f",
+  "phone": "+14155551234",
+  "first_name": "Sam",
+  "last_name": "Rivera",
+  "email": "sam@example.com",
+  "city": "Brooklyn",
+  "state": "NY",
+  "timezone": "America/New_York",
+  "tags": [
+    "Spring promo",
+    "VIP"
+  ],
+  "opted_out": true,
+  "opted_out_at": "2026-11-11T09:12:03.418+00:00",
+  "blocked": false,
+  "blocked_at": null,
+  "created_at": "2026-11-05T14:23:45.123+00:00"
+}
+```
+
+```json 404 Not Found
+{
+  "detail": {
+    "error": "not_found",
+    "message": "Contact not found"
+  }
+}
+```
+
+</ResponseExample>
+
+#### Responses
+**200 OK**
+
+The contact, with `opted_out: true`. On a repeat call, `opted_out_at` is the time of the first opt-out.
+
+```json
+{
+  "id": "c8a1f4e2-3b9d-4f7c-a8e5-1d2c3b4a5e6f",
+  "phone": "+14155551234",
+  "first_name": "Sam",
+  "last_name": "Rivera",
+  "email": "sam@example.com",
+  "city": "Brooklyn",
+  "state": "NY",
+  "timezone": "America/New_York",
+  "tags": [
+    "Spring promo",
+    "VIP"
+  ],
+  "opted_out": true,
+  "opted_out_at": "2026-11-11T09:12:03.418+00:00",
+  "blocked": false,
+  "blocked_at": null,
+  "created_at": "2026-11-05T14:23:45.123+00:00"
+}
+```
+
+**401 Unauthorized**
+```json
+{
+  "detail": {
+    "error": "unauthorized",
+    "message": "Invalid or revoked API key"
+  }
+}
+```
+Other `message` values: `Authorization Bearer token required`, `API key required (use Authorization: Bearer ib_pk_…)`, `Invalid API key format`, `Customer account not found`.
+
+**403 Forbidden**
+```json
+{
+  "detail": {
+    "error": "forbidden",
+    "message": "Account is suspended"
+  }
+}
+```
+Your iBubbl account is suspended or cancelled (`message` is then `Account is cancelled`). Every API-key endpoint returns this.
+
+**404 Not Found**
+```json
+{
+  "detail": {
+    "error": "not_found",
+    "message": "Contact not found"
+  }
+}
+```
+Also returned for a malformed ID, a deleted contact, and a contact that belongs to another account. Nothing was recorded.

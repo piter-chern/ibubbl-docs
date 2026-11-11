@@ -38,15 +38,20 @@ A rep can mark a contact opted out from the dashboard's contact detail view. A [
 
 If your account is connected to a GoHighLevel sub-account, marking a contact Do Not Disturb there (for SMS or all channels) opts them out in iBubbl too. The webhook fires with `source: "ghl_dnd"`.
 
-<Note>
-**Programmatic opt-out is not on the v1 API.** If your integration needs to push opt-outs from an external CRM, email [support@ibubbl.com](mailto:support@ibubbl.com).
-</Note>
+### Through the API
+
+[`POST /v1/contacts/{id}/opt-out`](/api-reference/contacts/opt-out) records an opt-out from your own system, for example one collected in your CRM, by email or on a call. The webhook fires with `source: "api"`. Calling it for someone already opted out (in any way) answers `200` and fires nothing.
+
+<Warning>
+**An API opt-out is as permanent as a STOP reply.** Nothing can undo it, through the API or the dashboard. Call it only for a person who asked not to be messaged. To pause messages to someone, [block](/api-reference/contacts/block) them instead.
+</Warning>
 
 ## What happens after opt-out
 
 - All `POST /v1/messages` to the contact return `422 contact_opted_out`.
 - Automation (workflow) sends to the contact are refused the same way.
-- The contact remains visible in your dashboard with an opted-out badge.
+- The contact remains visible in your dashboard with an opted-out badge, and `opted_out` is `true` on the [contact](/api-reference/contacts/retrieve).
+- **The opt-out belongs to the phone number, not the contact.** It matches every form of the number (`+14155551234` and `4155551234` are the same person). If you [delete the contact](/api-reference/contacts/delete) and the number comes back as a new contact, the new one starts with `opted_out: true` and sends are still refused.
 
 ## Re-opting in
 
@@ -56,7 +61,7 @@ An opt-out can't currently be undone — not through the API and not from the da
 
 The cleanest path is the [`contact.opted_out`](/webhooks/events) webhook — you'll see it shortly after the opt-out happens, with the source. It fires once per person, the first time they opt out.
 
-If you can't run webhooks, check `opted_out` on each contact response:
+If you can't run webhooks, list opted-out contacts with [`GET /v1/contacts?opted_out=true`](/api-reference/contacts/list), or check `opted_out` on each contact response:
 
 <CodeGroup>
 
@@ -110,6 +115,21 @@ if data["opted_out"]:
   ...
 }
 ```
+
+## Block or opt out
+
+Both stop one-to-one sends, but they are different things:
+
+| | [Block](/api-reference/contacts/block) | Opt-out |
+| --- | --- | --- |
+| Whose decision | Yours: you don't want to message them for now. | The contact's: they asked not to be messaged. |
+| Undo | Yes: [unblock](/api-reference/contacts/unblock), or from the dashboard. | Never. |
+| Webhook | None. | [`contact.opted_out`](/webhooks/events), once per person. |
+| Sends | One-to-one sends return `422 contact_blocked`. Group conversations are not affected. | Every send returns `422 contact_opted_out`, including to a group they're in (`group_outbound_blocked_suppression`). |
+| Their inbound messages | Stored and sent to you as `message.inbound`, but not marked unread, not notified, and no workflow starts. | Stored and sent to you as `message.inbound`. No workflow starts. |
+| After the contact is deleted | Gone: a new contact for the number isn't blocked. | Kept: a new contact for the number is opted out. |
+
+A contact can be both. Sends then return `contact_opted_out`.
 
 ## Compliance posture
 

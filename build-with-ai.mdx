@@ -149,6 +149,28 @@ READING HISTORY (GET /v1/messages)
   and store each message's status as returned (it is current).
   https://docs.ibubbl.com/guides/webhook-retries#recover-from-downtime
 
+CONTACTS (/v1/contacts)
+- POST /v1/contacts upserts by E.164 phone (201 new, 200 existing) and only
+  fills empty fields; PATCH /v1/contacts/{id} overwrites. Unknown body fields
+  are 422 validation_error.
+- GET /v1/contacts lists contacts newest first, with the same pagination and
+  rate limit as READING HISTORY. Filters: search (every word must match a
+  name, email or phone; phone digits match too), tag (ignores case),
+  opted_out, blocked (true/false). Use the exact parameter names.
+- DELETE /v1/contacts/{id} answers 204 with no body; afterwards the id is
+  404 everywhere, including as a send's contact_id. History stays. The same
+  number later becomes a NEW contact with a new id. Deleting never clears an
+  opt-out.
+- POST /v1/contacts/{id}/opt-out is PERMANENT: nothing can undo it. Call it
+  only when the person asked not to be messaged, never to clean up a list or
+  in tests with a real person's number. A repeat call is 200 with no second
+  contact.opted_out event.
+- To pause messages, block instead: POST /v1/contacts/{id}/block (sends get
+  422 contact_blocked) and DELETE /v1/contacts/{id}/block to undo. A block
+  fires no webhook and doesn't affect group conversations.
+- Neither opt-out nor delete cancels a message already accepted and still
+  waiting; that is done in the dashboard.
+
 RETRIES AND ERRORS
 - Branch on detail.error (the stable code), never on detail.message.
 - Log the X-Request-Id response header with every error; quote it to
@@ -162,7 +184,10 @@ RETRIES AND ERRORS
 - 422 unresponsive_contact: the contact has not replied to 6 messages in a
   row. Stop messaging them until they reply.
 - 422 contact_opted_out: final. Never message this contact again, and never
-  work around it (another number format, a group, another key or account).
+  work around it (another number format, a group, deleting and re-creating
+  the contact, another key or account).
+- 422 contact_blocked: your account blocked this contact. Don't retry; only
+  unblock if the user asks for it.
 - 422 daily_cap_exhausted or cold_cap_exhausted: not queued. Do not send
   again before midnight ET.
 
