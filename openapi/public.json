@@ -2063,6 +2063,217 @@
         }
       }
     },
+    "/v1/lines": {
+      "get": {
+        "tags": [
+          "Lines"
+        ],
+        "summary": "List lines",
+        "description": "List your lines, newest first: each line's number, status, whether it is online, and today's usage against its send limits. Retired lines stay listed, so the `line_id` on an older message always resolves.\n\nThe counts are live: read them before a batch of first messages to new contacts to see how many the line can still take today and this hour. See [Limits and queues](/concepts/limits).\n\nResults are paginated like every list: pass the `id` of the last line as `starting_after` while `has_more` is true. See [Pagination](/concepts/pagination). An unknown or repeated query parameter returns `422 validation_error`.\n\nLists allow 120 requests a minute per account, across all your API keys and all lists. Over that, the answer is `429 rate_limited` with a `Retry-After` header in seconds.",
+        "operationId": "v1_list_lines_v1_lines_get",
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 100,
+              "minimum": 1,
+              "description": "How many items to return, 1 to 100. Defaults to 50.",
+              "default": 50,
+              "title": "Limit"
+            },
+            "description": "How many items to return, 1 to 100. Defaults to 50."
+          },
+          {
+            "name": "starting_after",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "The `id` of the last item on the page you already have. Returns the items that come after it, in the same order. Leave it out for the first page. An `id` that isn't one of yours returns `422 invalid_cursor`.",
+              "title": "Starting After"
+            },
+            "description": "The `id` of the last item on the page you already have. Returns the items that come after it, in the same order. Leave it out for the first page. An `id` that isn't one of yours returns `422 invalid_cursor`."
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "active",
+                    "paused",
+                    "retired"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Only lines with this status.",
+              "title": "Status"
+            },
+            "description": "Only lines with this status."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "A page of lines.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LineList"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid API key.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "`limits_unavailable`: an active line's limit counters couldn't be read. Nothing is wrong with the line; try again shortly.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "`validation_error` (a bad, unknown or repeated query parameter, or `limit` outside 1\u2013100) or `invalid_cursor` (`starting_after` is not one of your lines).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "`rate_limited`: more than 120 list requests in 60 seconds from your account (all keys and all lists count together). Wait `Retry-After` seconds, then send the same request again.",
+            "headers": {
+              "Retry-After": {
+                "description": "Seconds to wait before retrying.",
+                "schema": {
+                  "type": "integer"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "`forbidden`: your iBubbl account is suspended or cancelled.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/lines/{line_id}": {
+      "get": {
+        "tags": [
+          "Lines"
+        ],
+        "summary": "Retrieve a line",
+        "description": "Fetch one of your lines by ID, with today's usage against its send limits. Use it to look up the `line_id` on a message. Returns `404 line_not_found` for an ID that isn't one of your lines.",
+        "operationId": "v1_get_line_v1_lines__line_id__get",
+        "parameters": [
+          {
+            "name": "line_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Line Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The line.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Line"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid API key.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "`limits_unavailable`: an active line's limit counters couldn't be read. Nothing is wrong with the line; try again shortly.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "`line_not_found`: no line with that ID on your account.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "`forbidden`: your iBubbl account is suspended or cancelled.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/v1/webhooks": {
       "post": {
         "tags": [
@@ -2692,6 +2903,208 @@
           "runs_started": 1
         }
       },
+      "Line": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id",
+            "description": "Unique line identifier (UUID)."
+          },
+          "phone_number": {
+            "type": "string",
+            "title": "Phone Number",
+            "description": "The line's phone number in E.164 format.",
+            "examples": [
+              "+14155550100"
+            ]
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "active",
+              "paused",
+              "retired"
+            ],
+            "title": "Status",
+            "description": "`active` = sends and receives messages. `paused` = temporarily not sending; new messages to its contacts go out on another of your active lines. `retired` = no longer yours to send from; it stays listed so the `line_id` on older messages still resolves."
+          },
+          "online": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Online",
+            "description": "For an `active` line: whether the line has checked in with iBubbl in the last 2 minutes. `false` means new messages wait as `queued` until it is back. It says nothing about any one recipient. Null for `paused` and `retired` lines."
+          },
+          "created_at": {
+            "type": "string",
+            "title": "Created At",
+            "description": "ISO 8601 UTC timestamp, with microseconds and a `Z`, of when the line was set up. Lists sort by it.",
+            "examples": [
+              "2026-10-08T11:40:44.770512Z"
+            ]
+          },
+          "limits": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/LineLimits"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Today's usage against the line's send limits, read live. Null for `paused` and `retired` lines, and for an active line that isn't on the published limits (ask support if you see one)."
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "phone_number",
+          "status",
+          "online",
+          "created_at",
+          "limits"
+        ],
+        "title": "Line"
+      },
+      "LineHourlyLimitWindow": {
+        "properties": {
+          "used": {
+            "type": "integer",
+            "title": "Used",
+            "description": "New contacts the line messaged in the last 60 minutes."
+          },
+          "limit": {
+            "type": "integer",
+            "title": "Limit",
+            "description": "The limit this line runs in any rolling 60 minutes. It can be lower than the published number while iBubbl has lowered this line's limits; it is never higher."
+          },
+          "waiting": {
+            "type": "integer",
+            "title": "Waiting",
+            "description": "Messages to new contacts waiting as `pending` with `held_reason: \"hourly_limit\"` for a slot to free."
+          },
+          "next_slot_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Slot At",
+            "description": "ISO 8601 UTC timestamp of when the line can message a new contact again. Null while the hour has room, or when no estimate is possible.",
+            "examples": [
+              "2026-11-11T18:42:10.000000Z"
+            ]
+          }
+        },
+        "type": "object",
+        "required": [
+          "used",
+          "limit",
+          "waiting"
+        ],
+        "title": "LineHourlyLimitWindow"
+      },
+      "LineLimitWindow": {
+        "properties": {
+          "used": {
+            "type": "integer",
+            "title": "Used",
+            "description": "How much of the limit the line has used so far."
+          },
+          "limit": {
+            "type": "integer",
+            "title": "Limit",
+            "description": "The limit this line runs today. It can be lower than the published number while iBubbl has lowered this line's limits; it is never higher."
+          },
+          "resets_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Resets At",
+            "description": "ISO 8601 UTC timestamp of the next midnight America/New_York, when `used` goes back to 0.",
+            "examples": [
+              "2026-11-12T05:00:00.000000Z"
+            ]
+          }
+        },
+        "type": "object",
+        "required": [
+          "used",
+          "limit"
+        ],
+        "title": "LineLimitWindow"
+      },
+      "LineLimits": {
+        "properties": {
+          "new_contacts_today": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/LineLimitWindow"
+              }
+            ],
+            "description": "New contacts messaged since midnight America/New_York."
+          },
+          "new_contacts_this_hour": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/LineHourlyLimitWindow"
+              }
+            ],
+            "description": "New contacts messaged in the rolling 60 minutes."
+          },
+          "messages_today": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/LineLimitWindow"
+              }
+            ],
+            "description": "Every outbound message since midnight America/New_York, waiting and failed ones included; not `cancelled` or `expired` ones."
+          }
+        },
+        "type": "object",
+        "required": [
+          "new_contacts_today",
+          "new_contacts_this_hour",
+          "messages_today"
+        ],
+        "title": "LineLimits"
+      },
+      "LineList": {
+        "properties": {
+          "data": {
+            "items": {
+              "$ref": "#/components/schemas/Line"
+            },
+            "type": "array",
+            "title": "Data",
+            "description": "Up to `limit` lines, newest first: by `created_at`, then by `id`."
+          },
+          "has_more": {
+            "type": "boolean",
+            "title": "Has More",
+            "description": "Whether more lines match after the last one in `data`. To get them, repeat the request with `starting_after` set to that line's `id`."
+          }
+        },
+        "type": "object",
+        "required": [
+          "data",
+          "has_more"
+        ],
+        "title": "LineList"
+      },
       "Message": {
         "properties": {
           "id": {
@@ -2744,6 +3157,29 @@
             "description": "The contact's phone number (E.164) for 1:1 messages: the destination of an outbound message, and the sender of an inbound one. Null for group messages \u2014 the group is identified by `chat_guid` instead.",
             "examples": [
               "+14155551234"
+            ]
+          },
+          "line_id": {
+            "type": "string",
+            "title": "Line Id",
+            "description": "ID of your line this message was on: the line that sent an outbound message, or received an inbound one. Group messages too. The same `id` as in `GET /v1/lines`.",
+            "examples": [
+              "5f0c2a9e-7d41-4b8a-9e3c-6a1b2c3d4e5f"
+            ]
+          },
+          "line_number": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Line Number",
+            "description": "That line's phone number (E.164), the line's `phone_number` in `GET /v1/lines`. Unlike `to`, it is your side of the conversation, in both directions.",
+            "examples": [
+              "+14155550100"
             ]
           },
           "body": {
@@ -2995,6 +3431,7 @@
           "direction",
           "created_at",
           "status",
+          "line_id",
           "body",
           "attachments"
         ],
@@ -3010,6 +3447,8 @@
           "held_reason": "working_hours",
           "held_until": "2026-10-08T16:00:00+00:00",
           "id": "8b3a4e72-1c2d-4e5f-9a0b-2c3d4e5f6a7b",
+          "line_id": "5f0c2a9e-7d41-4b8a-9e3c-6a1b2c3d4e5f",
+          "line_number": "+14155550100",
           "sent_at": "2026-10-08T11:40:44.770Z",
           "status": "pending",
           "to": "+14155551234"
@@ -4061,6 +4500,9 @@
     },
     {
       "name": "Conversations"
+    },
+    {
+      "name": "Lines"
     },
     {
       "name": "Webhooks"

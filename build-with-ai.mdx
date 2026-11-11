@@ -79,6 +79,10 @@ SENDING (POST /v1/messages)
   "pending" with held_reason and held_until set; that is normal, not an error.
 - The request has no field for the sending line. Unknown fields such as from
   or line_id are ignored without an error; each contact sticks to one line.
+  Every message (send response, GET, list) says which line it was on:
+  line_id and line_number (the line's E.164 number). "to" is always the
+  contact's number, in both directions. Every message.* webhook carries
+  line_id too (message.reaction.* events don't).
 - Read the message's channel before assuming iMessage-only behaviour:
   "imessage" or "sms" (RCS also reports as "sms"); null until it is sent.
   The message.* webhooks carry the same channel field (from message.sent on,
@@ -126,6 +130,22 @@ LIMITS (per line; https://docs.ibubbl.com/concepts/limits)
 - A "queued" message (line offline) that expires after about an hour fires
   message.failed with status "expired" and failed_reason "queue_expired".
   Branch on failed_reason, not status. Its idempotency_key is released.
+
+LINES (GET /v1/lines, GET /v1/lines/{id})
+- Lists the account's lines (same pagination and rate limit as READING
+  HISTORY; filter status=active|paused|retired). Each line: id,
+  phone_number, status, online (active lines: checked in within 2 minutes;
+  false means sends wait as "queued"; null otherwise), created_at, limits.
+- limits (null unless status is "active"): new_contacts_today {used, limit,
+  resets_at}, new_contacts_this_hour {used, limit, waiting, next_slot_at},
+  messages_today {used, limit, resets_at}. limit is the line's limit today
+  and can be lower than 50/30/1,000; room left = max(0, limit - used).
+- Read it once before a batch of first messages to new contacts, not
+  before every send. Counts can change between the read and the send, so
+  still handle cold_cap_exhausted and daily_cap_exhausted.
+- 404 line_not_found for an id that isn't one of the account's lines;
+  503 limits_unavailable means the counters couldn't be read: retry
+  shortly, never treat it as zero.
 
 READING HISTORY (GET /v1/messages)
 - Lists inbound and outbound messages, newest first, as

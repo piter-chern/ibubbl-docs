@@ -1,0 +1,228 @@
+---
+title: 'List lines'
+openapi: 'GET /v1/lines'
+---
+
+### List lines
+
+**Method:** `GET` | **Endpoint:** `/v1/lines`
+
+**Description:** List your lines, newest first: each line's phone number, status, whether it is online, and today's usage against its [send limits](/concepts/limits). The counts are read live on every request, so you can check how many new contacts a line can still take before you start a batch of first messages.
+
+**Authentication:** API key in the `Authorization` header: `Authorization: Bearer ib_pk_<64 hex>`. Create keys in the dashboard under **Settings → API access**.
+
+#### Query parameters
+All optional.
+
+| Parameter | Type | Description |
+| --------- | ---- | ----------- |
+| `limit` | integer | How many lines to return, `1` to `100`. Defaults to `50`. Outside that range is `422 validation_error`, not rounded. |
+| `starting_after` | string (UUID) | The `id` of the last line on the page you already have. Returns the lines after it. Leave it out for the first page. See [Pagination](/concepts/pagination). |
+| `status` | string | Only lines with this status: `active`, `paused` or `retired`. |
+
+Any other query parameter, or one given twice, returns `422 validation_error` naming it.
+
+**Rate limit:** 120 list requests per 60 seconds per account, across all your API keys and all list endpoints. Over that, you get `429 rate_limited` with a `Retry-After` header; see [Rate limits](/concepts/limits#rate-limits). [Retrieve a line](/api-reference/lines/retrieve) isn't a list and has no limit.
+
+<RequestExample>
+
+```bash cURL
+# Sent as ?status=active
+curl -G https://api.ibubbl.com/v1/lines \
+  -H "Authorization: Bearer $IBUBBL_API_KEY" \
+  --data-urlencode "status=active"
+```
+
+```typescript TypeScript
+const params = new URLSearchParams({ status: "active" });
+
+const res = await fetch(`https://api.ibubbl.com/v1/lines?${params}`, {
+  headers: { Authorization: `Bearer ${process.env.IBUBBL_API_KEY}` },
+  signal: AbortSignal.timeout(10_000),
+});
+
+const data = await res.json();
+if (!res.ok) throw new Error(`${res.status} ${data.detail?.error}`);
+for (const line of data.data) {
+  const today = line.limits?.new_contacts_today;
+  const hour = line.limits?.new_contacts_this_hour;
+  console.log(
+    line.phone_number,
+    line.online ? "online" : "offline",
+    today ? `new contacts left today: ${Math.max(0, today.limit - today.used)}` : "",
+    hour ? `this hour: ${Math.max(0, hour.limit - hour.used)}` : "",
+  );
+}
+```
+
+```python Python
+import os
+
+import requests
+
+API_KEY = os.environ["IBUBBL_API_KEY"]
+
+res = requests.get(
+    "https://api.ibubbl.com/v1/lines",
+    headers={"Authorization": f"Bearer {API_KEY}"},
+    params={"status": "active"},
+    timeout=10,
+)
+data = res.json()
+if not res.ok:
+    raise RuntimeError(f"{res.status_code} {data['detail']['error']}")
+for line in data["data"]:
+    limits = line["limits"]
+    if limits is None:
+        print(line["phone_number"], line["status"])
+        continue
+    today = limits["new_contacts_today"]
+    hour = limits["new_contacts_this_hour"]
+    print(
+        line["phone_number"],
+        "online" if line["online"] else "offline",
+        "new contacts left today:", max(0, today["limit"] - today["used"]),
+        "this hour:", max(0, hour["limit"] - hour["used"]),
+    )
+```
+
+</RequestExample>
+
+<ResponseExample>
+
+```json 200 OK
+{
+  "data": [
+    {
+      "id": "5f0c2a9e-7d41-4b8a-9e3c-6a1b2c3d4e5f",
+      "phone_number": "+14155550100",
+      "status": "active",
+      "online": true,
+      "created_at": "2026-10-08T11:40:44.770512Z",
+      "limits": {
+        "new_contacts_today": {
+          "used": 12,
+          "limit": 50,
+          "resets_at": "2026-11-12T05:00:00.000000Z"
+        },
+        "new_contacts_this_hour": {
+          "used": 3,
+          "limit": 30,
+          "waiting": 0,
+          "next_slot_at": null
+        },
+        "messages_today": {
+          "used": 140,
+          "limit": 1000,
+          "resets_at": "2026-11-12T05:00:00.000000Z"
+        }
+      }
+    },
+    {
+      "id": "9d21aa5b-3c6e-4f70-8a1b-2c3d4e5f6a7b",
+      "phone_number": "+14155550101",
+      "status": "retired",
+      "online": null,
+      "created_at": "2026-08-01T09:15:00.000000Z",
+      "limits": null
+    }
+  ],
+  "has_more": false
+}
+```
+
+```json 503 Service Unavailable
+{
+  "detail": {
+    "error": "limits_unavailable",
+    "message": "Couldn't read this line's limits right now. Try again shortly."
+  }
+}
+```
+
+</ResponseExample>
+
+#### Responses
+**200 OK**
+
+`data` holds up to `limit` lines, newest first: by `created_at` (when the line was set up), then by `id`. Each item is exactly what [Retrieve a line](/api-reference/lines/retrieve) returns for that line. `has_more` is `true` when more lines match; to get them, repeat the request with `starting_after` set to the `id` of the last item in `data`. Most accounts have a handful of lines, so one page usually holds them all.
+
+| Field | Description |
+| ----- | ----------- |
+| `id` | The line's ID. Every message names its line with the same value in [`line_id`](/concepts/lines-and-routing#which-line-a-message-was-on). |
+| `phone_number` | The line's number in E.164 format. Messages carry it as `line_number`. |
+| `status` | `active`: sends and receives messages. `paused`: temporarily not sending; your next message to one of its contacts goes out on another of your active lines. `retired`: no longer yours to send from. Retired lines stay listed so the `line_id` on older messages always resolves. |
+| `online` | For an `active` line: whether it has checked in with iBubbl in the last 2 minutes. `false` means new messages wait as `queued` until it is back (see [Offline lines](/concepts/limits#offline-lines)). It says nothing about any one recipient. `null` for `paused` and `retired` lines. |
+| `created_at` | When the line was set up (ISO 8601 UTC, with microseconds and a `Z`). |
+| `limits` | Today's usage against the line's send limits, or `null` for `paused` and `retired` lines. |
+
+`limits` has three counters, the line-wide [limits](/concepts/limits#the-four-limits). Each has `used` and `limit`:
+
+| Counter | What `used` counts | Extra fields |
+| ------- | ------------------ | ------------ |
+| `new_contacts_today` | [New contacts](/concepts/limits#what-counts-as-a-new-contact) messaged since midnight America/New_York | `resets_at`: the next midnight America/New_York, in UTC |
+| `new_contacts_this_hour` | New contacts messaged in the last 60 minutes | `waiting`: messages to new contacts held as `pending` with `held_reason: "hourly_limit"`. `next_slot_at`: when the line can message a new contact again, set only while the hour is full; `null` otherwise, or when no estimate is possible |
+| `messages_today` | Every outbound message since midnight America/New_York, including ones still waiting and ones that failed; not `cancelled` or `expired` ones | `resets_at`, as above |
+
+- **`limit` is the limit this line runs today.** It is never higher than the published number, and it can be lower while iBubbl has lowered this line's limits. Read it rather than assuming 50, 30 and 1,000.
+- **`used` can be higher than `limit`** for a moment after a limit is lowered. The room left is `max(0, limit - used)`.
+- **The counts can move between your read and your send.** Another integration, the dashboard or a workflow can use the same line. Keep handling `422 cold_cap_exhausted` and `422 daily_cap_exhausted` on sends.
+- The unanswered-in-a-row limit counts per contact, not per line, so it isn't here.
+
+**401 Unauthorized**
+```json
+{
+  "detail": {
+    "error": "unauthorized",
+    "message": "Invalid or revoked API key"
+  }
+}
+```
+Other `message` values: `Authorization Bearer token required`, `API key required (use Authorization: Bearer ib_pk_…)`, `Invalid API key format`, `Customer account not found`.
+
+**403 Forbidden**
+```json
+{
+  "detail": {
+    "error": "forbidden",
+    "message": "Account is suspended"
+  }
+}
+```
+Your iBubbl account is suspended or cancelled (`message` is then `Account is cancelled`). Every API-key endpoint returns this.
+
+**422 Unprocessable Entity**
+```json
+{
+  "detail": {
+    "error": "validation_error",
+    "message": "Unknown query parameter: startingAfter. Allowed: limit, starting_after, status"
+  }
+}
+```
+`validation_error`: a query parameter is unknown, repeated or invalid (`limit` outside 1–100, a `starting_after` that isn't a UUID, or a `status` other than `active`, `paused` or `retired`). `invalid_cursor`: `starting_after` is a UUID but not the ID of one of your lines.
+
+**429 Too Many Requests**
+```text
+Retry-After: 18
+```
+```json
+{
+  "detail": {
+    "error": "rate_limited",
+    "message": "Too many list requests; wait 18s (limit 120 a minute per account)."
+  }
+}
+```
+Your account made more than 120 list requests in the last 60 seconds. `Retry-After` is the number of whole seconds until the oldest of them stops counting. Wait that long, then send the same request again; the refused request didn't count.
+
+**503 Service Unavailable**
+```json
+{
+  "detail": {
+    "error": "limits_unavailable",
+    "message": "Couldn't read this line's limits right now. Try again shortly."
+  }
+}
+```
+The live counters of an active line couldn't be read. Nothing is wrong with the line, and sends are unaffected. iBubbl never answers with zeros it couldn't read: retry after a few seconds.

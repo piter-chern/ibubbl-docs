@@ -114,6 +114,13 @@
             ]
           },
           {
+            "group": "Lines",
+            "pages": [
+              "api-reference/lines/list",
+              "api-reference/lines/retrieve"
+            ]
+          },
+          {
             "group": "Webhooks",
             "pages": [
               "api-reference/webhooks/create",

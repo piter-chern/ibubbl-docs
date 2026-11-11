@@ -100,6 +100,8 @@ print("has_more:", data["has_more"])
       "created_at": "2026-11-10T15:06:41.518204Z",
       "status": "delivered",
       "to": "+14155551234",
+      "line_id": "5f0c2a9e-7d41-4b8a-9e3c-6a1b2c3d4e5f",
+      "line_number": "+14155550100",
       "body": "Thanks! Can we talk tomorrow?",
       "contact_id": "c8a1f4e2-3b9d-4f7c-a8e5-1d2c3b4a5e6f",
       "conversation_id": "3a4b5c6d-7e8f-9a0b-1c2d-3e4f5a6b7c8d",
@@ -125,6 +127,8 @@ print("has_more:", data["has_more"])
       "created_at": "2026-11-10T15:04:10.112730Z",
       "status": "read",
       "to": "+14155551234",
+      "line_id": "5f0c2a9e-7d41-4b8a-9e3c-6a1b2c3d4e5f",
+      "line_number": "+14155550100",
       "body": "Hey Sam — quick check-in about your order.",
       "contact_id": "c8a1f4e2-3b9d-4f7c-a8e5-1d2c3b4a5e6f",
       "conversation_id": "3a4b5c6d-7e8f-9a0b-1c2d-3e4f5a6b7c8d",
@@ -177,6 +181,7 @@ print("has_more:", data["has_more"])
 - `direction` is `inbound` or `outbound`.
 - `created_at` is when iBubbl recorded the message, in UTC with microseconds. It never changes, which is why the list sorts and filters by it. `sent_at` is when the message went out or arrived, and can be earlier than `created_at` for an inbound message.
 - For an inbound message, `status` is `delivered`, or `read` once someone on your account has read it in the dashboard. `to` is the contact's number (who sent it), and `channel` is how it arrived.
+- `line_id` and `line_number` name the line the message was on (the one that sent it, or received it): the `id` and `phone_number` in [List lines](/api-reference/lines/list).
 
 ```json
 {
@@ -187,6 +192,8 @@ print("has_more:", data["has_more"])
       "created_at": "2026-11-10T15:04:10.112730Z",
       "status": "read",
       "to": "+14155551234",
+      "line_id": "5f0c2a9e-7d41-4b8a-9e3c-6a1b2c3d4e5f",
+      "line_number": "+14155550100",
       "body": "Hey Sam — quick check-in about your order.",
       "contact_id": "c8a1f4e2-3b9d-4f7c-a8e5-1d2c3b4a5e6f",
       "conversation_id": "3a4b5c6d-7e8f-9a0b-1c2d-3e4f5a6b7c8d",

@@ -3,7 +3,7 @@ title: 'Lines and routing'
 description: 'Which of your lines sends to a contact, and how iBubbl decides between iMessage and SMS.'
 ---
 
-A **line** is a phone number iBubbl runs for you on a dedicated Mac. Your account can have one line or several. This page explains which line a message goes out on, and whether it goes as an iMessage or a text.
+A **line** is a phone number iBubbl runs for you on a dedicated Mac. Your account can have one line or several. This page explains which line a message goes out on, and whether it goes as an iMessage or a text. To see your lines, whether each is online, and how much of its [limits](/concepts/limits) it has used today, call [`GET /v1/lines`](/api-reference/lines/list).
 
 ## Each contact sticks to one line
 
@@ -24,7 +24,22 @@ For a contact with no line yet, iBubbl picks among your lines that are active an
 
 `POST /v1/messages` has no field for the sending line or number. Fields it doesn't know, such as `from` or `line_id`, are **ignored without an error**: the request succeeds and the line is chosen as above.
 
-To find out which line sent a message, read `from_number` on its [`message.sent`](/webhooks/events) webhook (and on `message.delivered`, `message.read`, `message.failed` and `message.cancelled`). On [`message.inbound`](/webhooks/events), the line that received the message is `to_number`. The send and retrieve responses don't include the line.
+To check that a line has room before you start a batch of first messages, read its counters with [List lines](/api-reference/lines/list) or [Retrieve a line](/api-reference/lines/retrieve).
+
+### Which line a message was on
+
+Every message names its line, in both directions, in the [send](/api-reference/messages/send) response, [Retrieve a message](/api-reference/messages/retrieve) and [List messages](/api-reference/messages/list):
+
+| Field | Meaning |
+| ----- | ------- |
+| `line_id` | The ID of the line that sent the message, or received it. The same `id` as in [`GET /v1/lines`](/api-reference/lines/list). Always set, group messages included. |
+| `line_number` | That line's phone number (E.164), the line's `phone_number`. |
+
+`to` is still the contact's number: the destination of an outbound message and the sender of an inbound one. `line_number` is your side of the conversation.
+
+Every `message.*` [webhook](/webhooks/events#the-line_id-field) carries `line_id` too. The line's number is `from_number` on the outbound events (`message.sent`, `message.delivered`, `message.read`, `message.failed`, `message.cancelled`) and `to_number` on `message.inbound`. Tapback events (`message.reaction.*`) don't carry `line_id`: read it from the message they point to.
+
+A [retired](/api-reference/lines/list#responses) line stays in the list, so the `line_id` on an old message always resolves.
 
 ## iMessage or SMS
 
@@ -64,5 +79,6 @@ Each webhook carries `channel` as it was when the event fired. `message.queued` 
 ## Next
 
 - [Limits and queues](/concepts/limits): the per-line limits and how fast a line sends.
+- [List lines](/api-reference/lines/list): your lines, their status and today's usage.
 - [Message lifecycle](/concepts/message-lifecycle): every status, and which webhook fires for each.
 - [Group conversations](/concepts/group-conversations): how groups are addressed.

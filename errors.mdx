@@ -81,6 +81,10 @@ if not res.ok:
   The requested resource doesn't exist, OR it exists but belongs to a different customer (existence is hidden across tenants). Verify the resource ID is correct and was created on the same account whose key you're using. A [deleted contact](/api-reference/contacts/delete) answers `404` too, including as the `contact_id` of a send.
 </ResponseField>
 
+<ResponseField name="line_not_found" type="404">
+  [Retrieve a line](/api-reference/lines/retrieve): no line with that ID on your account. A malformed ID and another account's line are answered the same way. Line IDs come from [List lines](/api-reference/lines/list) and from `line_id` on messages and webhooks.
+</ResponseField>
+
 <ResponseField name="idempotency_conflict" type="409">
   You reused an `idempotency_key` with a request payload that doesn't match the one originally cached. Either generate a new key for this distinct send, or fix your retry logic to reuse the original payload byte-for-byte. See [Idempotency](/idempotency).
 </ResponseField>
@@ -237,6 +241,10 @@ if not res.ok:
   [Add a tapback](/api-reference/messages/react), [Edit a message](/api-reference/messages/edit) and [Start typing](/api-reference/conversations/start-typing): iBubbl couldn't confirm that the contact hasn't opted out, so it sent nothing. Retry after a short backoff. (Mark read doesn't fail this way: it answers `200` with `read_receipt_skipped_reason: "opt_out_check_unavailable"` and sends no receipt.)
 </ResponseField>
 
+<ResponseField name="limits_unavailable" type="503">
+  [List lines](/api-reference/lines/list) and [Retrieve a line](/api-reference/lines/retrieve): the live limit counters of an active line couldn't be read. iBubbl answers with this instead of counts it couldn't confirm. Nothing is wrong with the line, and sends are unaffected. Retry after a few seconds.
+</ResponseField>
+
 <ResponseField name="first_message_needs_text" type="422">
   `POST /v1/messages` only: you sent `attachments` without a `body` to a contact you've never exchanged a message with. Messages can't open a new conversation with files alone. Add a `body`. See [Captions and the first message](/guides/attachments#captions-and-the-first-message).
 </ResponseField>
@@ -302,6 +310,7 @@ if not res.ok:
 | `forbidden` | 403 | ❌ Account suspended or cancelled; email [support@ibubbl.com](mailto:support@ibubbl.com). |
 | `not_found` | 404 | ❌ Verify the ID. |
 | `group_not_found` | 404 | ❌ Use the group's current `chat_guid`. |
+| `line_not_found` | 404 | ❌ Use a `line_id` from List lines. |
 | `idempotency_conflict` | 409 | ❌ Fix the retry logic. |
 | `edit_in_flight` | 409 | ✅ After `message.edited` (a few seconds). |
 | `already_unsent` | 409 | ❌ The message was unsent. |
@@ -339,6 +348,7 @@ if not res.ok:
 | `no_owner_rep` | 500 | ❌ Not until your account has an active owner rep; email [support@ibubbl.com](mailto:support@ibubbl.com). |
 | `internal_error` | 500 | ✅ Retry with the same idempotency key after a short backoff. |
 | `opt_out_check_unavailable` | 503 | ✅ Retry after a short backoff. |
+| `limits_unavailable` | 503 | ✅ Retry after a few seconds. |
 
 The general rule: **don't retry 4xx**. Most 4xxes are payload-level problems that retrying won't fix. The exception is `429 rate_limited`: wait, then send the same request again (on a list, a conversation action or an attachment send, `Retry-After` says how long). The limit 422s (`daily_cap_exhausted`, `cold_cap_exhausted`) are retryable only after the limit resets at midnight ET; iBubbl does not queue them for you. The hourly new-contact limit and an offline line are different: those sends are accepted and wait (`pending` with `held_reason: "hourly_limit"`, or `queued`), so resending just creates a duplicate. The numbers are on [Limits and queues](/concepts/limits). A send refused with a `404` or `422` creates no message, so its `idempotency_key` stays unused and you can reuse it when you send again.
 
@@ -349,11 +359,11 @@ The general rule: **don't retry 4xx**. Most 4xxes are payload-level problems tha
 | `200` / `201` / `202` / `204` | Success. `202` for accepted-but-queued sends, edits and unsends; `201` for created resources; `204` (no body) for [Delete a contact](/api-reference/contacts/delete); `200` everywhere else. |
 | `401` | Auth failure. |
 | `403` | Account suspended or cancelled (`forbidden`), or an inbound event's signature failed (`invalid_signature`). |
-| `404` | Resource not found (or hidden across tenants), or `group_not_found`. |
+| `404` | Resource not found (or hidden across tenants), `group_not_found`, or `line_not_found`. |
 | `409` | Idempotency conflict, or a message in a state another request holds: `edit_in_flight`, `already_unsent`, `message_dispatching`. |
 | `413` | Inbound event body over 256 KB. |
 | `422` | Validation, routing or send-limit failure. |
 | `429` | `rate_limited`: too many list requests or conversation actions from your account, or attachment downloads busy (all with `Retry-After`), or too many inbound events for one source on `/v1/events`. |
 | `500` | No owner rep (`no_owner_rep`) or an unexpected iBubbl error (`internal_error`). |
-| `503` | `opt_out_check_unavailable` on a tapback, edit or typing call. Retry after a short backoff. |
+| `503` | `opt_out_check_unavailable` on a tapback, edit or typing call, or `limits_unavailable` on a lines read. Retry after a short backoff. |
 | `502` / `503` without a `detail.error` | The network edge during a deployment blip, not iBubbl itself. Retry with the same idempotency key after a short backoff. |
