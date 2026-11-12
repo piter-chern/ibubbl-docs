@@ -163,7 +163,7 @@ Also returned for a malformed ID and a conversation that belongs to another acco
   }
 }
 ```
-`contact_blocked` or `contact_opted_out`, in a one-to-one conversation. Nothing was shown. Group conversations are answered `ignored` instead.
+`contact_blocked` or `contact_opted_out`, in a one-to-one conversation. Nothing was shown. Group conversations are answered `ignored` instead. `no_eligible_line`: the line this conversation is on is no longer active on your account (for example, it was moved to another account); nothing was shown. Don't retry.
 
 **429 Too Many Requests**
 ```json

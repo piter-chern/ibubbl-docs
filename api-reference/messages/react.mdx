@@ -194,6 +194,7 @@ Nothing was sent. The `error` is one of:
 - `contact_opted_out`: a one-to-one conversation with a contact who opted out.
 - `sms_not_supported`: the message came in by SMS, or the conversation is going out by SMS.
 - `target_unsent` / `target_partly_unsent`: the contact unsent the message, or part of it.
+- `no_eligible_line`: the line the message came in on is no longer active on your account (for example, it was moved to another account). Nothing was sent. Don't retry.
 
 **429 Too Many Requests**
 ```json

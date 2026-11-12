@@ -199,6 +199,7 @@ Nothing changed. The `error` is one of:
 - `not_unsendable`: the message failed, was cancelled or expired, or iMessage never confirmed it.
 - `unsend_window_expired`: more than 110 seconds since `sent_at`.
 - `multi_part`: the message has files and text, or several files. Unsending part of a message is available in the dashboard only.
+- `no_eligible_line`: the line it was sent from is no longer active on your account (for example, it was moved to another account). Nothing was changed. Don't retry.
 
 **429 Too Many Requests**
 ```json

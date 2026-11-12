@@ -16,7 +16,7 @@ Branch your integration on `conversation_kind`. The same message lifecycle appli
 
 ## Group identity
 
-Each group conversation has an opaque `chat_guid`, for example `any;+;067ace6caf6c43aaa2f7d643975e15ea`. Treat it as an opaque string: don't parse it, and branch on `conversation_kind` rather than its prefix.
+Each group conversation has an opaque `chat_guid`, for example `any;+;00000000000000000000000000000000`. Treat it as an opaque string: don't parse it, and branch on `conversation_kind` rather than its prefix.
 
 **No webhook event carries `chat_guid`.** To learn it:
 
@@ -35,8 +35,8 @@ The `participants` array on the `message.inbound` webhook lists the group's part
 ```json
 {
   "participants": [
-    {"phone": "+13477914509", "first_name": "Sarah", "last_name": "Smith"},
-    {"phone": "+17187699436", "first_name": "Bob",   "last_name": "Jones"}
+    {"phone": "+14155550100", "first_name": "Sarah", "last_name": "Smith"},
+    {"phone": "+14155550101", "first_name": "Bob",   "last_name": "Jones"}
   ]
 }
 ```
@@ -56,12 +56,12 @@ On inbound webhook events for group conversations, `sender_phone` identifies whi
   "type": "message.inbound",
   "data": {
     "message_id": "5b6c7d8e-9f0a-1b2c-3d4e-5f6a7b8c9d0e",
-    "from_number": "+13477914509",
-    "sender_phone": "+13477914509",
+    "from_number": "+14155550100",
+    "sender_phone": "+14155550100",
     "conversation_kind": "group",
     "participants": [
-      {"phone": "+13477914509", "first_name": "Sarah", "last_name": "Smith"},
-      {"phone": "+17187699436", "first_name": "Bob",   "last_name": "Jones"}
+      {"phone": "+14155550100", "first_name": "Sarah", "last_name": "Smith"},
+      {"phone": "+14155550101", "first_name": "Bob",   "last_name": "Jones"}
     ],
     "body": "What time tomorrow?"
   }

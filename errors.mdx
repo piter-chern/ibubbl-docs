@@ -158,7 +158,9 @@ if not res.ok:
 </ResponseField>
 
 <ResponseField name="no_eligible_line" type="422">
-  No line on your account can take this send right now: for example, a contact you haven't messaged before while your line is offline, or a group whose line is no longer active. Nothing was sent. Send again once your line is back online.
+  No line on your account can take this request right now: for example, a contact you haven't messaged before while your line is offline, or a group whose line is no longer active. Nothing was sent. Send again once your line is back online.
+
+  Also returned by [Edit](/api-reference/messages/edit), [Unsend](/api-reference/messages/unsend), [Add a tapback](/api-reference/messages/react), [Remove a tapback](/api-reference/messages/remove-reaction) and [Start typing](/api-reference/conversations/start-typing) when the line the message or conversation is on is no longer active on your account, for example because it was moved to another account. Those requests won't succeed later: don't retry them.
 </ResponseField>
 
 <ResponseField name="group_not_found" type="404">
@@ -362,7 +364,7 @@ if not res.ok:
 | `line_offline` | — (`202`, `queued`) | ⚠️ Not an error: iBubbl queues and retries for up to an hour. Don't resend. |
 | `daily_cap_exhausted` / `cold_cap_exhausted` | 422 | ⚠️ Not queued. Send again after the limit resets (midnight ET). |
 | `hourly_cap_hit` / `followup_cap_exhausted` | — | Legacy: not used on any current line. |
-| `no_eligible_line` | 422 | ⚠️ Send again once your line is back online. |
+| `no_eligible_line` | 422 | ⚠️ A send: send again once your line is back online. ❌ Edit, unsend, tapbacks, typing: the message's line is no longer on your account; don't retry. |
 | `rate_limited` | 429 | ✅ Lists, conversation actions, uploads and attachment sends: send the same request again (same `idempotency_key`) after `Retry-After` seconds. `/v1/events`: after about a minute. |
 | `invalid_signature` | 403 | ❌ Fix the signing secret. |
 | `payload_too_large` | 413 | ❌ Fix the payload size. |

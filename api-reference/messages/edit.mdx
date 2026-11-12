@@ -218,6 +218,7 @@ Nothing changed. The `error` is one of:
 - `link_changed`: a message sent with a link preview, where the new text moves, changes or removes the link.
 - `contact_blocked`: a one-to-one conversation with a contact you [blocked](/api-reference/contacts/block).
 - `contact_opted_out`: a one-to-one conversation with a contact who opted out.
+- `no_eligible_line`: the line it was sent from is no longer active on your account (for example, it was moved to another account). Nothing was changed. Don't retry.
 
 **429 Too Many Requests**
 ```json

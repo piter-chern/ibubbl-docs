@@ -516,7 +516,7 @@
             }
           },
           "422": {
-            "description": "`validation_error` (bad body, unknown `type`), `invalid_target` (a message you sent), `contact_blocked`, `contact_opted_out`, `sms_not_supported` (the message came in by SMS, or the conversation is going out by SMS), `target_unsent` or `target_partly_unsent` (the contact unsent the message, or part of it).",
+            "description": "`validation_error` (bad body, unknown `type`), `invalid_target` (a message you sent), `contact_blocked`, `contact_opted_out`, `sms_not_supported` (the message came in by SMS, or the conversation is going out by SMS), `target_unsent` or `target_partly_unsent` (the contact unsent the message, or part of it), `no_eligible_line` (the line it came in on is no longer active on your account; don't retry).",
             "content": {
               "application/json": {
                 "schema": {
@@ -626,7 +626,7 @@
             }
           },
           "422": {
-            "description": "`target_unsent` or `target_partly_unsent`: the contact unsent the message, so the tapback can't be changed.",
+            "description": "`target_unsent` or `target_partly_unsent`: the contact unsent the message, so the tapback can't be changed. `no_eligible_line`: the line it came in on is no longer active on your account; don't retry.",
             "content": {
               "application/json": {
                 "schema": {
@@ -747,7 +747,7 @@
             }
           },
           "422": {
-            "description": "`validation_error` (bad body), `invalid_target` (a message you received), `sms_not_supported` (it went out by SMS), `not_sent_yet` (still waiting to go out: cancel it instead), `not_editable` (no text to edit, or it failed or never went out), `edit_window_expired`, `edit_limit_reached`, `link_changed`, `contact_blocked`, `contact_opted_out`.",
+            "description": "`validation_error` (bad body), `invalid_target` (a message you received), `sms_not_supported` (it went out by SMS), `not_sent_yet` (still waiting to go out: cancel it instead), `not_editable` (no text to edit, or it failed or never went out), `edit_window_expired`, `edit_limit_reached`, `link_changed`, `contact_blocked`, `contact_opted_out`, `no_eligible_line` (the line it was sent from is no longer active on your account; don't retry).",
             "content": {
               "application/json": {
                 "schema": {
@@ -868,7 +868,7 @@
             }
           },
           "422": {
-            "description": "`invalid_target` (a message you received), `sms_not_supported` (it went out by SMS), `not_sent_yet` (still waiting to go out: cancel it instead), `not_unsendable` (it failed or never went out), `unsend_window_expired`, `multi_part`.",
+            "description": "`invalid_target` (a message you received), `sms_not_supported` (it went out by SMS), `not_sent_yet` (still waiting to go out: cancel it instead), `not_unsendable` (it failed or never went out), `unsend_window_expired`, `multi_part`, `no_eligible_line` (the line it was sent from is no longer active on your account; don't retry).",
             "content": {
               "application/json": {
                 "schema": {
@@ -2169,7 +2169,7 @@
             }
           },
           "422": {
-            "description": "`contact_blocked` or `contact_opted_out`.",
+            "description": "`contact_blocked`, `contact_opted_out`, or `no_eligible_line` (the line this conversation is on is no longer active on your account; don't retry).",
             "content": {
               "application/json": {
                 "schema": {
@@ -3065,7 +3065,8 @@
                   "group",
                   "contact_blocked",
                   "contact_opted_out",
-                  "opt_out_check_unavailable"
+                  "opt_out_check_unavailable",
+                  "line_inactive"
                 ]
               },
               {
@@ -3073,7 +3074,7 @@
               }
             ],
             "title": "Read Receipt Skipped Reason",
-            "description": "Why no receipt: `nothing_unread` (nothing new since the last read), `receipts_off` (read receipts are off for your account), `group` (never sent in group conversations), `contact_blocked`, `contact_opted_out`, or `opt_out_check_unavailable` (the opt-out couldn't be checked, so none was sent). Null when queued."
+            "description": "Why no receipt: `nothing_unread` (nothing new since the last read), `receipts_off` (read receipts are off for your account), `group` (never sent in group conversations), `contact_blocked`, `contact_opted_out`, `opt_out_check_unavailable` (the opt-out couldn't be checked, so none was sent), or `line_inactive` (the line this conversation is on is no longer active on your account). Null when queued."
           }
         },
         "type": "object",
@@ -3450,7 +3451,7 @@
             "title": "Chat Guid",
             "description": "Opaque identifier for the group chat (e.g. `any;+;<hex>`). Returned for `group` messages \u2014 use it to address later messages to the same group via the `chat_guid` request shape. Null for `one_to_one` messages, and for a brand-new group until the group has been created in iMessage (that happens when the first message goes out, which can wait for sending hours); poll `GET /v1/messages/{id}` to see it fill in. It changes when a participant is added to the group.",
             "examples": [
-              "any;+;067ace6caf6c43aaa2f7d643975e15ea"
+              "any;+;00000000000000000000000000000000"
             ]
           },
           "channel": {
@@ -4312,7 +4313,7 @@
             "title": "Chat Guid",
             "description": "Send into an existing iMessage group identified by its opaque `chat_guid` (e.g. `any;+;<hex>`). Webhook events don't carry it: read it from the response to a send into the group, or from `GET /v1/messages/{id}` for any message in the group (an inbound `message_id` works too). The value changes when a participant is added to the group; an old value then returns `404 group_not_found`. Mutually exclusive with `contact_id`, `to`, and `participant_phones`.",
             "examples": [
-              "any;+;067ace6caf6c43aaa2f7d643975e15ea"
+              "any;+;00000000000000000000000000000000"
             ]
           },
           "participant_phones": {

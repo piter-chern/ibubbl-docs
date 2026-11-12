@@ -184,7 +184,7 @@ Every request also needs `body` and an `idempotency_key`. Generate the key **onc
       -H "Authorization: Bearer $IBUBBL_API_KEY" \
       -H "Content-Type: application/json" \
       -d "{
-        \"chat_guid\": \"any;+;067ace6caf6c43aaa2f7d643975e15ea\",
+        \"chat_guid\": \"any;+;00000000000000000000000000000000\",
         \"body\": \"Works for everyone? See you at 3.\",
         \"idempotency_key\": \"$IDEMPOTENCY_KEY\"
       }"
@@ -203,7 +203,7 @@ Every request also needs `body` and an `idempotency_key`. Generate the key **onc
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        chat_guid: "any;+;067ace6caf6c43aaa2f7d643975e15ea",
+        chat_guid: "any;+;00000000000000000000000000000000",
         body: "Works for everyone? See you at 3.",
         idempotency_key: idempotencyKey,
       }),
@@ -230,7 +230,7 @@ Every request also needs `body` and an `idempotency_key`. Generate the key **onc
         "https://api.ibubbl.com/v1/messages",
         headers={"Authorization": f"Bearer {API_KEY}"},
         json={
-            "chat_guid": "any;+;067ace6caf6c43aaa2f7d643975e15ea",
+            "chat_guid": "any;+;00000000000000000000000000000000",
             "body": "Works for everyone? See you at 3.",
             "idempotency_key": idempotency_key,
         },

@@ -162,7 +162,7 @@ Also returned for a malformed ID, a contact's reaction, a reaction on a differen
   }
 }
 ```
-`target_unsent` or `target_partly_unsent`: the contact unsent the message (or part of it) after you reacted, so the tapback can't be changed any more.
+`target_unsent` or `target_partly_unsent`: the contact unsent the message (or part of it) after you reacted, so the tapback can't be changed any more. `no_eligible_line`: the line the message came in on is no longer active on your account; nothing was sent. Don't retry.
 
 **429 Too Many Requests**
 ```json
