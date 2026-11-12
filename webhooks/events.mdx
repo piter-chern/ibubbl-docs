@@ -35,7 +35,7 @@ Webhook payloads identify the contact and line by **phone number** (`from_number
 
 ### The `channel` field
 
-`message.sent`, `message.delivered`, `message.read`, `message.failed`, `message.cancelled` and `message.inbound` carry `channel`: how the message travelled.
+`message.sent`, `message.delivered`, `message.read`, `message.failed`, `message.part_failed`, `message.cancelled` and `message.inbound` carry `channel`: how the message travelled.
 
 | Value | Meaning |
 | ----- | ------- |
@@ -177,7 +177,7 @@ When a contact reads a message, iMessage implies they've read your earlier messa
 </Accordion>
 
 <Accordion title="message.failed" icon="circle-xmark">
-Fired when a send fails. `failed_reason` carries a stable failure code; `error_message` is a free-form diagnostic for your logs — don't parse it or show it to end users.
+Fired when a send fails. `failed_reason` carries a stable failure code; `error_message` is a free-form diagnostic for your logs — don't parse it or show it to end users. `error` carries the same code with a readable `message` and `retryable`: `true` when sending the message again can work, `false` when it would fail the same way.
 
 It also fires when a `queued` message expires: then `status` is `"expired"` (the message's status in [`GET /v1/messages/{id}`](/api-reference/messages/retrieve)) and `failed_reason` is `queue_expired`. Both are final; branch on `failed_reason`, not on `status`.
 
@@ -201,8 +201,13 @@ A failed message can also move back. If Apple later confirms delivery or a read 
     "occurred_at": "2026-05-17T14:23:45.123Z",
     "reply_to_message_id": null,
     "channel": "imessage",
-    "failed_reason": "imessage_undeliverable",
-    "error_message": "Message failed to send"
+    "failed_reason": "mac_send_failed",
+    "error_message": "Message failed to send",
+    "error": {
+      "code": "mac_send_failed",
+      "message": "Message failed to send",
+      "retryable": true
+    }
   }
 }
 ```
@@ -213,6 +218,7 @@ A failed message can also move back. If Apple later confirms delivery or a read 
 
 - `imessage_undeliverable` — iMessage couldn't deliver it to this number: the number isn't reachable on iMessage. Resending fails the same way; reach the contact another way.
 - `imessage_error:<code>` — iMessage reported another failure; `<code>` is its error number
+- `sms_attachment_refused` — the message was a calendar invite (`.ics`) to a contact who texts by plain SMS, which can't carry one. Resending fails the same way (`retryable: false`).
 - `mac_send_failed` — your line couldn't send it, or it wasn't confirmed sent within 10 minutes
 - `bluebubbles_unreachable` — your line couldn't be reached at send time
 - `agent_offline` — your line was offline for over an hour, so the message was failed rather than sent late
@@ -222,6 +228,46 @@ A failed message can also move back. If Apple later confirms delivery or a read 
 - `cold_cap_exhausted`, `followup_cap_exhausted`, `daily_cap_exhausted`, `unresponsive_contact` — legacy codes: a queued message failed a limit re-check on a line in the old limits mode. No current line uses that mode (see [Limits and queues](/concepts/limits)).
 
 See the [Error Reference](/errors) for the full catalog.
+</Accordion>
+
+<Accordion title="message.part_failed" icon="file-circle-xmark">
+Fired when a message's text went out but its files didn't. The message keeps the text's outcome, so `status` is `sent`, `delivered` or `read` and [`message.failed`](#message-failed) doesn't fire. For now this happens when a calendar invite (`.ics`) meets a contact who texts by plain SMS, which can't carry it; iBubbl doesn't send an `.ics` to a contact it already knows texts by plain SMS. It fires once per message.
+
+```json
+{
+  "id": "evt_5d6e7f80-9a1b-4c2d-8e3f-4a5b6c7d8e9f",
+  "type": "message.part_failed",
+  "created_at": "2026-11-12T14:23:47.512Z",
+  "data": {
+    "message_id": "4a5b6c7d-8e9f-0a1b-2c3d-4e5f6a7b8c9d",
+    "conversation_id": "3a4b5c6d-7e8f-9a0b-1c2d-3e4f5a6b7c8d",
+    "line_id": "2c3d4e5f-6a7b-8c9d-0e1f-2a3b4c5d6e7f",
+    "from_number": "+14155550100",
+    "to_number": "+14155551234",
+    "body": "Hi Sam, I've scheduled a call for Thursday at 2 PM.",
+    "status": "delivered",
+    "occurred_at": "2026-11-12T14:23:45.123Z",
+    "reply_to_message_id": null,
+    "channel": "sms",
+    "files_status": "failed",
+    "files_failed_reason": "sms_attachment_refused",
+    "error": {
+      "code": "sms_attachment_refused",
+      "message": "Recipient's route is SMS; .ics files can't be delivered.",
+      "retryable": false
+    },
+    "parts": [
+      {
+        "attachment_id": "9b8c7d6e-5f4a-3b2c-1d0e-9f8a7b6c5d4e",
+        "mime_type": "text/calendar",
+        "failed_reason": "sms_attachment_refused"
+      }
+    ]
+  }
+}
+```
+
+`status` is the text's outcome as of this event. `files_failed_reason` uses the same codes as `failed_reason` on [`message.failed`](#message-failed); `parts` lists each file that failed. Neither the files nor the message can be retried.
 </Accordion>
 
 <Accordion title="message.cancelled" icon="ban">
