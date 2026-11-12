@@ -13,14 +13,17 @@ With the iBubbl API, your software sends real iMessages, the blue bubbles, from 
 The API is HTTPS and JSON, authenticated with one Bearer API key. There's no SDK to install: any HTTP client works.
 
 ```bash
+# One key per message: generate it once, and reuse it if you retry.
+IDEMPOTENCY_KEY=$(uuidgen)
+
 curl -X POST https://api.ibubbl.com/v1/messages \
   -H "Authorization: Bearer $IBUBBL_API_KEY" \
   -H "Content-Type: application/json" \
-  -d '{
-    "to": "+14155551234",
-    "body": "Hey Sam, quick check-in about your order.",
-    "idempotency_key": "a3f2c8d9-e0f1-4b4d-9c5a-7b8e2d1f0c4a"
-  }'
+  -d "{
+    \"to\": \"+14155551234\",
+    \"body\": \"Hey Sam, quick check-in about your order.\",
+    \"idempotency_key\": \"$IDEMPOTENCY_KEY\"
+  }"
 ```
 
 The API answers `202 Accepted` right away; the message then goes out from your line, and its progress arrives as webhook events. The [Quickstart](/quickstart) walks through it end to end, sending to your own phone.

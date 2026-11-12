@@ -231,7 +231,7 @@ See the [Error Reference](/errors) for the full catalog.
 </Accordion>
 
 <Accordion title="message.part_failed" icon="file-circle-xmark">
-Fired when a message's text went out but its files didn't. The message keeps the text's outcome, so `status` is `sent`, `delivered` or `read` and [`message.failed`](#message-failed) doesn't fire. For now this happens when a calendar invite (`.ics`) meets a contact who texts by plain SMS, which can't carry it; iBubbl doesn't send an `.ics` to a contact it already knows texts by plain SMS. It fires once per message.
+Fired when a message's text went out but its files didn't. The message keeps the text's outcome, so `status` is `sent`, `delivered` or `read` and [`message.failed`](#message-failed) doesn't fire. It happens when a file meets a contact who texts by plain SMS, which can't carry it: a PDF, or a calendar invite (`.ics`). iBubbl doesn't send an `.ics` to a contact it already knows texts by plain SMS. It fires once per message.
 
 ```json
 {

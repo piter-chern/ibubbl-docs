@@ -179,7 +179,7 @@ print("has_more:", data["has_more"])
 `data` holds up to `limit` messages, newest first: by `created_at`, then by `id` for messages recorded in the same microsecond. Each item is exactly what [Retrieve a message](/api-reference/messages/retrieve) returns for that message. `has_more` is `true` when more messages match; to get them, repeat the request with `starting_after` set to the `id` of the last item in `data`. An empty `data` comes with `has_more: false`.
 
 - `direction` is `inbound` or `outbound`.
-- `created_at` is when iBubbl recorded the message, in UTC with microseconds. It never changes, which is why the list sorts and filters by it. `sent_at` is when the message went out or arrived, and can be earlier than `created_at` for an inbound message.
+- `created_at` is when iBubbl recorded the message, in UTC with microseconds. It never changes, which is why the list sorts and filters by it. `sent_at` is when the message went out or arrived, and can be earlier than `created_at` for an inbound message. It's set when a send is accepted and replaced by the time it actually goes out, so a message that never went out (`cancelled`, `expired`, or failed before sending) keeps the time it was accepted.
 - For an inbound message, `status` is `delivered`, or `read` once someone on your account has read it in the dashboard. `to` is the contact's number (who sent it), and `channel` is how it arrived.
 - `line_id` and `line_number` name the line the message was on (the one that sent it, or received it): the `id` and `phone_number` in [List lines](/api-reference/lines/list).
 

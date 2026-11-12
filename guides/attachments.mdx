@@ -323,7 +323,7 @@ How the files arrive depends on how the message travels. `channel` on [Retrieve 
 - **SMS/MMS** (the contact isn't on iMessage):
   - **Up to 5 images, 10 MB in all,** go as one MMS with the caption. One video, or one audio file of 2 MB or less, also goes as one MMS.
   - **Anything larger or mixed** (more images, a PDF, other audio, or images with a video) goes as the caption first, then each file as a separate message, a couple of seconds apart. Carriers can deliver those messages out of order.
-  - **PDFs can't be sent over plain SMS.** If the contact's phone only takes SMS/MMS, a message with a PDF fails, and you get [`message.failed`](/webhooks/events).
+  - **PDFs can't be sent over plain SMS.** If the contact's phone only takes SMS/MMS, the caption and any images still go out, but the PDF doesn't. The message keeps the status of what was sent, and you get [`message.part_failed`](/webhooks/events#message-part-failed) for the PDF, not `message.failed`.
 - **RCS** (an Android phone with RCS): the caption first, then **one file per message**, a second or two apart and in your order.
 
 Your `attachments` array and the `202` are the same whichever way the message goes.
