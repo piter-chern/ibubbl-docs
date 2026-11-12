@@ -11,7 +11,7 @@ The first time your account messages a contact, iBubbl assigns the contact to on
 
 It changes in only two cases:
 
-- **The line is no longer active.** The next message to the contact moves them to another of your lines.
+- **The line can no longer be used** (paused, retired or moved to another account). The next message to the contact moves them to another of your lines. See [When a conversation's line is no longer yours](#when-a-conversations-line-is-no-longer-yours).
 - **The contact texts one of your other lines.** Their next message from you comes from the line they texted. Messages in a group don't move anyone.
 
 A line whose Mac is temporarily offline keeps its contacts. Their messages wait as `queued` until it is back. See [Limits and queues](/concepts/limits#offline-lines).
@@ -40,6 +40,16 @@ Every message names its line, in both directions, in the [send](/api-reference/m
 Every `message.*` [webhook](/webhooks/events#the-line_id-field) carries `line_id` too. The line's number is `from_number` on the outbound events (`message.sent`, `message.delivered`, `message.read`, `message.failed`, `message.cancelled`) and `to_number` on `message.inbound`. Tapback events (`message.reaction.*`) don't carry `line_id`: read it from the message they point to.
 
 A [retired](/api-reference/lines/list#responses) line stays in the list, so the `line_id` on an old message always resolves.
+
+### When a conversation's line is no longer yours
+
+A line keeps its ID when it's paused, retired or moved to another account, so a conversation can still name a line you can no longer use. The conversation and its history stay.
+
+- **One-to-one.** The next message to the contact goes out on another of your lines, picked as for a [new contact](#how-a-new-contact-gets-a-line). They see it as a new conversation from that number. [`conversation.line_changed`](/webhooks/events#conversation-line-changed) fires with `cause: "send"`.
+- **Groups.** A group lives on its line and can't move. A send with its `chat_guid` gets `422 no_eligible_line` until someone presses **Continue** on it in the iBubbl dashboard. Continue starts the group again from another of your lines, with the same people, who see it as a new group from a different number. The conversation keeps its `conversation_id`; its `chat_guid` is `null` until the next message, sent from the dashboard, creates the new group, and the old `chat_guid` then returns `404 group_not_found`.
+- **Messages sent from the old line** can't be [edited](/api-reference/messages/edit), [unsent](/api-reference/messages/unsend) or [reacted to](/api-reference/messages/react) any more: those requests get `422 no_eligible_line`.
+
+In the dashboard, such a conversation shows a notice in place of the reply box, naming the line it will continue on.
 
 ## iMessage or SMS
 

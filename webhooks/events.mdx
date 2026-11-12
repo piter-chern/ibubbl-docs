@@ -51,7 +51,7 @@ Every `message.*`, `message.reaction.*` and `scheduled_message.*` event carries 
 
 ### The `line_id` field
 
-Every `message.*` event carries `line_id`: the line that sent the message, or received it. It's the same value as `line_id` on the [message object](/api-reference/messages/retrieve) and `id` in [List lines](/api-reference/lines/list), so you can tell your numbers apart without a lookup. The line's number is in the payload too: `from_number` on the outbound events, `to_number` on `message.inbound`. The `message.reaction.*` events don't carry `line_id`; read it from the message they point to. Nor do the `scheduled_message.*` events: the line is chosen when a scheduled message fires, and its message's own events carry it. See [Which line a message was on](/concepts/lines-and-routing#which-line-a-message-was-on).
+Every `message.*` event carries `line_id`: the line that sent the message, or received it. It's the same value as `line_id` on the [message object](/api-reference/messages/retrieve) and `id` in [List lines](/api-reference/lines/list), so you can tell your numbers apart without a lookup. The line's number is in the payload too: `from_number` on the outbound events, `to_number` on `message.inbound`. The `message.reaction.*` events don't carry `line_id`; read it from the message they point to. Nor do the `scheduled_message.*` events: the line is chosen when a scheduled message fires, and its message's own events carry it. [`conversation.line_changed`](#conversation-line-changed) carries a conversation's previous and new line. See [Which line a message was on](/concepts/lines-and-routing#which-line-a-message-was-on).
 
 ### Ordering and duplicates
 
@@ -573,6 +573,7 @@ Fired when a tapback you sent, from the dashboard or with [Add a tapback](/api-r
 - `messages_error` — Messages on your line reported an error
 - `expired` — it couldn't be sent within 10 minutes, so it was dropped rather than sent late
 - `target_unsent` — the contact unsent the message before the tapback went out
+- `line_inactive` — the line it would go out on was paused or retired before it went out
 - `retract_rejected` — the removal was refused (`action: "remove"`)
 
 [Retrieve](/api-reference/messages/retrieve) shows nothing for a failed tapback; this event is how you learn of it. A failed tapback can be sent again with [Add a tapback](/api-reference/messages/react), which starts a new reaction.
@@ -696,6 +697,39 @@ Fired when a scheduled message is cancelled before it fires: with [Cancel a sche
   }
 }
 ```
+</Accordion>
+
+<Accordion title="conversation.line_changed" icon="arrow-right-arrow-left">
+Fired when a conversation moves to another of your lines. A line keeps its ID when it is paused, retired or moved to another account, so a conversation can still name a line you can no longer use; this event tells you which line it carries on from.
+
+```json
+{
+  "id": "evt_6e1f2a3b-4c5d-4e6f-8a9b-0c1d2e3f4a5b",
+  "type": "conversation.line_changed",
+  "created_at": "2026-11-12T19:05:17.000Z",
+  "data": {
+    "conversation_id": "3a4b5c6d-7e8f-9a0b-1c2d-3e4f5a6b7c8d",
+    "kind": "one_to_one",
+    "chat_guid": null,
+    "previous_line_id": "0e1f2a3b-4c5d-4e6f-8a7b-9c0d1e2f3a4b",
+    "previous_line_number": null,
+    "line_id": "7c8d9e0f-1a2b-4c3d-8e4f-5a6b7c8d9e0f",
+    "line_number": "+14155550101",
+    "cause": "continued",
+    "changed_at": "2026-11-12T19:05:17.000Z"
+  }
+}
+```
+
+`cause` values:
+
+- `continued` — someone pressed **Continue** on the conversation in the iBubbl dashboard after its line stopped being usable
+- `send` — a one-to-one message went out on another of your lines than the conversation's last one, usually because that line can no longer be used
+- `inbound` — the contact wrote to another of your lines
+
+`previous_line_number` is the old line's number while that line is still yours, and `null` once it belongs to another account. `chat_guid` is the group's `chat_guid` for a group and `null` for a one-to-one conversation, as on the [message object](/api-reference/messages/retrieve).
+
+For a group, `continued` means the group starts again from the new line, with the same people: `chat_guid` is `null` until the next message, sent from the dashboard, creates the new group, and the old `chat_guid` returns `404 group_not_found`. The conversation keeps its `conversation_id`. See [When a conversation's line is no longer yours](/concepts/lines-and-routing#when-a-conversations-line-is-no-longer-yours).
 </Accordion>
 
 </AccordionGroup>

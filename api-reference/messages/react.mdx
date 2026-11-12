@@ -122,7 +122,7 @@ The tapback is accepted and on its way.
 | `type` / `emoji` | The tapback, as its name and as an emoji. |
 | `direction` | Always `outbound`: a tapback you sent. |
 | `status` | `pending` (accepted, not on the phone yet), `sent` (on the phone; `message.reaction.added` has fired), `failed` (never sent; see `failed_reason`) or `removed` (you removed it, or a newer tapback replaced it). |
-| `failed_reason` | Why a `failed` tapback wasn't sent: `sms_target`, `target_not_found`, `bb_rejected`, `messages_error`, `expired`, `retract_rejected` or `target_unsent`. Otherwise `null`. See [`message.reaction.failed`](/webhooks/events). |
+| `failed_reason` | Why a `failed` tapback wasn't sent: `sms_target`, `target_not_found`, `bb_rejected`, `messages_error`, `expired`, `retract_rejected`, `target_unsent` or `line_inactive` (its line was paused or retired before it went out). Otherwise `null`. See [`message.reaction.failed`](/webhooks/events). |
 | `created_at` / `removed_at` | When you sent it, and when it was removed or replaced (UTC; `removed_at` is `null` while it's active). |
 
 ```json
