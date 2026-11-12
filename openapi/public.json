@@ -4266,7 +4266,7 @@
           "link_preview": {
             "type": "boolean",
             "title": "Link Preview",
-            "description": "`true` when the message was sent through the API with `link_preview: true`. A message typed in the dashboard gets a preview card for its link without it, and shows `false`.",
+            "description": "`true` when the message asked for a preview card for its link: sent or scheduled through the API with `link_preview: true`, or scheduled in the dashboard with text that ends in exactly one link. A message typed in the dashboard and sent right away gets a card for its link without it, and shows `false`.",
             "default": false
           },
           "reply_to_message_id": {
@@ -4689,7 +4689,7 @@
           "link_preview": {
             "type": "boolean",
             "title": "Link Preview",
-            "description": "Whether it is sent with a preview card for its link. Always `false` for messages scheduled in the dashboard."
+            "description": "Whether it was scheduled through the API with a preview card for its link. A message scheduled in the dashboard shows `false`, and still gets a card when it fires, like a message typed there, if its text ends in exactly one link with no other link in it and it has no files, `effect` or reply."
           },
           "message_id": {
             "anyOf": [
@@ -5734,7 +5734,7 @@
               }
             ],
             "title": "Link Preview",
-            "description": "Turn the preview card on or off. With it on, the text the message will have (the new `body`, or the current one) must follow the `link_preview` rules (`422 validation_error`), and so must any later change of `body`.",
+            "description": "Turn the preview card on or off. With it on, the text the message will have (the new `body`, or the current one) must follow the `link_preview` rules (`422 validation_error`), and so must any later change of `body`. On a message scheduled in the dashboard, `false` doesn't remove the card its text gets anyway (see `link_preview` on the scheduled message).",
             "examples": [
               true
             ]
