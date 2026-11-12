@@ -182,7 +182,7 @@ if not res.ok:
 </ResponseField>
 
 <ResponseField name="no_eligible_line" type="422">
-  No line on your account can take this request right now: for example, a contact you haven't messaged before while your line is offline, or a group whose line is no longer active. Nothing was sent. Send again once your line is back online.
+  No line on your account can take this request right now: for example, a contact you haven't messaged before while your line is offline, or a group whose line is no longer active. Nothing was sent. Send again once your line is back online. A [scheduled message](/api-reference/scheduled-messages/create) that finds no line when it fires fails with `failed_reason: "no_eligible_line"`; scheduling one to a contact you have no conversation with while no line of yours is active is `503 no_active_line` instead.
 
   Also returned by [Edit](/api-reference/messages/edit), [Unsend](/api-reference/messages/unsend), [Add a tapback](/api-reference/messages/react), [Remove a tapback](/api-reference/messages/remove-reaction) and [Start typing](/api-reference/conversations/start-typing) when the line the message or conversation is on is no longer active on your account, for example because it was moved to another account. Those requests won't succeed later: don't retry them.
 </ResponseField>
@@ -268,7 +268,7 @@ if not res.ok:
 </ResponseField>
 
 <ResponseField name="no_active_line" type="503">
-  [Schedule a message](/api-reference/scheduled-messages/create) to a contact you have no conversation with yet: your account has no active line to start one on. Retry once a line is active again.
+  [Schedule a message](/api-reference/scheduled-messages/create) to a contact you have no conversation with yet: your account has no active line to start one on. Nothing was scheduled and the `idempotency_key` stays unused, so send the same request again, with the same key, once a line of yours is active. A contact you named with `to` is created all the same. Not the same as `422 no_eligible_line`: that is a send no line can take right now, or a scheduled message that finds no line when it fires.
 </ResponseField>
 
 <ResponseField name="limits_unavailable" type="503">
@@ -405,9 +405,9 @@ if not res.ok:
 | `internal_error` | 500 | ✅ Retry with the same idempotency key after a short backoff. |
 | `opt_out_check_unavailable` | 503 | ✅ Retry after a short backoff. |
 | `limits_unavailable` | 503 | ✅ Retry after a few seconds. |
-| `no_active_line` | 503 | ⚠️ Once a line of yours is active again. |
+| `no_active_line` | 503 | ⚠️ Send the same request again (same `idempotency_key`) once a line of yours is active. Nothing was scheduled. |
 
-The general rule: **don't retry 4xx**. Most 4xxes are payload-level problems that retrying won't fix. The exception is `429 rate_limited`: wait, then send the same request again (on a list, a conversation action, an upload or an attachment send, `Retry-After` says how long). The limit 422s (`daily_cap_exhausted`, `cold_cap_exhausted`) are retryable only after the limit resets at midnight ET; iBubbl does not queue them for you. The hourly new-contact limit and an offline line are different: those sends are accepted and wait (`pending` with `held_reason: "hourly_limit"`, or `queued`), so resending just creates a duplicate. The numbers are on [Limits and queues](/concepts/limits). A send refused with a `404` or `422` creates no message, so its `idempotency_key` stays unused and you can reuse it when you send again.
+The general rule: **don't retry 4xx**. Most 4xxes are payload-level problems that retrying won't fix. The exception is `429 rate_limited`: wait, then send the same request again (on a list, a conversation action, an upload or an attachment send, `Retry-After` says how long). The limit 422s (`daily_cap_exhausted`, `cold_cap_exhausted`) are retryable only after the limit resets at midnight ET; iBubbl does not queue them for you. The hourly new-contact limit and an offline line are different: those sends are accepted and wait (`pending` with `held_reason: "hourly_limit"`, or `queued`), so resending just creates a duplicate. The numbers are on [Limits and queues](/concepts/limits). A send refused with a `404` or `422` creates no message, so its `idempotency_key` stays unused and you can reuse it when you send again. The same holds for a scheduled message refused with `503 no_active_line`.
 
 ## HTTP status mapping summary
 
@@ -423,5 +423,5 @@ The general rule: **don't retry 4xx**. Most 4xxes are payload-level problems tha
 | `422` | Validation, routing or send-limit failure. |
 | `429` | `rate_limited`: too many list requests, conversation actions or uploads from your account, or attachment downloads busy (all with `Retry-After`), or too many inbound events for one source on `/v1/events`. |
 | `500` | No owner rep (`no_owner_rep`) or an unexpected iBubbl error (`internal_error`). |
-| `503` | `opt_out_check_unavailable` on a tapback, edit or typing call, `limits_unavailable` on a lines read (retry after a short backoff), or `no_active_line` when scheduling to a new contact with no active line. |
+| `503` | `opt_out_check_unavailable` on a tapback, edit or typing call, `limits_unavailable` on a lines read (retry after a short backoff), or `no_active_line` when scheduling to a contact you have no conversation with yet while no line of yours is active (send the same request again, same `idempotency_key`, once one is). |
 | `502` / `503` without a `detail.error` | The network edge during a deployment blip, not iBubbl itself. Retry with the same idempotency key after a short backoff. |

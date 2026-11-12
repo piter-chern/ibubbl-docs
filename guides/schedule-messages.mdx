@@ -123,6 +123,7 @@ To have it go out at `send_at`, schedule it inside the contact's sending hours. 
 | Not blocked | ✅ `422 contact_blocked` | ✅ `failed`, `contact_blocked` |
 | The reply target is in the conversation, not unsent | ✅ `422 reply_target_*` | Sent without the quote if the contact unsent it since |
 | Files download and meet the limits | ✅ `422` file errors | Already copied: not fetched again |
+| A line of yours is active, if you have no conversation with the contact yet | ✅ `503 no_active_line` (retry with the same key) | |
 | A line of yours can send it | | ✅ `failed`, `no_eligible_line`; a line that moved to another account is never used |
 | Sending hours, new-contact limits | | Held or queued, as above |
 

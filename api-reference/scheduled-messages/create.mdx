@@ -215,5 +215,12 @@ Nothing was scheduled, and the key stays unused.
 `rate_limited`: over 300 conversation actions in 60 seconds. Wait the `Retry-After` header's seconds, then send the same request again, with the same `idempotency_key`.
 
 **503 Service Unavailable**
-
-`no_active_line`: your account has no active line to send from.
+```json
+{
+  "detail": {
+    "error": "no_active_line",
+    "message": "No active line is available to start a conversation with this contact. Try again once one of your lines is active."
+  }
+}
+```
+`no_active_line`: you have no conversation with this contact yet, and no line of yours is active to start one on. Nothing was scheduled, and the key stays unused: send the same request again, with the same `idempotency_key`, once a line is active. A contact you gave by `to` is created all the same. A contact you already have a conversation with isn't refused here; if no line can send it when it fires, it fails with `no_eligible_line` (see [What is checked when](/guides/schedule-messages#what-is-checked-when)).

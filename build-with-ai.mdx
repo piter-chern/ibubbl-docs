@@ -292,6 +292,11 @@ https://docs.ibubbl.com/guides/schedule-messages)
   on one is 409 idempotency_conflict on the other. Same key + same payload =
   200 with the current state; a different send_at is a 409 (use PATCH).
   Never use keys starting with "sched:" (422).
+- 503 no_active_line: no conversation with the contact yet AND no active
+  line to start one on. Nothing scheduled, key unused: send the same
+  request (same key) once a line is active. A `to` contact is still
+  created. Not 422 no_eligible_line (a send no line can take now, or a
+  scheduled message that finds no line when it fires).
 - send_at is when the message is created; iBubbl doesn't shift it to the
   contact's time zone. Outside the contact's sending hours, it fires at
   send_at but goes out when the window opens.
