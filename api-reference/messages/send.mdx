@@ -24,7 +24,7 @@ openapi: 'POST /v1/messages'
 | `reply_to_message_id` | string (UUID) | No | Send as an inline reply that quotes an earlier message: a message `id`, or the `message_id` of a [`message.inbound`](/webhooks/events) event. It must be in the conversation you're sending to (the same contact, or the same group); otherwise `422 reply_target_not_found`. iMessage only. Not allowed with `participant_phones` or `attachments`. See [Reply and send with effects](/guides/send-messages#reply-to-a-message-and-send-with-effects). |
 | `effect` | string | No | An iMessage effect: `slam`, `loud`, `gentle`, `invisible`, `echo`, `spotlight`, `balloons`, `confetti`, `love`, `lasers`, `fireworks`, `celebration` or `shooting_star`. iMessage only. Not allowed with `participant_phones` or `attachments`. |
 | `link_preview` | boolean, default `false` | No | Send the link with a preview card (the page's title and image), as when a person types it on an iPhone. Without it, a link goes out as plain text. `body` must end in exactly one `http` or `https` link, with no other link before it. One-to-one only (`to` or `contact_id`), and not with `attachments`, `effect` or `reply_to_message_id`. Anything else is refused with `422 validation_error`. See [Link preview cards](#link-preview-cards). |
-| `idempotency_key` | string, 1–128 characters | Yes | Your unique key for this send; a UUIDv4 is recommended. The same key with the same payload replays the original message; the same key with a different payload returns `409`. A key whose message ended `failed` or `expired` is released, and a retry sends a new message. See [Idempotency](/idempotency). |
+| `idempotency_key` | string, 1–128 characters | Yes | Your unique key for this send; a UUIDv4 is recommended. The same key with the same payload replays the original message; the same key with a different payload returns `409`. A key whose message ended `failed` or `expired` is released, and a retry sends a new message. Keys are shared with [Schedule a message](/api-reference/scheduled-messages/create): a key used there is `409 idempotency_conflict` here. Keys starting with `sched:` are refused (`422 validation_error`). See [Idempotency](/idempotency). |
 
 Fields not listed above are ignored without an error: the request still succeeds, and they are not stored.
 
@@ -316,6 +316,7 @@ Also returned for a `contact_id` that is malformed, belongs to another account, 
   }
 }
 ```
+The same answer, with `message` naming `POST /v1/scheduled-messages`, when the key was already used to [schedule a message](/api-reference/scheduled-messages/create). Nothing was sent.
 
 **422 Unprocessable Entity**
 ```json

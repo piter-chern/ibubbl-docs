@@ -498,7 +498,7 @@
             }
           },
           "429": {
-            "description": "`rate_limited`: more than 300 conversation actions in 60 seconds from your account (all keys, and tapbacks, read, typing, edit, unsend and cancel requests, count together; list requests have their own budget). Wait `Retry-After` seconds, then send the same request again.",
+            "description": "`rate_limited`: more than 300 conversation actions in 60 seconds from your account (all keys, and tapbacks, read, typing, edit, unsend and cancel requests and scheduled-message creates, updates and cancels, count together; list requests have their own budget). Wait `Retry-After` seconds, then send the same request again.",
             "headers": {
               "Retry-After": {
                 "description": "Seconds to wait before retrying.",
@@ -608,7 +608,7 @@
             }
           },
           "429": {
-            "description": "`rate_limited`: more than 300 conversation actions in 60 seconds from your account (all keys, and tapbacks, read, typing, edit, unsend and cancel requests, count together; list requests have their own budget). Wait `Retry-After` seconds, then send the same request again.",
+            "description": "`rate_limited`: more than 300 conversation actions in 60 seconds from your account (all keys, and tapbacks, read, typing, edit, unsend and cancel requests and scheduled-message creates, updates and cancels, count together; list requests have their own budget). Wait `Retry-After` seconds, then send the same request again.",
             "headers": {
               "Retry-After": {
                 "description": "Seconds to wait before retrying.",
@@ -719,7 +719,7 @@
             }
           },
           "429": {
-            "description": "`rate_limited`: more than 300 conversation actions in 60 seconds from your account (all keys, and tapbacks, read, typing, edit, unsend and cancel requests, count together; list requests have their own budget). Wait `Retry-After` seconds, then send the same request again.",
+            "description": "`rate_limited`: more than 300 conversation actions in 60 seconds from your account (all keys, and tapbacks, read, typing, edit, unsend and cancel requests and scheduled-message creates, updates and cancels, count together; list requests have their own budget). Wait `Retry-After` seconds, then send the same request again.",
             "headers": {
               "Retry-After": {
                 "description": "Seconds to wait before retrying.",
@@ -840,7 +840,7 @@
             }
           },
           "429": {
-            "description": "`rate_limited`: more than 300 conversation actions in 60 seconds from your account (all keys, and tapbacks, read, typing, edit, unsend and cancel requests, count together; list requests have their own budget). Wait `Retry-After` seconds, then send the same request again.",
+            "description": "`rate_limited`: more than 300 conversation actions in 60 seconds from your account (all keys, and tapbacks, read, typing, edit, unsend and cancel requests and scheduled-message creates, updates and cancels, count together; list requests have their own budget). Wait `Retry-After` seconds, then send the same request again.",
             "headers": {
               "Retry-After": {
                 "description": "Seconds to wait before retrying.",
@@ -941,7 +941,7 @@
             }
           },
           "429": {
-            "description": "`rate_limited`: more than 300 conversation actions in 60 seconds from your account (all keys, and tapbacks, read, typing, edit, unsend and cancel requests, count together; list requests have their own budget). Wait `Retry-After` seconds, then send the same request again.",
+            "description": "`rate_limited`: more than 300 conversation actions in 60 seconds from your account (all keys, and tapbacks, read, typing, edit, unsend and cancel requests and scheduled-message creates, updates and cancels, count together; list requests have their own budget). Wait `Retry-After` seconds, then send the same request again.",
             "headers": {
               "Retry-After": {
                 "description": "Seconds to wait before retrying.",
@@ -970,6 +970,603 @@
           },
           "422": {
             "description": "`not_cancellable`: not a message of yours that is still waiting to go out (it was sent, failed or expired, or it is a message you received).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "`forbidden`: your iBubbl account is suspended or cancelled.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/scheduled-messages": {
+      "post": {
+        "tags": [
+          "Scheduled messages"
+        ],
+        "summary": "Schedule a message",
+        "description": "Schedule a 1:1 message to go out at `send_at`, from 1 minute to 90 days ahead. The same content as `POST /v1/messages`: text, files, an effect or a reply.\n\nOpt-outs, blocks and the contact are checked now, and again when it fires: a contact who opts out in the meantime doesn't get it (the scheduled message becomes `failed` and `scheduled_message.failed` fires). At `send_at` it becomes a normal message (`message_id`, `scheduled_message.fired`), with the usual sending hours, limits and `message.*` webhooks. See [Schedule messages](/guides/schedule-messages).\n\n**Idempotency is required**, and keys are shared with `POST /v1/messages`. A retry with the same key and payload answers `200` with the scheduled message as it is now.\n\nAn account can have 5,000 messages waiting (`422 scheduled_limit_reached`). Groups aren't supported yet.\n\nCounts toward the conversation-actions rate limit (300 a minute per account).",
+        "operationId": "v1_create_scheduled_message_v1_scheduled_messages_post",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ScheduledMessageCreate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Scheduled.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ScheduledMessage"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "A retry of an earlier request: the scheduled message as it is now.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ScheduledMessage"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid API key.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "`not_found` (no contact with that `contact_id`) or `file_not_found` (an upload id that isn't yours, or was deleted).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "`idempotency_conflict`: the key was used with a different payload, or by `POST /v1/messages`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "`validation_error` (the body's shape, including a `send_at` without a time zone), `scheduled_group_unsupported` (`chat_guid`, `participant_phones` or `group_name`: groups can't be scheduled yet), `send_at_too_soon`, `send_at_too_far`, `scheduled_limit_reached`, `contact_opted_out`, `contact_blocked`, `reply_target_not_found`, `reply_target_unsent`, `reply_target_partly_unsent`, `first_message_needs_text`, `attachment_fetch_failed`, `attachment_too_large`, `unsupported_attachment`, `attachment_combination_not_supported` or `file_expired`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "`no_active_line`: the account has no active line to send from.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "`rate_limited`: more than 300 conversation actions in 60 seconds from your account (all keys, and tapbacks, read, typing, edit, unsend and cancel requests and scheduled-message creates, updates and cancels, count together; list requests have their own budget). Wait `Retry-After` seconds, then send the same request again.",
+            "headers": {
+              "Retry-After": {
+                "description": "Seconds to wait before retrying.",
+                "schema": {
+                  "type": "integer"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "`forbidden`: your iBubbl account is suspended or cancelled.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "get": {
+        "tags": [
+          "Scheduled messages"
+        ],
+        "summary": "List scheduled messages",
+        "description": "List your scheduled messages, most recently scheduled first, including the ones scheduled in the dashboard. For what is still due, filter on `status=scheduled`.\n\nResults are paginated: pass the `id` of the last item as `starting_after` while `has_more` is true. See [Pagination](/concepts/pagination).\n\nFilters combine with AND. A filter value that matches nothing (including another account's `contact_id`) returns an empty page. An unknown or repeated query parameter returns `422 validation_error`.\n\nLists allow 120 requests a minute per account, across all your API keys and all lists. Over that, the answer is `429 rate_limited` with a `Retry-After` header in seconds.",
+        "operationId": "v1_list_scheduled_messages_v1_scheduled_messages_get",
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 100,
+              "minimum": 1,
+              "description": "How many items to return, 1 to 100. Defaults to 50.",
+              "default": 50,
+              "title": "Limit"
+            },
+            "description": "How many items to return, 1 to 100. Defaults to 50."
+          },
+          {
+            "name": "starting_after",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "The `id` of the last item on the page you already have. Returns the items that come after it, in the same order. Leave it out for the first page. An `id` that isn't one of yours returns `422 invalid_cursor`.",
+              "title": "Starting After"
+            },
+            "description": "The `id` of the last item on the page you already have. Returns the items that come after it, in the same order. Leave it out for the first page. An `id` that isn't one of yours returns `422 invalid_cursor`."
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "scheduled",
+                    "sending",
+                    "fired",
+                    "failed",
+                    "cancelled"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Only scheduled messages with this `status`.",
+              "title": "Status"
+            },
+            "description": "Only scheduled messages with this `status`."
+          },
+          {
+            "name": "contact_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Only scheduled messages to this contact.",
+              "title": "Contact Id"
+            },
+            "description": "Only scheduled messages to this contact."
+          },
+          {
+            "name": "conversation_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Only scheduled messages in this conversation.",
+              "title": "Conversation Id"
+            },
+            "description": "Only scheduled messages in this conversation."
+          },
+          {
+            "name": "send_after",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Only those with `send_at` strictly after this time. ISO 8601 with a time zone, e.g. `2026-11-20T00:00:00Z`; in a query string, write `Z` or encode `+` as `%2B`.",
+              "title": "Send After"
+            },
+            "description": "Only those with `send_at` strictly after this time. ISO 8601 with a time zone, e.g. `2026-11-20T00:00:00Z`; in a query string, write `Z` or encode `+` as `%2B`."
+          },
+          {
+            "name": "send_before",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Only those with `send_at` strictly before this time. Same format as `send_after`.",
+              "title": "Send Before"
+            },
+            "description": "Only those with `send_at` strictly before this time. Same format as `send_after`."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "A page of scheduled messages.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ScheduledMessageList"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid API key.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "`validation_error` (a bad, unknown or repeated query parameter, or `limit` outside 1\u2013100) or `invalid_cursor` (`starting_after` is not one of your scheduled messages).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "`rate_limited`: more than 120 list requests in 60 seconds from your account (all keys and all lists count together). Wait `Retry-After` seconds, then send the same request again.",
+            "headers": {
+              "Retry-After": {
+                "description": "Seconds to wait before retrying.",
+                "schema": {
+                  "type": "integer"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "`forbidden`: your iBubbl account is suspended or cancelled.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/scheduled-messages/{scheduled_message_id}": {
+      "get": {
+        "tags": [
+          "Scheduled messages"
+        ],
+        "summary": "Retrieve a scheduled message",
+        "description": "Fetch one scheduled message by its id: its `status`, and once it has fired, the `message_id` of the message it created.\n\nReturns `404 not_found` both for ids that don't exist and for another account's.",
+        "operationId": "v1_get_scheduled_message_v1_scheduled_messages__scheduled_message_id__get",
+        "parameters": [
+          {
+            "name": "scheduled_message_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Scheduled Message Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The scheduled message.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ScheduledMessage"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid API key.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "`not_found`: no scheduled message with that id on your account.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "`forbidden`: your iBubbl account is suspended or cancelled.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "patch": {
+        "tags": [
+          "Scheduled messages"
+        ],
+        "summary": "Update a scheduled message",
+        "description": "Change the text, the time, or both, of a message that is still `scheduled`. The new `send_at` follows the same rules as when scheduling. On a message with files, `\"body\": null` (or `\"\"`) removes the text and sends the files alone. Files, the effect and the reply can't be changed: cancel it and schedule a new one.\n\nA message that is firing right now can't be changed (`409 scheduled_message_sending`); one that has fired, failed or been cancelled is `422 not_editable`.\n\nRetrying the original `POST` with its `idempotency_key` returns the updated message.\n\nCounts toward the conversation-actions rate limit (300 a minute per account).",
+        "operationId": "v1_update_scheduled_message_v1_scheduled_messages__scheduled_message_id__patch",
+        "parameters": [
+          {
+            "name": "scheduled_message_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Scheduled Message Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ScheduledMessageUpdate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The scheduled message, updated.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ScheduledMessage"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid API key.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "`not_found`: no scheduled message with that id on your account.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "`rate_limited`: more than 300 conversation actions in 60 seconds from your account (all keys, and tapbacks, read, typing, edit, unsend and cancel requests and scheduled-message creates, updates and cancels, count together; list requests have their own budget). Wait `Retry-After` seconds, then send the same request again.",
+            "headers": {
+              "Retry-After": {
+                "description": "Seconds to wait before retrying.",
+                "schema": {
+                  "type": "integer"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "`scheduled_message_sending`: it is firing right now.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "`validation_error` (no field, a null `send_at`, an unknown field, or a `send_at` without a time zone), `send_at_too_soon`, `send_at_too_far`, `scheduled_empty` (removing the text of a message without files), `first_message_needs_text` (removing it from the first message to a contact) or `not_editable` (it has already fired, failed or been cancelled).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "`forbidden`: your iBubbl account is suspended or cancelled.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/scheduled-messages/{scheduled_message_id}/cancel": {
+      "post": {
+        "tags": [
+          "Scheduled messages"
+        ],
+        "summary": "Cancel a scheduled message",
+        "description": "Cancel a message that is still `scheduled`. It never fires, its copied files are deleted, and `scheduled_message.cancelled` fires.\n\nIdempotent: cancelling a cancelled message answers `200` with it, and no second webhook fires. A message that is firing right now can't be stopped (`409 scheduled_message_sending`); once it has fired, cancel the message itself with `POST /v1/messages/{message_id}/cancel` while it is still waiting to go out. One that fired or failed is `422 not_cancellable`.\n\nCounts toward the conversation-actions rate limit (300 a minute per account).",
+        "operationId": "v1_cancel_scheduled_message_v1_scheduled_messages__scheduled_message_id__cancel_post",
+        "parameters": [
+          {
+            "name": "scheduled_message_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Scheduled Message Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The scheduled message, now `cancelled`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ScheduledMessage"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid API key.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "`not_found`: no scheduled message with that id on your account.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "`rate_limited`: more than 300 conversation actions in 60 seconds from your account (all keys, and tapbacks, read, typing, edit, unsend and cancel requests and scheduled-message creates, updates and cancels, count together; list requests have their own budget). Wait `Retry-After` seconds, then send the same request again.",
+            "headers": {
+              "Retry-After": {
+                "description": "Seconds to wait before retrying.",
+                "schema": {
+                  "type": "integer"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "`scheduled_message_sending`: it is firing right now.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "`not_cancellable`: it has already fired or failed.",
             "content": {
               "application/json": {
                 "schema": {
@@ -2070,7 +2667,7 @@
             }
           },
           "429": {
-            "description": "`rate_limited`: more than 300 conversation actions in 60 seconds from your account (all keys, and tapbacks, read, typing, edit, unsend and cancel requests, count together; list requests have their own budget). Wait `Retry-After` seconds, then send the same request again.",
+            "description": "`rate_limited`: more than 300 conversation actions in 60 seconds from your account (all keys, and tapbacks, read, typing, edit, unsend and cancel requests and scheduled-message creates, updates and cancels, count together; list requests have their own budget). Wait `Retry-After` seconds, then send the same request again.",
             "headers": {
               "Retry-After": {
                 "description": "Seconds to wait before retrying.",
@@ -2151,7 +2748,7 @@
             }
           },
           "429": {
-            "description": "`rate_limited`: more than 300 conversation actions in 60 seconds from your account (all keys, and tapbacks, read, typing, edit, unsend and cancel requests, count together; list requests have their own budget). Wait `Retry-After` seconds, then send the same request again.",
+            "description": "`rate_limited`: more than 300 conversation actions in 60 seconds from your account (all keys, and tapbacks, read, typing, edit, unsend and cancel requests and scheduled-message creates, updates and cancels, count together; list requests have their own budget). Wait `Retry-After` seconds, then send the same request again.",
             "headers": {
               "Retry-After": {
                 "description": "Seconds to wait before retrying.",
@@ -2250,7 +2847,7 @@
             }
           },
           "429": {
-            "description": "`rate_limited`: more than 300 conversation actions in 60 seconds from your account (all keys, and tapbacks, read, typing, edit, unsend and cancel requests, count together; list requests have their own budget). Wait `Retry-After` seconds, then send the same request again.",
+            "description": "`rate_limited`: more than 300 conversation actions in 60 seconds from your account (all keys, and tapbacks, read, typing, edit, unsend and cancel requests and scheduled-message creates, updates and cancels, count together; list requests have their own budget). Wait `Retry-After` seconds, then send the same request again.",
             "headers": {
               "Retry-After": {
                 "description": "Seconds to wait before retrying.",
@@ -3809,7 +4406,7 @@
               }
             ],
             "title": "Failed Reason",
-            "description": "Why a `failed` tapback wasn't sent: `sms_target`, `target_not_found`, `bb_rejected`, `messages_error`, `expired`, `retract_rejected` or `target_unsent`. Null otherwise."
+            "description": "Why a `failed` tapback wasn't sent: `sms_target`, `target_not_found`, `bb_rejected`, `messages_error`, `expired`, `retract_rejected`, `target_unsent` or `line_inactive` (its line was suspended or archived before it went out). Null otherwise."
           },
           "created_at": {
             "anyOf": [
@@ -3860,6 +4457,259 @@
           "status": "pending",
           "type": "love"
         }
+      },
+      "ScheduledMessage": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id",
+            "description": "The scheduled message's id. Not a message id: see `message_id`."
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "scheduled",
+              "sending",
+              "fired",
+              "failed",
+              "cancelled"
+            ],
+            "title": "Status",
+            "description": "`scheduled` = waiting for `send_at`; `sending` = being turned into a message right now (seconds); `fired` = the message was created (`message_id`): follow it for sending and delivery, as it may still wait for the contact's sending hours or a line limit; `failed` = it was refused when it fired and no message was created (`failed_reason`); `cancelled` = cancelled before it fired."
+          },
+          "send_at": {
+            "type": "string",
+            "title": "Send At",
+            "description": "When it is due, ISO 8601 UTC.",
+            "examples": [
+              "2026-11-20T14:00:00.000000Z"
+            ]
+          },
+          "to": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "To",
+            "description": "The contact's number.",
+            "examples": [
+              "+14155551234"
+            ]
+          },
+          "contact_id": {
+            "type": "string",
+            "title": "Contact Id"
+          },
+          "conversation_id": {
+            "type": "string",
+            "title": "Conversation Id",
+            "description": "The 1:1 conversation it will be sent in."
+          },
+          "body": {
+            "type": "string",
+            "title": "Body",
+            "description": "The text; empty when only files are scheduled."
+          },
+          "attachments": {
+            "items": {
+              "$ref": "#/components/schemas/ScheduledMessageAttachment"
+            },
+            "type": "array",
+            "title": "Attachments",
+            "description": "The files, in order; empty when there are none."
+          },
+          "effect": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "slam",
+                  "loud",
+                  "gentle",
+                  "invisible",
+                  "echo",
+                  "spotlight",
+                  "balloons",
+                  "confetti",
+                  "love",
+                  "lasers",
+                  "fireworks",
+                  "celebration",
+                  "shooting_star"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Effect"
+          },
+          "reply_to_message_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reply To Message Id"
+          },
+          "message_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Message Id",
+            "description": "The id of the message it created, once `fired`; use it with `GET /v1/messages/{message_id}` and to match `message.*` webhooks."
+          },
+          "fired_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fired At",
+            "description": "When it fired, ISO 8601 UTC. Null until then."
+          },
+          "failed_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Failed Reason",
+            "description": "Why it was refused, when `failed`: `contact_opted_out`, `contact_blocked`, `contact_deleted`, `no_eligible_line`, `missed_window` (iBubbl couldn't send for more than 6 hours after `send_at`), or another send refusal code.",
+            "examples": [
+              "contact_opted_out"
+            ]
+          },
+          "created_at": {
+            "type": "string",
+            "title": "Created At",
+            "examples": [
+              "2026-11-12T18:04:11.532901Z"
+            ]
+          },
+          "updated_at": {
+            "type": "string",
+            "title": "Updated At",
+            "examples": [
+              "2026-11-12T18:04:11.532901Z"
+            ]
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "status",
+          "send_at",
+          "contact_id",
+          "conversation_id",
+          "body",
+          "attachments",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "ScheduledMessage",
+        "example": {
+          "attachments": [],
+          "body": "Hi Sam, a reminder about your appointment tomorrow at 10.",
+          "contact_id": "c8a1f4e2-3b9d-4f7c-a8e5-1d2c3b4a5e6f",
+          "conversation_id": "2f6b7c8d-9e0f-4a1b-8c2d-3e4f5a6b7c8d",
+          "created_at": "2026-11-12T18:04:11.532901Z",
+          "id": "5d1e2f3a-4b5c-4d6e-8f70-81920a1b2c3d",
+          "send_at": "2026-11-20T14:00:00.000000Z",
+          "status": "scheduled",
+          "to": "+14155551234",
+          "updated_at": "2026-11-12T18:04:11.532901Z"
+        }
+      },
+      "ScheduledMessageAttachment": {
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": [
+              "image",
+              "gif",
+              "video",
+              "audio",
+              "file"
+            ],
+            "title": "Kind",
+            "description": "`file` is a PDF (or another document)."
+          },
+          "mime_type": {
+            "type": "string",
+            "title": "Mime Type",
+            "examples": [
+              "image/jpeg"
+            ]
+          },
+          "size_bytes": {
+            "type": "integer",
+            "title": "Size Bytes"
+          },
+          "filename": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Filename",
+            "description": "The name the recipient will see. Null for files without a usable name, and for messages scheduled in the dashboard.",
+            "examples": [
+              "Invoice 1042.pdf"
+            ]
+          }
+        },
+        "type": "object",
+        "required": [
+          "kind",
+          "mime_type",
+          "size_bytes"
+        ],
+        "title": "ScheduledMessageAttachment"
+      },
+      "ScheduledMessageList": {
+        "properties": {
+          "data": {
+            "items": {
+              "$ref": "#/components/schemas/ScheduledMessage"
+            },
+            "type": "array",
+            "title": "Data",
+            "description": "Up to `limit` scheduled messages, most recently scheduled first: by `created_at`, then by `id`."
+          },
+          "has_more": {
+            "type": "boolean",
+            "title": "Has More",
+            "description": "Whether more match after the last one in `data`. To get them, repeat the request with `starting_after` set to its `id`."
+          }
+        },
+        "type": "object",
+        "required": [
+          "data",
+          "has_more"
+        ],
+        "title": "ScheduledMessageList"
       },
       "TypingStatus": {
         "properties": {
@@ -4462,7 +5312,7 @@
             "maxLength": 128,
             "minLength": 1,
             "title": "Idempotency Key",
-            "description": "Client-supplied unique key per logical send. Keys never expire: reusing a key with the same payload replays the original message, however long ago it was sent, and the same key with a different payload returns `409 idempotency_conflict`. The one exception is a message that ended `failed` or `expired`: its key is released and the retry is sent as a new message. The payload compared is the routing field exactly as sent (`to`, `contact_id`, `chat_guid`, or the sorted `participant_phones` plus `group_name`), `body`, and `effect`, `reply_to_message_id` and `attachments` when set, so a retry that switches from `to` to the same contact's `contact_id` is a 409. Generate a new UUIDv4 for every distinct message.",
+            "description": "Client-supplied unique key per logical send. Keys never expire: reusing a key with the same payload replays the original message, however long ago it was sent, and the same key with a different payload returns `409 idempotency_conflict`. The one exception is a message that ended `failed` or `expired`: its key is released and the retry is sent as a new message. The payload compared is the routing field exactly as sent (`to`, `contact_id`, `chat_guid`, or the sorted `participant_phones` plus `group_name`), `body`, and `effect`, `reply_to_message_id` and `attachments` when set, so a retry that switches from `to` to the same contact's `contact_id` is a 409. Keys are shared with `POST /v1/scheduled-messages`: a key already used to schedule a message is a 409 here. Must not start with `sched:`. Generate a new UUIDv4 for every distinct message.",
             "examples": [
               "a3f2c8d9-e0f1-4b4d-9c5a-7b8e2d1f0c4a"
             ]
@@ -4527,6 +5377,209 @@
         "title": "ReactionCreate",
         "example": {
           "type": "love"
+        }
+      },
+      "ScheduledMessageCreate": {
+        "properties": {
+          "contact_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Contact Id",
+            "description": "The contact to message (a UUID). Exactly one of `contact_id` and `to`.",
+            "examples": [
+              "c8a1f4e2-3b9d-4f7c-a8e5-1d2c3b4a5e6f"
+            ]
+          },
+          "to": {
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^\\+[1-9]\\d{7,14}$"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "To",
+            "description": "The number to message, in E.164 (e.g. `+14155551234`). A number that isn't one of your contacts yet becomes one when you schedule. Exactly one of `contact_id` and `to`.",
+            "examples": [
+              "+14155551234"
+            ]
+          },
+          "send_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Send At",
+            "description": "When to send: an ISO 8601 time with a time zone, e.g. `2026-11-20T14:00:00Z` or `2026-11-20T09:00:00-05:00`. At least 1 minute from now (`422 send_at_too_soon`) and at most 90 days (`422 send_at_too_far`). A time without a zone is `422 validation_error`. If it falls outside the contact's sending hours, the message is created at `send_at` and then waits for the next sending window, like any message.",
+            "examples": [
+              "2026-11-20T14:00:00Z"
+            ]
+          },
+          "body": {
+            "anyOf": [
+              {
+                "type": "string",
+                "minLength": 1
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Body",
+            "description": "The message text. Required unless `attachments` is set; with attachments it is sent as their caption, and it is required for the first message to a contact (`422 first_message_needs_text`).",
+            "examples": [
+              "Hi Sam, a reminder about your appointment tomorrow at 10."
+            ]
+          },
+          "attachments": {
+            "anyOf": [
+              {
+                "items": {
+                  "anyOf": [
+                    {
+                      "type": "string",
+                      "pattern": "^file_[0-9a-f]{32}$"
+                    },
+                    {
+                      "type": "string",
+                      "maxLength": 2083,
+                      "minLength": 1,
+                      "format": "uri"
+                    }
+                  ]
+                },
+                "type": "array",
+                "maxItems": 10,
+                "minItems": 1
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Attachments",
+            "description": "Up to 10 files, as on `POST /v1/messages`: `https` URLs or the ids of files uploaded with `POST /v1/files`, with the same types, sizes and errors. iBubbl downloads each URL and copies each upload when you schedule, and keeps the copies until the message is sent or cancelled, so an upload can expire, or be deleted, before `send_at` without affecting this message. Not with `effect` or `reply_to_message_id`.",
+            "examples": [
+              [
+                "https://example.com/photos/order-1042.jpg"
+              ]
+            ]
+          },
+          "reply_to_message_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reply To Message Id",
+            "description": "Send as an inline reply quoting an earlier message in this 1:1 conversation, as on `POST /v1/messages`. Checked when you schedule; if the contact unsends that message before it fires, the message goes without the quote.",
+            "examples": [
+              "8b3a4e72-1c2d-4e5f-9a0b-2c3d4e5f6a7b"
+            ]
+          },
+          "effect": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "slam",
+                  "loud",
+                  "gentle",
+                  "invisible",
+                  "echo",
+                  "spotlight",
+                  "balloons",
+                  "confetti",
+                  "love",
+                  "lasers",
+                  "fireworks",
+                  "celebration",
+                  "shooting_star"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Effect",
+            "description": "An iMessage send effect, as on `POST /v1/messages`.",
+            "examples": [
+              "confetti"
+            ]
+          },
+          "idempotency_key": {
+            "type": "string",
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Idempotency Key",
+            "description": "Your unique key for this scheduled message. Repeating the request with the same key and payload returns the scheduled message as it is now (`200`), whatever has happened to it since, and never schedules a second one; the same key with a different payload (including a different `send_at`) is `409 idempotency_conflict`. Keys are shared with `POST /v1/messages`: a key already used to send a message is a 409 here, and the other way round. Must not start with `sched:`.",
+            "examples": [
+              "a3f2c8d9-e0f1-4b4d-9c5a-7b8e2d1f0c4a"
+            ]
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "send_at",
+          "idempotency_key"
+        ],
+        "title": "ScheduledMessageCreate",
+        "description": "Fields not listed here are rejected with `422 validation_error`.",
+        "example": {
+          "body": "Hi Sam, a reminder about your appointment tomorrow at 10.",
+          "idempotency_key": "a3f2c8d9-e0f1-4b4d-9c5a-7b8e2d1f0c4a",
+          "send_at": "2026-11-20T14:00:00Z",
+          "to": "+14155551234"
+        }
+      },
+      "ScheduledMessageUpdate": {
+        "properties": {
+          "body": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Body",
+            "description": "The new text. `null` or `\"\"` removes the text, which only a message with files can do (`422 scheduled_empty`), and not when it is the first message to the contact (`422 first_message_needs_text`). Files, `effect` and the reply can't be changed.",
+            "examples": [
+              "Hi Sam, a reminder: your appointment moved to 11:30."
+            ]
+          },
+          "send_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Send At",
+            "description": "The new time, with the same rules as when scheduling (1 minute to 90 days from now).",
+            "examples": [
+              "2026-11-20T15:30:00Z"
+            ]
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "ScheduledMessageUpdate",
+        "example": {
+          "send_at": "2026-11-20T15:30:00Z"
         }
       },
       "ContactTagAdd": {
@@ -4822,6 +5875,9 @@
   "tags": [
     {
       "name": "Messages"
+    },
+    {
+      "name": "Scheduled messages"
     },
     {
       "name": "Files"

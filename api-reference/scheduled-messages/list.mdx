@@ -1,0 +1,147 @@
+---
+title: 'List scheduled messages'
+openapi: 'GET /v1/scheduled-messages'
+---
+
+### List scheduled messages
+
+**Method:** `GET` | **Endpoint:** `/v1/scheduled-messages`
+
+**Description:** List your scheduled messages, most recently scheduled first, including the ones scheduled in the dashboard. For the ones still due, filter on `status=scheduled`.
+
+**Authentication:** API key in the `Authorization` header: `Authorization: Bearer ib_pk_<64 hex>`. Create keys in the dashboard under **Settings → API access**.
+
+#### Query parameters
+All optional. Filters combine with AND.
+
+| Parameter | Type | Description |
+| --------- | ---- | ----------- |
+| `limit` | integer | How many to return, `1` to `100`. Defaults to `50`. Outside that range is `422 validation_error`, not rounded. |
+| `starting_after` | string (UUID) | The `id` of the last item on the page you already have. Returns the items after it. Leave it out for the first page. See [Pagination](/concepts/pagination). |
+| `status` | string | One of `scheduled`, `sending`, `fired`, `failed`, `cancelled`. |
+| `contact_id` | string (UUID) | Scheduled messages to this contact. |
+| `conversation_id` | string (UUID) | Scheduled messages in this conversation. |
+| `send_after` | string (ISO 8601) | Those with `send_at` strictly after this time. Include a time zone: `2026-11-20T00:00:00Z`. In a URL, write `Z`, or encode `+` as `%2B`. |
+| `send_before` | string (ISO 8601) | Those with `send_at` strictly before this time. Same format. |
+
+Any other query parameter, or one given twice, returns `422 validation_error` naming it. A filter that matches nothing returns an empty page, including another account's `contact_id`.
+
+The order is by when each was scheduled (`created_at`), newest first, like every list; `send_after` and `send_before` pick a window of due times. The items are the same objects as [Retrieve a scheduled message](/api-reference/scheduled-messages/retrieve).
+
+**Rate limit:** 120 list requests per 60 seconds per account, across all your API keys and all list endpoints. Over that, you get `429 rate_limited` with a `Retry-After` header; see [Rate limits](/concepts/limits#rate-limits).
+
+<RequestExample>
+
+```bash cURL
+# Sent as ?status=scheduled&send_before=2026-11-21T00%3A00%3A00Z
+curl -G https://api.ibubbl.com/v1/scheduled-messages \
+  -H "Authorization: Bearer $IBUBBL_API_KEY" \
+  --data-urlencode "status=scheduled" \
+  --data-urlencode "send_before=2026-11-21T00:00:00Z"
+
+# Next page: add the id of the last item you received.
+#   --data-urlencode "starting_after=5d1e2f3a-4b5c-4d6e-8f70-81920a1b2c3d"
+```
+
+```typescript TypeScript
+const params = new URLSearchParams({
+  status: "scheduled",
+  send_before: "2026-11-21T00:00:00Z",
+});
+
+const res = await fetch(`https://api.ibubbl.com/v1/scheduled-messages?${params}`, {
+  headers: { Authorization: `Bearer ${process.env.IBUBBL_API_KEY}` },
+  signal: AbortSignal.timeout(10_000),
+});
+
+const data = await res.json();
+if (!res.ok) throw new Error(`${res.status} ${data.detail?.error}`);
+for (const scheduled of data.data) {
+  console.log(scheduled.send_at, scheduled.to, scheduled.body);
+}
+// More? Repeat with starting_after = data.data[data.data.length - 1].id
+console.log("has_more:", data.has_more);
+```
+
+```python Python
+import os
+
+import requests
+
+API_KEY = os.environ["IBUBBL_API_KEY"]
+
+res = requests.get(
+    "https://api.ibubbl.com/v1/scheduled-messages",
+    headers={"Authorization": f"Bearer {API_KEY}"},
+    params={"status": "scheduled", "send_before": "2026-11-21T00:00:00Z"},
+    timeout=10,
+)
+data = res.json()
+if not res.ok:
+    raise RuntimeError(f"{res.status_code} {data['detail']['error']}")
+for scheduled in data["data"]:
+    print(scheduled["send_at"], scheduled["to"], scheduled["body"])
+# More? Repeat with starting_after = data["data"][-1]["id"]
+print("has_more:", data["has_more"])
+```
+
+</RequestExample>
+
+<ResponseExample>
+
+```json 200 OK
+{
+  "data": [
+    {
+      "id": "5d1e2f3a-4b5c-4d6e-8f70-81920a1b2c3d",
+      "status": "scheduled",
+      "send_at": "2026-11-20T14:00:00.000000Z",
+      "to": "+14155551234",
+      "contact_id": "c8a1f4e2-3b9d-4f7c-a8e5-1d2c3b4a5e6f",
+      "conversation_id": "3a4b5c6d-7e8f-9a0b-1c2d-3e4f5a6b7c8d",
+      "body": "Hi Sam, a reminder about your appointment tomorrow at 10.",
+      "attachments": [],
+      "effect": null,
+      "reply_to_message_id": null,
+      "message_id": null,
+      "fired_at": null,
+      "failed_reason": null,
+      "created_at": "2026-11-19T14:00:02.532901Z",
+      "updated_at": "2026-11-19T14:00:02.532901Z"
+    }
+  ],
+  "has_more": false
+}
+```
+
+```json 422 Unprocessable Entity
+{
+  "detail": {
+    "error": "invalid_cursor",
+    "message": "starting_after is not the id of one of your items"
+  }
+}
+```
+
+</ResponseExample>
+
+#### Responses
+**200 OK**
+
+A page: `data` holds up to `limit` scheduled messages, and `has_more` says whether another page follows.
+
+**401 Unauthorized**
+
+`unauthorized`: a missing, malformed or revoked API key.
+
+**403 Forbidden**
+
+`forbidden`: your iBubbl account is suspended or cancelled.
+
+**422 Unprocessable Entity**
+
+`validation_error`: a bad, unknown or repeated query parameter, a `status` that isn't one of the five, `limit` outside 1–100, or a time without a time zone. `invalid_cursor`: `starting_after` isn't one of your scheduled messages.
+
+**429 Too Many Requests**
+
+`rate_limited`: over 120 list requests in 60 seconds. Wait the `Retry-After` header's seconds, then send the same request again.

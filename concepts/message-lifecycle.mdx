@@ -59,6 +59,10 @@ A `pending` message can wait before it goes out. `GET /v1/messages/{id}` shows w
 
 Both are `null` when the message isn't held. iBubbl marks holds within about 10 seconds of accepting a message, so the `202` response and an immediate `GET` usually show `null`. A held message has no separate status or webhook: you get `message.sent` when it goes out.
 
+## Scheduled messages
+
+A [scheduled message](/guides/schedule-messages) isn't a message until its `send_at`. Until then it's a scheduled message with statuses of its own (`scheduled`, `sending`, `fired`, `failed`, `cancelled`) and events of its own (`scheduled_message.*`). When it fires, iBubbl creates a normal message and the scheduled message's `message_id` points to it. From there the message follows this page like any other, starting at `pending` or `queued`, and it can still be held for sending hours. A scheduled message refused when it fires creates no message at all: you get [`scheduled_message.failed`](/webhooks/events#scheduled-message-failed), not `message.failed`.
+
 ## Edits and Undo Send
 
 [Editing](/api-reference/messages/edit) or [unsending](/api-reference/messages/unsend) a message you sent doesn't change its `status`: it stays `sent`, `delivered` or `read`. Their progress has fields of its own on the message:
@@ -135,3 +139,4 @@ If your request timed out, you don't know whether iBubbl accepted it. **Send it 
 - [Limits and queues](/concepts/limits): what holds or refuses a send.
 - [Lines and routing](/concepts/lines-and-routing): which line sends, and whether it goes as iMessage or SMS.
 - [Webhook events](/webhooks/events): the payload of every event above.
+- [Schedule messages](/guides/schedule-messages): what happens before a scheduled message becomes a message.

@@ -123,6 +123,18 @@ def send_with_retry(to: str, body: str, max_attempts: int = 3) -> dict:
 
 Idempotency keys are scoped **per customer account**. Two different iBubbl accounts can use the same key without collision — but within a single account, the namespace is shared across all API keys for that account. (If you have multiple API keys for the same account, they share the idempotency-key space.)
 
+The namespace is also shared by [Send a message](/api-reference/messages/send) and [Schedule a message](/api-reference/scheduled-messages/create): a key you've used on one returns `409 idempotency_conflict` on the other. One key means one message, whether it goes now or later. Keys starting with `sched:` are reserved for iBubbl and refused with `422 validation_error` on both.
+
+## Scheduled messages
+
+[Schedule a message](/api-reference/scheduled-messages/create) takes a required `idempotency_key` too, reserved when you schedule:
+
+- **Same key + same payload** → `200 OK` with the scheduled message as it is now: perhaps `fired`, `failed` or `cancelled` by then. Nothing is scheduled twice, and a cancelled one stays cancelled.
+- **Same key + different payload** → `409 idempotency_conflict`. The payload is the routing field (`to` or `contact_id`, exactly as sent), `body`, `send_at`, and `effect`, `reply_to_message_id` and `attachments` when set. `send_at` is compared as an instant, so `2026-11-20T14:00:00Z` and `2026-11-20T09:00:00-05:00` match. To move a scheduled message, [update it](/api-reference/scheduled-messages/update) rather than scheduling again.
+- **Updating it** doesn't change what the key matches: a retry of the original request still returns `200` with the updated scheduled message.
+
+When it fires, the message it creates doesn't carry your key: retrying `POST /v1/scheduled-messages` keeps returning the scheduled message, whose `message_id` points to the message.
+
 ## What "same payload" means
 
 iBubbl hashes the routing field **exactly as you sent it**, plus the `body`:

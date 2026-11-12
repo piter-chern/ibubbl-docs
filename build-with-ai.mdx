@@ -235,8 +235,8 @@ TAPBACKS, READ RECEIPTS AND TYPING
 - Tapback and typing calls to a blocked or opted-out 1:1 contact get 422
   contact_blocked / contact_opted_out; 503 opt_out_check_unavailable means
   retry later.
-- These endpoints, and edit/unsend/cancel below, share 300 requests per 60
-  seconds per account (429 rate_limited with Retry-After), separate from the
+- These endpoints, edit/unsend/cancel below, and the scheduled-message
+  writes share 300 requests per 60 seconds per account (429 rate_limited with Retry-After), separate from the
   list budget.
 
 EDIT, UNSEND AND CANCEL (messages you sent)
@@ -273,6 +273,42 @@ LINK PREVIEW CARDS
 - link_preview is part of the idempotency payload when true; the response
   echoes it.
 
+SCHEDULED MESSAGES (POST/GET /v1/scheduled-messages, GET/PATCH
+/v1/scheduled-messages/{id}, POST /v1/scheduled-messages/{id}/cancel;
+https://docs.ibubbl.com/guides/schedule-messages)
+- Use instead of your own cron to send a 1:1 message later. Body = a 1:1
+  send (to OR contact_id, body, attachments, effect, reply_to_message_id)
+  plus send_at: ISO 8601 WITH a time zone (Z or an offset), 1 minute to 90
+  days ahead (422 send_at_too_soon / send_at_too_far; no zone = 422
+  validation_error). Groups: 422 scheduled_group_unsupported. link_preview
+  and any other unknown field: 422 validation_error.
+- 201 returns a scheduled message {id, status, send_at, to, contact_id,
+  conversation_id, body, attachments, effect, reply_to_message_id,
+  message_id, fired_at, failed_reason, created_at, updated_at}. Its id is NOT
+  a message id. status: scheduled -> sending -> fired | failed, or
+  cancelled. On fired, message_id is the new message: follow THAT for
+  delivery (it may still wait for sending hours or limits).
+- idempotency_key is required and SHARED with POST /v1/messages: a key used
+  on one is 409 idempotency_conflict on the other. Same key + same payload =
+  200 with the current state; a different send_at is a 409 (use PATCH).
+  Never use keys starting with "sched:" (422).
+- send_at is when the message is created; iBubbl doesn't shift it to the
+  contact's time zone. Outside the contact's sending hours, it fires at
+  send_at but goes out when the window opens.
+- Opt-out, block and the contact are checked again when it fires: refused =
+  status failed, failed_reason set, webhook scheduled_message.failed, NO
+  message and no message.* event. Also failed: missed_window (> 6 h late).
+- PATCH {body?, send_at?} only while status is "scheduled". "body": null
+  removes the text (only with files; 422 scheduled_empty otherwise). 409
+  scheduled_message_sending = it is firing now; 422 not_editable /
+  not_cancellable = already fired/failed. Cancel is repeat-safe (200).
+- Webhooks: scheduled_message.fired | failed | cancelled, data = the
+  scheduled message. message.* for the new message can arrive BEFORE
+  scheduled_message.fired: match by message_id.
+- Files are downloaded/copied when scheduled (uploads may expire after).
+  5,000 waiting per account (422 scheduled_limit_reached). Create, update
+  and cancel use the 300/min action budget; the list uses the list budget.
+
 RETRIES AND ERRORS
 - Branch on detail.error (the stable code), never on detail.message.
 - Log the X-Request-Id response header with every error; quote it to
@@ -281,8 +317,8 @@ RETRIES AND ERRORS
   the same payload, with exponential backoff (1 s, 2 s, 4 s) and a small cap
   on attempts. Exception: 500 no_owner_rep will not succeed on retry.
 - Never retry a 4xx automatically. Fix the request instead. The one
-  exception: 429 rate_limited (a list, a tapback/read/typing call, an upload,
-  or an attachment send); wait Retry-After seconds, then repeat the same
+  exception: 429 rate_limited (a list, a tapback/read/typing call, a
+  scheduled-message write, an upload, or an attachment send); wait Retry-After seconds, then repeat the same
   request (same idempotency_key).
 - 422 unresponsive_contact: the contact has not replied to 6 messages in a
   row. Stop messaging them until they reply.

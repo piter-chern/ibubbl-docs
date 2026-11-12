@@ -1,0 +1,144 @@
+---
+title: 'Retrieve a scheduled message'
+openapi: 'GET /v1/scheduled-messages/{scheduled_message_id}'
+---
+
+### Retrieve a scheduled message
+
+**Method:** `GET` | **Endpoint:** `/v1/scheduled-messages/{scheduled_message_id}`
+
+**Description:** Fetch one scheduled message by its `id`: whether it is still waiting, and once it has fired, the `message_id` of the message it created. Messages scheduled in the dashboard can be read here too.
+
+**Authentication:** API key in the `Authorization` header: `Authorization: Bearer ib_pk_<64 hex>`. Create keys in the dashboard under **Settings → API access**.
+
+#### The scheduled message object
+
+| Field | Type | Description |
+| ----- | ---- | ----------- |
+| `id` | string (UUID) | The scheduled message's ID. Not a message ID: see `message_id`. |
+| `status` | string | `scheduled`, `sending`, `fired`, `failed` or `cancelled`; see below. |
+| `send_at` | string (ISO 8601 UTC) | When it is due. |
+| `to` | string (E.164) | The contact's number. |
+| `contact_id` | string (UUID) | The contact. |
+| `conversation_id` | string (UUID) | The one-to-one conversation it is sent in. |
+| `body` | string | The text; `""` when only files are scheduled. |
+| `attachments` | array | The files, in order: `kind` (`image`, `gif`, `video`, `audio` or `file`), `mime_type`, `size_bytes` and `filename` (the name the recipient sees; `null` without a usable name, and for messages scheduled in the dashboard). |
+| `effect` | string or null | The iMessage effect. |
+| `reply_to_message_id` | string (UUID) or null | The message it quotes. |
+| `message_id` | string (UUID) or null | The message it created, once `fired`. Use it with [Retrieve a message](/api-reference/messages/retrieve), and to match the `message.*` webhooks. |
+| `fired_at` | string (ISO 8601 UTC) or null | When it fired. |
+| `failed_reason` | string or null | Why it was refused, while `failed`. |
+| `created_at`, `updated_at` | string (ISO 8601 UTC) | When it was scheduled, and last changed. |
+
+| `status` | Meaning |
+| -------- | ------- |
+| `scheduled` | Waiting for `send_at`. You can [update](/api-reference/scheduled-messages/update) or [cancel](/api-reference/scheduled-messages/cancel) it. |
+| `sending` | Being turned into a message right now. It settles within seconds. |
+| `fired` | The message was created (`message_id`). Follow that message for sending and delivery: it may still wait for the contact's [sending hours](/concepts/working-hours) or a [limit](/concepts/limits). |
+| `failed` | Refused when it fired: no message was created. See `failed_reason`. |
+| `cancelled` | Cancelled before it fired, through the API or in the dashboard. |
+
+`failed_reason` values: `contact_opted_out`, `contact_blocked`, `contact_deleted`, `no_eligible_line` (no line of yours could send it), `missed_window` (iBubbl couldn't send for more than 6 hours after `send_at`), or another send refusal code from [Errors](/errors).
+
+<RequestExample>
+
+```bash cURL
+curl https://api.ibubbl.com/v1/scheduled-messages/5d1e2f3a-4b5c-4d6e-8f70-81920a1b2c3d \
+  -H "Authorization: Bearer $IBUBBL_API_KEY"
+```
+
+```typescript TypeScript
+const scheduledMessageId = "5d1e2f3a-4b5c-4d6e-8f70-81920a1b2c3d";
+
+const res = await fetch(
+  `https://api.ibubbl.com/v1/scheduled-messages/${encodeURIComponent(scheduledMessageId)}`,
+  {
+    headers: { Authorization: `Bearer ${process.env.IBUBBL_API_KEY}` },
+    signal: AbortSignal.timeout(10_000),
+  },
+);
+
+const data = await res.json();
+if (!res.ok) throw new Error(`${res.status} ${data.detail?.error}`);
+console.log(data.status, data.message_id);
+```
+
+```python Python
+import os
+import urllib.parse
+
+import requests
+
+API_KEY = os.environ["IBUBBL_API_KEY"]
+
+scheduled_message_id = "5d1e2f3a-4b5c-4d6e-8f70-81920a1b2c3d"
+
+res = requests.get(
+    f"https://api.ibubbl.com/v1/scheduled-messages/{urllib.parse.quote(scheduled_message_id, safe='')}",
+    headers={"Authorization": f"Bearer {API_KEY}"},
+    timeout=10,
+)
+data = res.json()
+if not res.ok:
+    raise RuntimeError(f"{res.status_code} {data['detail']['error']}")
+print(data["status"], data["message_id"])
+```
+
+</RequestExample>
+
+<ResponseExample>
+
+```json 200 OK
+{
+  "id": "5d1e2f3a-4b5c-4d6e-8f70-81920a1b2c3d",
+  "status": "fired",
+  "send_at": "2026-11-20T14:00:00.000000Z",
+  "to": "+14155551234",
+  "contact_id": "c8a1f4e2-3b9d-4f7c-a8e5-1d2c3b4a5e6f",
+  "conversation_id": "3a4b5c6d-7e8f-9a0b-1c2d-3e4f5a6b7c8d",
+  "body": "Hi Sam, a reminder about your appointment tomorrow at 10.",
+  "attachments": [],
+  "effect": null,
+  "reply_to_message_id": null,
+  "message_id": "8b3a4e72-1c2d-4e5f-9a0b-2c3d4e5f6a7b",
+  "fired_at": "2026-11-20T14:00:04.118230Z",
+  "failed_reason": null,
+  "created_at": "2026-11-19T14:00:02.532901Z",
+  "updated_at": "2026-11-20T14:00:04.181455Z"
+}
+```
+
+```json 404 Not Found
+{
+  "detail": {
+    "error": "not_found",
+    "message": "Scheduled message not found"
+  }
+}
+```
+
+</ResponseExample>
+
+#### Responses
+**200 OK**
+
+The scheduled message.
+
+**401 Unauthorized**
+```json
+{
+  "detail": {
+    "error": "unauthorized",
+    "message": "Invalid or revoked API key"
+  }
+}
+```
+Other `message` values: `Authorization Bearer token required`, `API key required (use Authorization: Bearer ib_pk_…)`, `Invalid API key format`, `Customer account not found`.
+
+**403 Forbidden**
+
+`forbidden`: your iBubbl account is suspended or cancelled.
+
+**404 Not Found**
+
+`not_found`: no scheduled message with that ID on your account. Also returned for a malformed ID and one that belongs to another account.

@@ -1,0 +1,159 @@
+---
+title: 'Update a scheduled message'
+openapi: 'PATCH /v1/scheduled-messages/{scheduled_message_id}'
+---
+
+### Update a scheduled message
+
+**Method:** `PATCH` | **Endpoint:** `/v1/scheduled-messages/{scheduled_message_id}`
+
+**Description:** Change the text, the time, or both, of a message that is still `scheduled`. Messages scheduled in the dashboard can be changed too.
+
+**Authentication:** API key in the `Authorization` header: `Authorization: Bearer ib_pk_<64 hex>`. Create keys in the dashboard under **Settings → API access**.
+
+**Rate limit:** 300 conversation actions per 60 seconds per account, shared with scheduling, cancelling and the message actions. Over that, you get `429 rate_limited` with a `Retry-After` header; see [Rate limits](/concepts/limits#rate-limits).
+
+#### Request Body
+At least one of:
+
+| Field | Type | Description |
+| ----- | ---- | ----------- |
+| `send_at` | string (ISO 8601 with a time zone) | The new time, with the same rules as when scheduling: 1 minute to 90 days from now (`422 send_at_too_soon` / `send_at_too_far`). `null` is `422 validation_error`. |
+| `body` | string or null | The new text. `null` or `""` removes the text, which only a message with files can do (`422 scheduled_empty` otherwise), and not when it's the first message to the contact (`422 first_message_needs_text`). |
+
+A field you leave out stays as it is. Files, `effect` and the reply can't be changed: [cancel](/api-reference/scheduled-messages/cancel) it and schedule a new one. Any other field, or an empty body `{}`, is `422 validation_error`.
+
+#### How it behaves
+
+- **Only while it's waiting.** A message that is being turned into a message right now gets `409 scheduled_message_sending`; it settles as `fired` (or `failed`) within seconds. One that has fired, failed or been cancelled gets `422 not_editable`. Once it has fired, the message itself can be [cancelled](/api-reference/messages/cancel) while it waits to go out, or [edited](/api-reference/messages/edit) after.
+- **Retries of the original schedule still match.** Repeating the original `POST /v1/scheduled-messages` with its `idempotency_key` returns `200` with the updated scheduled message: the update doesn't change what the key was first used for.
+- **No webhook fires** for an update.
+
+<RequestExample>
+
+```bash cURL
+curl -X PATCH https://api.ibubbl.com/v1/scheduled-messages/5d1e2f3a-4b5c-4d6e-8f70-81920a1b2c3d \
+  -H "Authorization: Bearer $IBUBBL_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "body": "Hi Sam, a reminder: your appointment moved to 11:30.",
+    "send_at": "2026-11-20T15:30:00Z"
+  }'
+```
+
+```typescript TypeScript
+const scheduledMessageId = "5d1e2f3a-4b5c-4d6e-8f70-81920a1b2c3d";
+
+const res = await fetch(
+  `https://api.ibubbl.com/v1/scheduled-messages/${encodeURIComponent(scheduledMessageId)}`,
+  {
+    method: "PATCH",
+    headers: {
+      Authorization: `Bearer ${process.env.IBUBBL_API_KEY}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      body: "Hi Sam, a reminder: your appointment moved to 11:30.",
+      send_at: "2026-11-20T15:30:00Z",
+    }),
+    signal: AbortSignal.timeout(10_000),
+  },
+);
+
+const data = await res.json();
+if (!res.ok) throw new Error(`${res.status} ${data.detail?.error}`);
+console.log(data.send_at, data.body);
+```
+
+```python Python
+import os
+import urllib.parse
+
+import requests
+
+API_KEY = os.environ["IBUBBL_API_KEY"]
+
+scheduled_message_id = "5d1e2f3a-4b5c-4d6e-8f70-81920a1b2c3d"
+
+res = requests.patch(
+    f"https://api.ibubbl.com/v1/scheduled-messages/{urllib.parse.quote(scheduled_message_id, safe='')}",
+    headers={"Authorization": f"Bearer {API_KEY}"},
+    json={
+        "body": "Hi Sam, a reminder: your appointment moved to 11:30.",
+        "send_at": "2026-11-20T15:30:00Z",
+    },
+    timeout=10,
+)
+data = res.json()
+if not res.ok:
+    raise RuntimeError(f"{res.status_code} {data['detail']['error']}")
+print(data["send_at"], data["body"])
+```
+
+</RequestExample>
+
+<ResponseExample>
+
+```json 200 OK
+{
+  "id": "5d1e2f3a-4b5c-4d6e-8f70-81920a1b2c3d",
+  "status": "scheduled",
+  "send_at": "2026-11-20T15:30:00.000000Z",
+  "to": "+14155551234",
+  "contact_id": "c8a1f4e2-3b9d-4f7c-a8e5-1d2c3b4a5e6f",
+  "conversation_id": "3a4b5c6d-7e8f-9a0b-1c2d-3e4f5a6b7c8d",
+  "body": "Hi Sam, a reminder: your appointment moved to 11:30.",
+  "attachments": [],
+  "effect": null,
+  "reply_to_message_id": null,
+  "message_id": null,
+  "fired_at": null,
+  "failed_reason": null,
+  "created_at": "2026-11-19T14:00:02.532901Z",
+  "updated_at": "2026-11-19T16:12:40.004115Z"
+}
+```
+
+```json 422 Unprocessable Entity
+{
+  "detail": {
+    "error": "not_editable",
+    "message": "Only a scheduled message that hasn't fired can be changed; this one is fired."
+  }
+}
+```
+
+</ResponseExample>
+
+#### Responses
+**200 OK**
+
+The scheduled message, updated.
+
+**401 Unauthorized**
+
+`unauthorized`: a missing, malformed or revoked API key.
+
+**403 Forbidden**
+
+`forbidden`: your iBubbl account is suspended or cancelled.
+
+**404 Not Found**
+
+`not_found`: no scheduled message with that ID on your account (also a malformed ID, and another account's).
+
+**409 Conflict**
+
+`scheduled_message_sending`: it is being turned into a message right now. Nothing changed; read it again in a few seconds.
+
+**422 Unprocessable Entity**
+
+- `validation_error`: no field, a `null` `send_at`, an unknown field, or a time without a time zone.
+- `send_at_too_soon` / `send_at_too_far`: the new `send_at` is under 1 minute from now, or more than 90 days.
+- `scheduled_empty`: removing the text of a message without files.
+- `first_message_needs_text`: removing the text of the first message to a contact.
+- `not_editable`: it has already fired, failed or been cancelled.
+
+**429 Too Many Requests**
+
+`rate_limited`: over 300 conversation actions in 60 seconds. Wait the `Retry-After` header's seconds, then send the same request again.

@@ -1,0 +1,256 @@
+---
+title: 'Schedule messages'
+description: 'Send a message later without running a job of your own: time zones, sending hours, changing and cancelling, and the webhooks.'
+---
+
+[Schedule a message](/api-reference/scheduled-messages/create) gives iBubbl a message and a time, `send_at`, from 1 minute to 90 days ahead. iBubbl keeps it and sends it then: a reminder the day before an appointment, a follow-up next week. You don't need a cron job, a queue or a server that is up at that moment.
+
+It's the same feature as **Send later** in the dashboard. Messages scheduled there appear in [List scheduled messages](/api-reference/scheduled-messages/list), and the ones you schedule through the API appear in the rep's conversation, where they can be edited or cancelled.
+
+## How it works
+
+1. **You schedule.** `POST /v1/scheduled-messages` answers `201` with a scheduled message (`status: "scheduled"`). Its `id` is not a message ID: no message exists yet.
+2. **It waits** until `send_at`. You can [change](/api-reference/scheduled-messages/update) its text or time, or [cancel](/api-reference/scheduled-messages/cancel) it.
+3. **It fires** within about 15 seconds of `send_at`: iBubbl checks the contact again and creates a normal message. The scheduled message becomes `fired`, `message_id` points to the message, and [`scheduled_message.fired`](/webhooks/events#scheduled-message-fired) fires.
+4. **The message goes out** like any other: it waits for the contact's [sending hours](/concepts/working-hours) and your [limits](/concepts/limits), and the usual [`message.*` webhooks](/webhooks/events) follow (`message.sent`, `message.delivered`, …).
+
+If the check at step 3 refuses it, no message is created: the scheduled message becomes `failed` and [`scheduled_message.failed`](/webhooks/events#scheduled-message-failed) tells you why.
+
+## Schedule a message
+
+<CodeGroup>
+
+```bash cURL
+# One key per message: generate it once, and reuse it if you retry.
+IDEMPOTENCY_KEY=$(uuidgen)
+# One hour from now, in UTC (macOS date, else GNU or BusyBox date).
+SEND_AT=$(date -u -v+1H +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || date -u -d "@$(( $(date +%s) + 3600 ))" +%Y-%m-%dT%H:%M:%SZ)
+
+curl -X POST https://api.ibubbl.com/v1/scheduled-messages \
+  -H "Authorization: Bearer $IBUBBL_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d "{
+    \"to\": \"+14155551234\",
+    \"body\": \"Hi Sam, a reminder about your appointment tomorrow at 10.\",
+    \"send_at\": \"$SEND_AT\",
+    \"idempotency_key\": \"$IDEMPOTENCY_KEY\"
+  }"
+```
+
+```typescript TypeScript
+import { randomUUID } from "node:crypto";
+
+// One hour from now. toISOString() is UTC, ending in Z.
+const sendAt = new Date(Date.now() + 60 * 60 * 1000).toISOString();
+
+const res = await fetch("https://api.ibubbl.com/v1/scheduled-messages", {
+  method: "POST",
+  headers: {
+    Authorization: `Bearer ${process.env.IBUBBL_API_KEY}`,
+    "Content-Type": "application/json",
+  },
+  body: JSON.stringify({
+    to: "+14155551234",
+    body: "Hi Sam, a reminder about your appointment tomorrow at 10.",
+    send_at: sendAt,
+    // One key per message: generate it once, and reuse it if you retry.
+    idempotency_key: randomUUID(),
+  }),
+  signal: AbortSignal.timeout(10_000),
+});
+
+const data = await res.json();
+if (!res.ok) throw new Error(`${res.status} ${data.detail?.error}`);
+console.log(data.id, data.status, data.send_at); // "scheduled"
+```
+
+```python Python
+import os
+import uuid
+from datetime import datetime, timedelta, timezone
+
+import requests
+
+API_KEY = os.environ["IBUBBL_API_KEY"]
+
+# One hour from now, with a time zone (UTC).
+send_at = (datetime.now(timezone.utc) + timedelta(hours=1)).isoformat()
+
+res = requests.post(
+    "https://api.ibubbl.com/v1/scheduled-messages",
+    headers={"Authorization": f"Bearer {API_KEY}"},
+    json={
+        "to": "+14155551234",
+        "body": "Hi Sam, a reminder about your appointment tomorrow at 10.",
+        "send_at": send_at,
+        # One key per message: generate it once, and reuse it if you retry.
+        "idempotency_key": str(uuid.uuid4()),
+    },
+    timeout=10,
+)
+data = res.json()
+if not res.ok:
+    raise RuntimeError(f"{res.status_code} {data['detail']['error']}")
+print(data["id"], data["status"], data["send_at"])  # "scheduled"
+```
+
+</CodeGroup>
+
+The body takes what [Send a message](/api-reference/messages/send) takes for a one-to-one message: `to` or `contact_id`, `body`, `attachments`, `effect` and `reply_to_message_id`, plus `send_at`. Store the `id` it returns: it's how you change, cancel or look up the scheduled message, and `scheduled_message.*` webhooks carry it.
+
+## Time zones
+
+`send_at` is one instant, written in ISO 8601 **with** a time zone: `2026-11-20T14:00:00Z`, or the same instant as `2026-11-20T09:00:00-05:00`. A time without one (`2026-11-20T09:00:00`) is refused with `422 validation_error`, because it could mean any of 24 moments. iBubbl stores and returns it in UTC.
+
+iBubbl sends at that instant; it doesn't move it to the contact's time zone. To reach a contact at 9:00 their time, work out that instant yourself, from the contact's `timezone` (on [the contact](/api-reference/contacts/retrieve)) or your own records.
+
+## Sending hours and holds
+
+`send_at` is when the message is **created**, not a promise that it reaches the phone then. Once created, it waits for the contact's [sending hours](/concepts/working-hours) like any message, in the contact's local time:
+
+- **Inside the window**, it goes out within seconds of `send_at`.
+- **Outside it**, the scheduled message still fires at `send_at` (`fired`, `message_id` set), but the message stays `pending` with `held_reason: "working_hours"` until the window opens, then goes out. With the default hours, a message scheduled for 23:00 goes out at 9:00 the next morning.
+- **A [new-contact limit](/concepts/limits)** can hold or queue it the same way (`held_reason: "hourly_limit"`, or `queued`).
+
+To have it go out at `send_at`, schedule it inside the contact's sending hours. While a fired message is still held, [Cancel a message](/api-reference/messages/cancel) on its `message_id` stops it.
+
+## What is checked when
+
+| | When you schedule | When it fires |
+| --- | --- | --- |
+| The contact exists and isn't deleted | ✅ `404 not_found` | ✅ `failed`, `contact_deleted` |
+| Not opted out | ✅ `422 contact_opted_out` | ✅ `failed`, `contact_opted_out` |
+| Not blocked | ✅ `422 contact_blocked` | ✅ `failed`, `contact_blocked` |
+| The reply target is in the conversation, not unsent | ✅ `422 reply_target_*` | Sent without the quote if the contact unsent it since |
+| Files download and meet the limits | ✅ `422` file errors | Already copied: not fetched again |
+| A line of yours can send it | | ✅ `failed`, `no_eligible_line`; a line that moved to another account is never used |
+| Sending hours, new-contact limits | | Held or queued, as above |
+
+A contact who opts out after you schedule never gets the message: you get `scheduled_message.failed` with `failed_reason: "contact_opted_out"` instead.
+
+## Files
+
+`attachments` takes `https` URLs and [uploaded file IDs](/api-reference/files/upload), with the same types, sizes and combinations as [Send attachments](/guides/attachments). iBubbl downloads each URL and copies each upload **when you schedule**, and keeps the copies until the message is sent or cancelled. So:
+
+- An upload expires 24 hours after it's made, but a message scheduled with it 90 days ahead still goes out: the copy is the scheduled message's own. Deleting the upload doesn't affect it either.
+- A URL is read once, at scheduling. Changing what the URL serves afterwards doesn't change the message.
+- Files can't be changed later; cancel and schedule again. On a message with files, you can [remove the text](/api-reference/scheduled-messages/update) (`"body": null`) to send the files alone, unless it's the first message to the contact.
+
+## Change or cancel
+
+While it is `scheduled`, [Update a scheduled message](/api-reference/scheduled-messages/update) changes `body` and `send_at`, and [Cancel a scheduled message](/api-reference/scheduled-messages/cancel) stops it. Both answer `409 scheduled_message_sending` in the seconds it is firing; once it has fired or failed, they answer `422 not_editable` and `422 not_cancellable`.
+
+To find what is still due, list with `status=scheduled`, and narrow it with `send_before`, `send_after` or `contact_id`:
+
+<CodeGroup>
+
+```bash cURL
+# Everything still due for one contact.
+curl -G https://api.ibubbl.com/v1/scheduled-messages \
+  -H "Authorization: Bearer $IBUBBL_API_KEY" \
+  --data-urlencode "status=scheduled" \
+  --data-urlencode "contact_id=c8a1f4e2-3b9d-4f7c-a8e5-1d2c3b4a5e6f"
+
+# Then cancel one by its id.
+curl -X POST https://api.ibubbl.com/v1/scheduled-messages/5d1e2f3a-4b5c-4d6e-8f70-81920a1b2c3d/cancel \
+  -H "Authorization: Bearer $IBUBBL_API_KEY"
+```
+
+```typescript TypeScript
+const headers = { Authorization: `Bearer ${process.env.IBUBBL_API_KEY}` };
+const params = new URLSearchParams({
+  status: "scheduled",
+  contact_id: "c8a1f4e2-3b9d-4f7c-a8e5-1d2c3b4a5e6f",
+});
+
+const res = await fetch(`https://api.ibubbl.com/v1/scheduled-messages?${params}`, {
+  headers,
+  signal: AbortSignal.timeout(10_000),
+});
+const data = await res.json();
+if (!res.ok) throw new Error(`${res.status} ${data.detail?.error}`);
+
+// The contact cancelled their appointment: cancel everything still due.
+for (const scheduled of data.data) {
+  const cancel = await fetch(
+    `https://api.ibubbl.com/v1/scheduled-messages/${encodeURIComponent(scheduled.id)}/cancel`,
+    { method: "POST", headers, signal: AbortSignal.timeout(10_000) },
+  );
+  const cancelled = await cancel.json();
+  // 409: it's firing right now; it goes out.
+  if (!cancel.ok) console.log(scheduled.id, cancel.status, cancelled.detail?.error);
+  else console.log(scheduled.id, cancelled.status); // "cancelled"
+}
+```
+
+```python Python
+import os
+import urllib.parse
+
+import requests
+
+API_KEY = os.environ["IBUBBL_API_KEY"]
+headers = {"Authorization": f"Bearer {API_KEY}"}
+
+res = requests.get(
+    "https://api.ibubbl.com/v1/scheduled-messages",
+    headers=headers,
+    params={"status": "scheduled", "contact_id": "c8a1f4e2-3b9d-4f7c-a8e5-1d2c3b4a5e6f"},
+    timeout=10,
+)
+data = res.json()
+if not res.ok:
+    raise RuntimeError(f"{res.status_code} {data['detail']['error']}")
+
+# The contact cancelled their appointment: cancel everything still due.
+for scheduled in data["data"]:
+    cancel = requests.post(
+        f"https://api.ibubbl.com/v1/scheduled-messages/{urllib.parse.quote(scheduled['id'], safe='')}/cancel",
+        headers=headers,
+        timeout=10,
+    )
+    cancelled = cancel.json()
+    if not cancel.ok:  # 409: it's firing right now; it goes out.
+        print(scheduled["id"], cancel.status_code, cancelled["detail"]["error"])
+    else:
+        print(scheduled["id"], cancelled["status"])  # "cancelled"
+```
+
+</CodeGroup>
+
+A page holds up to 50 by default; with more, follow `has_more` as in [Pagination](/concepts/pagination).
+
+## Webhooks
+
+Three events follow a scheduled message. Their `data` is the [scheduled message object](/api-reference/scheduled-messages/retrieve), as `GET` would show it at that moment:
+
+- [`scheduled_message.fired`](/webhooks/events#scheduled-message-fired): it became a message; `message_id` is set. From then on, follow the message's own `message.*` events.
+- [`scheduled_message.failed`](/webhooks/events#scheduled-message-failed): it was refused when it fired; `failed_reason` says why. No message exists, so no `message.*` event will tell you.
+- [`scheduled_message.cancelled`](/webhooks/events#scheduled-message-cancelled): it was cancelled, through the API or by a rep in the dashboard.
+
+Scheduling and updating fire nothing: the response is your confirmation.
+
+The message's own events start as soon as it exists, so `message.queued` or `message.sent` can reach you **before** `scheduled_message.fired`. Match them up by `message_id`: keep the scheduled message `id` with your record, and when you see a `message_id` you don't know, read the scheduled message (or wait for `scheduled_message.fired`). Events can also arrive more than once; see [Ordering and duplicates](/webhooks/events#ordering-and-duplicates).
+
+## Late sends and the missed window
+
+A scheduled message fires within about 15 seconds of `send_at`. If iBubbl couldn't send for a while (an outage), a due message fires as soon as it can, unless it's more than **6 hours** late: then it becomes `failed` with `failed_reason: "missed_window"` instead of arriving at the wrong time. A "see you at 9" landing at 4 PM is worse than not landing. Schedule it again if it still makes sense.
+
+## Limits
+
+- **5,000 waiting** per account: past that, scheduling is `422 scheduled_limit_reached` until some fire or you cancel some. Messages scheduled in the dashboard count.
+- **Rate limit:** scheduling, updating and cancelling share the 300-a-minute [conversation-actions budget](/concepts/limits#rate-limits); listing shares the 120-a-minute list budget.
+- **One-to-one only.** `chat_guid`, `participant_phones` and `group_name` are refused with `422 scheduled_group_unsupported`. `link_preview` isn't available on scheduled messages (`422 validation_error`).
+- **Send limits** apply when the message is created, at `send_at`, not when you schedule.
+
+## Idempotency
+
+`idempotency_key` is required, as for sending. Repeating the request with the same key and payload returns `200` with the scheduled message as it is now, and schedules nothing more. The same key with another payload, including another `send_at`, is `409 idempotency_conflict`: to move it, [update it](/api-reference/scheduled-messages/update).
+
+Keys are shared with [Send a message](/api-reference/messages/send): a key you've used to send can't schedule, and the other way round (`409 idempotency_conflict`). Keys starting with `sched:` are reserved. See [Idempotency](/idempotency#scheduled-messages).
+
+## Next
+
+- [Schedule a message](/api-reference/scheduled-messages/create): every field and error.
+- [Working hours](/concepts/working-hours): when a fired message actually goes out.
+- [Webhook events](/webhooks/events#scheduled-message-fired): the three event payloads.

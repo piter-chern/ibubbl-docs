@@ -1,0 +1,219 @@
+---
+title: 'Schedule a message'
+openapi: 'POST /v1/scheduled-messages'
+---
+
+### Schedule a message
+
+**Method:** `POST` | **Endpoint:** `/v1/scheduled-messages`
+
+**Description:** Schedule a one-to-one message to go out at `send_at`, from 1 minute to 90 days ahead, with the same content as [Send a message](/api-reference/messages/send): text, files, an effect or a reply. iBubbl keeps it, then sends it at that time; you don't need a job of your own. See [Schedule messages](/guides/schedule-messages).
+
+**Authentication:** API key in the `Authorization` header: `Authorization: Bearer ib_pk_<64 hex>`. Create keys in the dashboard under **Settings → API access**.
+
+**Rate limit:** 300 conversation actions per 60 seconds per account (schedule, update and cancel count together with edits, unsends, cancels, tapbacks, mark read and typing, across all your API keys). Over that, you get `429 rate_limited` with a `Retry-After` header; see [Rate limits](/concepts/limits#rate-limits).
+
+#### Request Body
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `contact_id` | string (UUID) | Exactly one of these two | The contact to message. A deleted contact's ID returns `404 not_found`. |
+| `to` | string (E.164, e.g. `+14155551234`) | Exactly one of these two | The number to message. If no contact has this number, one is created when you schedule. |
+| `send_at` | string (ISO 8601 with a time zone) | Yes | When to send, e.g. `2026-11-20T14:00:00Z` or `2026-11-20T09:00:00-05:00`. At least 1 minute from now (`422 send_at_too_soon`) and at most 90 days (`422 send_at_too_far`). A time without a time zone is `422 validation_error`. |
+| `body` | string | Unless `attachments` is set | The message text, as on [Send a message](/api-reference/messages/send). With `attachments` it's their caption. The first message to a contact must have one (`422 first_message_needs_text`). |
+| `attachments` | array of 1–10 strings: `https` URLs or file IDs | No | Files to send, with the same types, sizes and errors as [Send attachments](/guides/attachments#supported-files-and-limits). iBubbl downloads each URL and copies each upload **when you schedule** and keeps the copies until the message is sent or cancelled, so an upload can expire, or be deleted, before `send_at` without affecting it. Not with `effect` or `reply_to_message_id`. |
+| `reply_to_message_id` | string (UUID) | No | Send as an inline reply quoting an earlier message in this contact's one-to-one conversation (`422 reply_target_not_found` otherwise). iMessage only. |
+| `effect` | string | No | An iMessage effect, as on [Send a message](/api-reference/messages/send). iMessage only. |
+| `idempotency_key` | string, 1–128 characters | Yes | Your unique key for this scheduled message; a UUIDv4 is recommended. Keys are shared with `POST /v1/messages`, and must not start with `sched:`. See [Idempotency](#idempotency) below. |
+
+Any other field is refused with `422 validation_error`, including `link_preview`. `chat_guid`, `participant_phones` and `group_name` are refused with `422 scheduled_group_unsupported`: groups can't be scheduled yet.
+
+#### What is checked now, and what when it fires
+
+When you schedule, iBubbl refuses what [Send a message](/api-reference/messages/send) would refuse: an opted-out (`contact_opted_out`) or blocked (`contact_blocked`) contact, a reply target that isn't in the conversation, files that break the limits. When it fires, the send path runs every check again: a contact who opted out, was blocked or was deleted in between doesn't get it. The scheduled message then becomes `failed`, no message is created, and [`scheduled_message.failed`](/webhooks/events#scheduled-message-failed) fires.
+
+At `send_at` the scheduled message becomes a normal message, `status` turns `fired`, `message_id` is set and [`scheduled_message.fired`](/webhooks/events#scheduled-message-fired) fires. From there it's a message like any other: it waits for the contact's [sending hours](/concepts/working-hours) and your [limits](/concepts/limits), and the usual `message.*` webhooks follow.
+
+#### Idempotency
+
+- **Same key + same payload**: `200 OK` with the scheduled message as it is now (perhaps `fired` or `cancelled` by then). Nothing is scheduled twice.
+- **Same key + different payload**: `409 idempotency_conflict`. The payload includes `send_at`, compared as an instant (`14:00:00Z` and `09:00:00-05:00` match). To move a scheduled message, [update it](/api-reference/scheduled-messages/update).
+- **A key already used to send with `POST /v1/messages`**: `409 idempotency_conflict`, and the other way round. One key, one message, whichever endpoint you use.
+- A key starting with `sched:` is refused with `422 validation_error` on both endpoints.
+
+An account can have 5,000 scheduled messages waiting at once (`422 scheduled_limit_reached`); messages scheduled in the dashboard count too.
+
+<RequestExample>
+
+```bash cURL
+# One key per message: generate it once, and reuse it if you retry.
+IDEMPOTENCY_KEY=$(uuidgen)
+# One hour from now, in UTC (macOS date, else GNU or BusyBox date).
+SEND_AT=$(date -u -v+1H +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || date -u -d "@$(( $(date +%s) + 3600 ))" +%Y-%m-%dT%H:%M:%SZ)
+
+curl -X POST https://api.ibubbl.com/v1/scheduled-messages \
+  -H "Authorization: Bearer $IBUBBL_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d "{
+    \"to\": \"+14155551234\",
+    \"body\": \"Hi Sam, a reminder about your appointment tomorrow at 10.\",
+    \"send_at\": \"$SEND_AT\",
+    \"idempotency_key\": \"$IDEMPOTENCY_KEY\"
+  }"
+```
+
+```typescript TypeScript
+import { randomUUID } from "node:crypto";
+
+// One hour from now. toISOString() is UTC, ending in Z.
+const sendAt = new Date(Date.now() + 60 * 60 * 1000).toISOString();
+
+const res = await fetch("https://api.ibubbl.com/v1/scheduled-messages", {
+  method: "POST",
+  headers: {
+    Authorization: `Bearer ${process.env.IBUBBL_API_KEY}`,
+    "Content-Type": "application/json",
+  },
+  body: JSON.stringify({
+    to: "+14155551234",
+    body: "Hi Sam, a reminder about your appointment tomorrow at 10.",
+    send_at: sendAt,
+    // One key per message: generate it once, and reuse it if you retry.
+    idempotency_key: randomUUID(),
+  }),
+  signal: AbortSignal.timeout(10_000),
+});
+
+const data = await res.json();
+if (!res.ok) throw new Error(`${res.status} ${data.detail?.error}`);
+console.log(data.id, data.status, data.send_at); // "scheduled"
+```
+
+```python Python
+import os
+import uuid
+from datetime import datetime, timedelta, timezone
+
+import requests
+
+API_KEY = os.environ["IBUBBL_API_KEY"]
+
+# One hour from now, with a time zone (UTC).
+send_at = (datetime.now(timezone.utc) + timedelta(hours=1)).isoformat()
+
+res = requests.post(
+    "https://api.ibubbl.com/v1/scheduled-messages",
+    headers={"Authorization": f"Bearer {API_KEY}"},
+    json={
+        "to": "+14155551234",
+        "body": "Hi Sam, a reminder about your appointment tomorrow at 10.",
+        "send_at": send_at,
+        # One key per message: generate it once, and reuse it if you retry.
+        "idempotency_key": str(uuid.uuid4()),
+    },
+    timeout=10,
+)
+data = res.json()
+if not res.ok:
+    raise RuntimeError(f"{res.status_code} {data['detail']['error']}")
+print(data["id"], data["status"], data["send_at"])  # "scheduled"
+```
+
+</RequestExample>
+
+<ResponseExample>
+
+```json 201 Created
+{
+  "id": "5d1e2f3a-4b5c-4d6e-8f70-81920a1b2c3d",
+  "status": "scheduled",
+  "send_at": "2026-11-20T14:00:00.000000Z",
+  "to": "+14155551234",
+  "contact_id": "c8a1f4e2-3b9d-4f7c-a8e5-1d2c3b4a5e6f",
+  "conversation_id": "3a4b5c6d-7e8f-9a0b-1c2d-3e4f5a6b7c8d",
+  "body": "Hi Sam, a reminder about your appointment tomorrow at 10.",
+  "attachments": [],
+  "effect": null,
+  "reply_to_message_id": null,
+  "message_id": null,
+  "fired_at": null,
+  "failed_reason": null,
+  "created_at": "2026-11-19T14:00:02.532901Z",
+  "updated_at": "2026-11-19T14:00:02.532901Z"
+}
+```
+
+```json 422 Unprocessable Entity
+{
+  "detail": {
+    "error": "send_at_too_soon",
+    "message": "send_at must be at least 1 minute from now"
+  }
+}
+```
+
+</ResponseExample>
+
+#### Responses
+**201 Created**
+
+The [scheduled message](/api-reference/scheduled-messages/retrieve), `status: "scheduled"`. `id` is the scheduled message's ID, not a message ID: the message, and its `message_id`, exist once it fires.
+
+**200 OK**
+
+A retry with the same `idempotency_key` and payload: the scheduled message as it is now. Nothing new was scheduled.
+
+**401 Unauthorized**
+```json
+{
+  "detail": {
+    "error": "unauthorized",
+    "message": "Invalid or revoked API key"
+  }
+}
+```
+Other `message` values: `Authorization Bearer token required`, `API key required (use Authorization: Bearer ib_pk_…)`, `Invalid API key format`, `Customer account not found`.
+
+**403 Forbidden**
+```json
+{
+  "detail": {
+    "error": "forbidden",
+    "message": "Account is suspended"
+  }
+}
+```
+Your iBubbl account is suspended or cancelled (`message` is then `Account is cancelled`). Every API-key endpoint returns this.
+
+**404 Not Found**
+
+`not_found`: no contact with that `contact_id` on your account (or it was deleted). `file_not_found`: a file ID in `attachments` that isn't yours, or was deleted.
+
+**409 Conflict**
+```json
+{
+  "detail": {
+    "error": "idempotency_conflict",
+    "message": "idempotency_key reused with a different request payload"
+  }
+}
+```
+The key was used before with a different payload, or to send a message with `POST /v1/messages` (`message` then names that endpoint). Nothing was scheduled.
+
+**422 Unprocessable Entity**
+
+- `validation_error`: the body's shape, an unknown field (including `link_preview`), or a `send_at` without a time zone.
+- `scheduled_group_unsupported`: `chat_guid`, `participant_phones` or `group_name`. Groups can't be scheduled yet.
+- `send_at_too_soon` / `send_at_too_far`: `send_at` is under 1 minute from now, or more than 90 days.
+- `scheduled_limit_reached`: your account already has 5,000 scheduled messages waiting.
+- `contact_opted_out`, `contact_blocked`, `reply_target_not_found`, `reply_target_unsent`, `reply_target_partly_unsent`, `first_message_needs_text`.
+- File errors, as on [Send attachments](/guides/attachments#errors): `attachment_fetch_failed`, `attachment_too_large`, `unsupported_attachment`, `attachment_combination_not_supported`, `file_expired`.
+
+Nothing was scheduled, and the key stays unused.
+
+**429 Too Many Requests**
+
+`rate_limited`: over 300 conversation actions in 60 seconds. Wait the `Retry-After` header's seconds, then send the same request again, with the same `idempotency_key`.
+
+**503 Service Unavailable**
+
+`no_active_line`: your account has no active line to send from.

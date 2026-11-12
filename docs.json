@@ -66,6 +66,7 @@
         "group": "Guides",
         "pages": [
           "guides/send-messages",
+          "guides/schedule-messages",
           "guides/attachments",
           "guides/reactions-read-receipts-typing",
           "guides/editing-and-unsending",
@@ -97,6 +98,16 @@
               "api-reference/messages/cancel",
               "api-reference/messages/react",
               "api-reference/messages/remove-reaction"
+            ]
+          },
+          {
+            "group": "Scheduled messages",
+            "pages": [
+              "api-reference/scheduled-messages/create",
+              "api-reference/scheduled-messages/list",
+              "api-reference/scheduled-messages/retrieve",
+              "api-reference/scheduled-messages/update",
+              "api-reference/scheduled-messages/cancel"
             ]
           },
           {

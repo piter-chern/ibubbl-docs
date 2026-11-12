@@ -1,0 +1,135 @@
+---
+title: 'Cancel a scheduled message'
+openapi: 'POST /v1/scheduled-messages/{scheduled_message_id}/cancel'
+---
+
+### Cancel a scheduled message
+
+**Method:** `POST` | **Endpoint:** `/v1/scheduled-messages/{scheduled_message_id}/cancel`
+
+**Description:** Cancel a message that is still `scheduled`. It never fires, and the files copied for it are deleted. Messages scheduled in the dashboard can be cancelled too.
+
+**Authentication:** API key in the `Authorization` header: `Authorization: Bearer ib_pk_<64 hex>`. Create keys in the dashboard under **Settings → API access**.
+
+**Rate limit:** 300 conversation actions per 60 seconds per account, shared with scheduling, updating and the message actions. Over that, you get `429 rate_limited` with a `Retry-After` header; see [Rate limits](/concepts/limits#rate-limits).
+
+#### Request Body
+
+None.
+
+#### How it behaves
+
+- **It's immediate.** The answer is `200` with `status: "cancelled"`, and [`scheduled_message.cancelled`](/webhooks/events#scheduled-message-cancelled) fires. A rep cancelling it in the dashboard fires the same event.
+- **It's safe to call twice.** Cancelling a cancelled scheduled message answers `200` with it, and no second webhook fires.
+- **Only while it's waiting.** One that is being turned into a message right now gets `409 scheduled_message_sending`: it fires. One that has fired or failed gets `422 not_cancellable`.
+- **After it fires, cancel the message.** A fired message that is still waiting to go out, for the contact's [sending hours](/concepts/working-hours) or a [limit](/concepts/limits), can be stopped with [Cancel a message](/api-reference/messages/cancel) on its `message_id`.
+- **Retrying the original schedule doesn't bring it back.** `POST /v1/scheduled-messages` again with the same `idempotency_key` returns this cancelled scheduled message. To schedule it after all, use a new key.
+
+<RequestExample>
+
+```bash cURL
+curl -X POST https://api.ibubbl.com/v1/scheduled-messages/5d1e2f3a-4b5c-4d6e-8f70-81920a1b2c3d/cancel \
+  -H "Authorization: Bearer $IBUBBL_API_KEY"
+```
+
+```typescript TypeScript
+const scheduledMessageId = "5d1e2f3a-4b5c-4d6e-8f70-81920a1b2c3d";
+
+const res = await fetch(
+  `https://api.ibubbl.com/v1/scheduled-messages/${encodeURIComponent(scheduledMessageId)}/cancel`,
+  {
+    method: "POST",
+    headers: { Authorization: `Bearer ${process.env.IBUBBL_API_KEY}` },
+    signal: AbortSignal.timeout(10_000),
+  },
+);
+
+const data = await res.json();
+if (!res.ok) throw new Error(`${res.status} ${data.detail?.error}`);
+console.log(data.status); // "cancelled"
+```
+
+```python Python
+import os
+import urllib.parse
+
+import requests
+
+API_KEY = os.environ["IBUBBL_API_KEY"]
+
+scheduled_message_id = "5d1e2f3a-4b5c-4d6e-8f70-81920a1b2c3d"
+
+res = requests.post(
+    f"https://api.ibubbl.com/v1/scheduled-messages/{urllib.parse.quote(scheduled_message_id, safe='')}/cancel",
+    headers={"Authorization": f"Bearer {API_KEY}"},
+    timeout=10,
+)
+data = res.json()
+if not res.ok:
+    raise RuntimeError(f"{res.status_code} {data['detail']['error']}")
+print(data["status"])  # "cancelled"
+```
+
+</RequestExample>
+
+<ResponseExample>
+
+```json 200 OK
+{
+  "id": "5d1e2f3a-4b5c-4d6e-8f70-81920a1b2c3d",
+  "status": "cancelled",
+  "send_at": "2026-11-20T14:00:00.000000Z",
+  "to": "+14155551234",
+  "contact_id": "c8a1f4e2-3b9d-4f7c-a8e5-1d2c3b4a5e6f",
+  "conversation_id": "3a4b5c6d-7e8f-9a0b-1c2d-3e4f5a6b7c8d",
+  "body": "Hi Sam, a reminder about your appointment tomorrow at 10.",
+  "attachments": [],
+  "effect": null,
+  "reply_to_message_id": null,
+  "message_id": null,
+  "fired_at": null,
+  "failed_reason": null,
+  "created_at": "2026-11-19T14:00:02.532901Z",
+  "updated_at": "2026-11-19T16:20:11.880127Z"
+}
+```
+
+```json 409 Conflict
+{
+  "detail": {
+    "error": "scheduled_message_sending",
+    "message": "It is being sent right now and can't be changed; it will be `fired` (or `failed`) within seconds."
+  }
+}
+```
+
+</ResponseExample>
+
+#### Responses
+**200 OK**
+
+The scheduled message, now `cancelled` (or already cancelled).
+
+**401 Unauthorized**
+
+`unauthorized`: a missing, malformed or revoked API key.
+
+**403 Forbidden**
+
+`forbidden`: your iBubbl account is suspended or cancelled.
+
+**404 Not Found**
+
+`not_found`: no scheduled message with that ID on your account (also a malformed ID, and another account's).
+
+**409 Conflict**
+
+`scheduled_message_sending`: it is firing right now and can't be stopped. `scheduled_message.fired` follows.
+
+**422 Unprocessable Entity**
+
+`not_cancellable`: it has already fired or failed. Nothing changed.
+
+**429 Too Many Requests**
+
+`rate_limited`: over 300 conversation actions in 60 seconds. Wait the `Retry-After` header's seconds, then send the same request again.
