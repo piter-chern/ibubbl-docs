@@ -1594,7 +1594,7 @@
           "Files"
         ],
         "summary": "Upload a file",
-        "description": "Upload one file to send in messages: a `multipart/form-data` body with one part named `file`. The answer is a file object; put its `id` in the `attachments` of `POST /v1/messages`, alone or with `https` URLs.\n\nThe same types and sizes as URL attachments: images (JPEG, PNG, WebP, HEIC, HEIF) and GIFs up to 25 MiB, MP4/MOV video up to 50 MiB, PDF up to 10 MB, audio (MP3, M4A, AAC) up to 25 MiB. A file is refused as soon as it breaks a rule, and its content must match its type.\n\nA file can be sent any number of times until `expires_at`, 24 hours after the upload; then it is deleted. Each send keeps its own copy, so deleting a file never touches messages already sent. An account holds at most 500 files and 1 GiB of uploads at once.\n\nUploads take no idempotency key: a retried upload stores a second file (the unused one expires). Uploads allow 60 requests a minute and 4 at once per account; over that, the answer is `429 rate_limited` with a `Retry-After` header in seconds. See [Send attachments](/guides/attachments).",
+        "description": "Upload one file to send in messages: a `multipart/form-data` body with one part named `file`. The answer is a file object; put its `id` in the `attachments` of `POST /v1/messages`, alone or with `https` URLs.\n\nThe same types and sizes as URL attachments: images (JPEG, PNG, WebP, HEIC, HEIF) and GIFs up to 25 MiB, MP4/MOV video up to 50 MiB, PDF up to 10 MB, audio (MP3, M4A, AAC) up to 25 MiB (MB = 1,000,000 bytes; MiB = 1,048,576 bytes). A file is refused as soon as it breaks a rule, and its content must match its type.\n\nA file can be sent any number of times until `expires_at`, 24 hours after the upload; then it is deleted. Each send keeps its own copy, so deleting a file never touches messages already sent. An account holds at most 500 files and 1 GiB of uploads at once.\n\nUploads take no idempotency key: a retried upload stores a second file (the unused one expires). Uploads allow 60 requests a minute and 4 at once per account; over that, the answer is `429 rate_limited` with a `Retry-After` header in seconds. See [Send attachments](/guides/attachments).",
         "operationId": "v1_upload_file_v1_files_post",
         "responses": {
           "201": {
@@ -2214,7 +2214,7 @@
           "Contacts"
         ],
         "summary": "Delete a contact",
-        "description": "Delete a contact. It disappears from the list and from `GET /v1/contacts/{id}`, and every endpoint that takes its `id` (including `POST /v1/messages` with `contact_id`) returns `404 not_found`. Deleting it again also returns `404`.\n\nWhat stays: its messages and conversations, which `GET /v1/messages` still lists under the old `contact_id`; messages already accepted for it and still waiting, which still go out (cancel them in the dashboard to stop them); and its opt-out, which belongs to the number.\n\nUpserting the same number, sending to it with `to`, or an inbound message from it creates a **new** contact with a new `id`. Names, tags and a block are not carried over; an opt-out is.",
+        "description": "Delete a contact. It disappears from the list and from `GET /v1/contacts/{id}`, and every endpoint that takes its `id` (including `POST /v1/messages` with `contact_id`) returns `404 not_found`. Deleting it again also returns `404`.\n\nWhat stays: its messages and conversations, which `GET /v1/messages` still lists under the old `contact_id`; messages already accepted for it and still waiting, which still go out (cancel them with `POST /v1/messages/{message_id}/cancel` or in the dashboard to stop them); and its opt-out, which belongs to the number.\n\nUpserting the same number, sending to it with `to`, or an inbound message from it creates a **new** contact with a new `id`. Names, tags and a block are not carried over; an opt-out is.",
         "operationId": "v1_delete_contact_v1_contacts__contact_id__delete",
         "parameters": [
           {
@@ -2435,7 +2435,7 @@
           "Contacts"
         ],
         "summary": "Opt a contact out",
-        "description": "Record that this person opted out of messages, as a STOP reply does. **This can't be undone**, through the API or the dashboard: every later send to this number answers `422 contact_opted_out`, even after the contact is deleted and created again.\n\nThe first opt-out fires a `contact.opted_out` webhook with `source: \"api\"`. New sends are refused from then on, but a message accepted earlier and still waiting (held for sending hours, or queued) can still go out; cancel it in the dashboard to stop it.\n\nIdempotent: a contact already opted out (in any way) answers `200` with its current state, and no second webhook fires.",
+        "description": "Record that this person opted out of messages, as a STOP reply does. **This can't be undone**, through the API or the dashboard: every later send to this number answers `422 contact_opted_out`, even after the contact is deleted and created again.\n\nThe first opt-out fires a `contact.opted_out` webhook with `source: \"api\"`. New sends are refused from then on, but a message accepted earlier and still waiting (held for sending hours, or queued) can still go out; cancel it with `POST /v1/messages/{message_id}/cancel` or in the dashboard to stop it.\n\nIdempotent: a contact already opted out (in any way) answers `200` with its current state, and no second webhook fires.",
         "operationId": "v1_opt_out_contact_v1_contacts__contact_id__opt_out_post",
         "parameters": [
           {
@@ -3128,7 +3128,7 @@
             }
           },
           "422": {
-            "description": "`invalid_url` (URL is not HTTPS) or `validation_error` (for example an unknown event type).",
+            "description": "`invalid_url` (URL is not HTTPS) or `validation_error` (for example an unknown event type, or a field this endpoint doesn't take).",
             "content": {
               "application/json": {
                 "schema": {
@@ -3331,7 +3331,7 @@
     "/v1/events/{token}": {
       "post": {
         "tags": [
-          "Inbound Events"
+          "Inbound events"
         ],
         "summary": "Receive an event from a connected app",
         "description": "Receive a webhook from a connected third-party app (for example Recharge) and start any workflow whose **Webhook received** trigger matches it.\n\nThe URL you paste into the sending app carries its own credential, so this endpoint takes no `Authorization` header. Create a source in **Settings \u2192 Inbound events** to get the full URL; the token is shown once.\n\n**Any app (secret URL)** sources need no signature: the URL is the credential, so keep it private. They accept JSON or `application/x-www-form-urlencoded` bodies and at most 60 requests a minute. Beyond that the answer is `429` while a workflow is listening on the source; with none listening, the event is accepted and dropped.\n\n**Signed** sources must sign every request. For Recharge, that is the `X-Recharge-Hmac-Sha256` header computed with your **API Client Secret** \u2014 which is not the same value as your API token. An unsigned or mis-signed request returns `403 invalid_signature`.\n\n**Redeliveries are safe.** Providers resend events, and Recharge's dunning fires one event per charge retry. Each workflow's `event_id_path` identifies the underlying object, so repeat deliveries of the same event fold onto the run that already exists rather than messaging the customer again.\n\nA `200` means the event was accepted, not that it matched anything \u2014 check `runs_started`, and see the source's status in Settings when it is unexpectedly `0`.",
@@ -3379,7 +3379,7 @@
             }
           },
           "413": {
-            "description": "Body larger than 256 KB.",
+            "description": "Body larger than 256 KiB (262,144 bytes).",
             "content": {
               "application/json": {
                 "schema": {
@@ -3399,7 +3399,26 @@
             }
           }
         },
-        "security": []
+        "security": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": true,
+                "description": "The connected app's event, exactly as it sends it; at most 256 KiB (262,144 bytes). iBubbl doesn't require any field: a workflow's trigger decides which fields matter."
+              }
+            },
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": true,
+                "description": "The connected app's event, exactly as it sends it; at most 256 KiB (262,144 bytes). iBubbl doesn't require any field: a workflow's trigger decides which fields matter."
+              }
+            }
+          }
+        }
       }
     }
   },
@@ -3591,21 +3610,23 @@
         ],
         "title": "Contact",
         "example": {
-          "blocked": false,
-          "city": "Brooklyn",
-          "created_at": "2026-05-17T14:23:45.123Z",
-          "email": "sam@example.com",
-          "first_name": "Sam",
           "id": "c8a1f4e2-3b9d-4f7c-a8e5-1d2c3b4a5e6f",
-          "last_name": "Rivera",
-          "opted_out": false,
           "phone": "+14155551234",
+          "first_name": "Sam",
+          "last_name": "Rivera",
+          "email": "sam@example.com",
+          "city": "Brooklyn",
           "state": "NY",
+          "timezone": "America/Los_Angeles",
           "tags": [
             "Spring promo",
             "VIP"
           ],
-          "timezone": "America/Los_Angeles"
+          "opted_out": false,
+          "opted_out_at": null,
+          "blocked": false,
+          "blocked_at": null,
+          "created_at": "2026-05-17T14:23:45.123Z"
         }
       },
       "ContactList": {
@@ -3685,7 +3706,8 @@
         "example": {
           "conversation_id": "3a4b5c6d-7e8f-9a0b-1c2d-3e4f5a6b7c8d",
           "marked_count": 2,
-          "read_receipt": "queued"
+          "read_receipt": "queued",
+          "read_receipt_skipped_reason": null
         }
       },
       "EventAck": {
@@ -3957,7 +3979,7 @@
               "cancelled"
             ],
             "title": "Status",
-            "description": "Lifecycle state. `pending` = accepted and on its way out; it may be waiting for the contact's working hours or the line's hourly limit for new contacts (see `held_until`). `queued` = parked by a capacity hold (`hourly_cap_hit` / `line_offline`), retried automatically. `sent` / `delivered` / `read` = delivery progression. `failed` = the send failed \u2014 see webhook `message.failed` for the reason; it can follow `sent` (or a `read` with no confirmed delivery) when iMessage reports the send failed after accepting it (`failed_reason` `imessage_undeliverable` / `imessage_error:<code>`), and such a message can still move to `delivered` / `read` if Apple later confirms it. `expired` = still queued after an hour, so dropped; it will not send. `cancelled` = stopped in the dashboard before it was sent; it will not send (webhook `message.cancelled`)."
+            "description": "Lifecycle state. `pending` = accepted and on its way out; it may be waiting for the contact's working hours or the line's hourly limit for new contacts (see `held_until`). `queued` = parked by a capacity hold (`hourly_cap_hit` / `line_offline`), retried automatically. `sent` / `delivered` / `read` = delivery progression. `failed` = the send failed \u2014 see webhook `message.failed` for the reason; it can follow `sent` (or a `read` with no confirmed delivery) when iMessage reports the send failed after accepting it (`failed_reason` `imessage_undeliverable` / `imessage_error:<code>`), and such a message can still move to `delivered` / `read` if Apple later confirms it. `expired` = still queued after an hour, so dropped; it will not send. `cancelled` = stopped before it went out: with `POST /v1/messages/{message_id}/cancel`, by someone on your account in the dashboard, or by iBubbl when an after-hours auto-reply misses its window; it will not send (webhook `message.cancelled`)."
           },
           "to": {
             "anyOf": [
@@ -4252,21 +4274,23 @@
         ],
         "title": "Message",
         "example": {
-          "attachments": [],
+          "id": "8b3a4e72-1c2d-4e5f-9a0b-2c3d4e5f6a7b",
+          "direction": "outbound",
+          "created_at": "2026-10-08T11:40:44.770512Z",
+          "status": "pending",
+          "to": "+14155551234",
+          "line_id": "5f0c2a9e-7d41-4b8a-9e3c-6a1b2c3d4e5f",
+          "line_number": "+14155550100",
           "body": "Hey Sam \u2014 quick check-in about your order.",
           "contact_id": "c8a1f4e2-3b9d-4f7c-a8e5-1d2c3b4a5e6f",
           "conversation_id": "3a4b5c6d-7e8f-9a0b-1c2d-3e4f5a6b7c8d",
           "conversation_kind": "one_to_one",
-          "created_at": "2026-10-08T11:40:44.770512Z",
-          "direction": "outbound",
-          "held_reason": "working_hours",
-          "held_until": "2026-10-08T16:00:00+00:00",
-          "id": "8b3a4e72-1c2d-4e5f-9a0b-2c3d4e5f6a7b",
-          "line_id": "5f0c2a9e-7d41-4b8a-9e3c-6a1b2c3d4e5f",
-          "line_number": "+14155550100",
+          "chat_guid": null,
+          "channel": null,
           "sent_at": "2026-10-08T11:40:44.770Z",
-          "status": "pending",
-          "to": "+14155551234"
+          "held_until": "2026-10-08T16:00:00+00:00",
+          "held_reason": "working_hours",
+          "attachments": []
         }
       },
       "MessageAttachment": {
@@ -4448,14 +4472,16 @@
         ],
         "title": "Reaction",
         "example": {
-          "conversation_id": "3a4b5c6d-7e8f-9a0b-1c2d-3e4f5a6b7c8d",
-          "created_at": "2026-11-11T15:04:05.123Z",
-          "direction": "outbound",
-          "emoji": "\u2764\ufe0f",
           "id": "7a8b9c0d-1e2f-3a4b-5c6d-7e8f9a0b1c2d",
           "message_id": "8b3a4e72-1c2d-4e5f-9a0b-2c3d4e5f6a7b",
+          "conversation_id": "3a4b5c6d-7e8f-9a0b-1c2d-3e4f5a6b7c8d",
+          "type": "love",
+          "emoji": "\u2764\ufe0f",
+          "direction": "outbound",
           "status": "pending",
-          "type": "love"
+          "failed_reason": null,
+          "created_at": "2026-11-11T15:04:05.123Z",
+          "removed_at": null
         }
       },
       "ScheduledMessage": {
@@ -4627,15 +4653,20 @@
         ],
         "title": "ScheduledMessage",
         "example": {
-          "attachments": [],
-          "body": "Hi Sam, a reminder about your appointment tomorrow at 10.",
+          "id": "5d1e2f3a-4b5c-4d6e-8f70-81920a1b2c3d",
+          "status": "scheduled",
+          "send_at": "2026-11-20T14:00:00.000000Z",
+          "to": "+14155551234",
           "contact_id": "c8a1f4e2-3b9d-4f7c-a8e5-1d2c3b4a5e6f",
           "conversation_id": "2f6b7c8d-9e0f-4a1b-8c2d-3e4f5a6b7c8d",
+          "body": "Hi Sam, a reminder about your appointment tomorrow at 10.",
+          "attachments": [],
+          "effect": null,
+          "reply_to_message_id": null,
+          "message_id": null,
+          "fired_at": null,
+          "failed_reason": null,
           "created_at": "2026-11-12T18:04:11.532901Z",
-          "id": "5d1e2f3a-4b5c-4d6e-8f70-81920a1b2c3d",
-          "send_at": "2026-11-20T14:00:00.000000Z",
-          "status": "scheduled",
-          "to": "+14155551234",
           "updated_at": "2026-11-12T18:04:11.532901Z"
         }
       },
@@ -4774,9 +4805,10 @@
         "title": "TypingStatus",
         "example": {
           "conversation_id": "3a4b5c6d-7e8f-9a0b-1c2d-3e4f5a6b7c8d",
-          "expires_at": "2026-11-11T15:04:15.123Z",
+          "typing": true,
           "status": "started",
-          "typing": true
+          "ignored_reason": null,
+          "expires_at": "2026-11-11T15:04:15.123Z"
         }
       },
       "ContactUpdate": {
@@ -4880,7 +4912,8 @@
         "title": "ContactUpdate",
         "description": "Only the fields you send change. Send a field as `null` to clear it. `phone` can't be changed, and tags have their own endpoints. Fields not listed here are rejected with `422 validation_error`.",
         "example": {
-          "email": "sam.rivera@example.com"
+          "email": "sam.rivera@example.com",
+          "city": null
         }
       },
       "ContactUpsert": {
@@ -5019,17 +5052,17 @@
         "title": "ContactUpsert",
         "description": "Fields not listed here are rejected with `422 validation_error`.",
         "example": {
-          "city": "Brooklyn",
-          "email": "sam@example.com",
+          "phone": "+14155551234",
           "first_name": "Sam",
           "last_name": "Rivera",
-          "phone": "+14155551234",
+          "email": "sam@example.com",
+          "city": "Brooklyn",
           "state": "NY",
+          "timezone": "America/New_York",
           "tags": [
             "VIP",
             "Spring promo"
-          ],
-          "timezone": "America/New_York"
+          ]
         }
       },
       "File": {
@@ -5109,13 +5142,13 @@
         ],
         "title": "File",
         "example": {
-          "created_at": "2026-11-11T18:20:05.512000Z",
-          "expires_at": "2026-11-12T18:20:05.512000Z",
-          "filename": "Invoice 1042.pdf",
           "id": "file_3f2c8d9e0f144b4d9c5a7b8e2d1f0c4a",
+          "filename": "Invoice 1042.pdf",
           "kind": "file",
           "mime_type": "application/pdf",
-          "size_bytes": 182344
+          "size_bytes": 182344,
+          "created_at": "2026-11-11T18:20:05.512000Z",
+          "expires_at": "2026-11-12T18:20:05.512000Z"
         }
       },
       "MessageCreate": {
@@ -5245,7 +5278,7 @@
               }
             ],
             "title": "Attachments",
-            "description": "Up to 10 files to send, in order: each an `https` URL iBubbl downloads when the request arrives, or the `id` of a file you uploaded with `POST /v1/files` (`file_` and 32 hex characters). Images (JPEG, PNG, WebP, HEIC, HEIF) and GIFs up to 25 MiB each, MP4/MOV video up to 50 MiB, PDF up to 10 MB, audio (MP3, M4A, AAC) up to 25 MiB on its own; 86 MB in all. With other files, audio must be one MP3 of at most 2 MB. The type comes from the response's `Content-Type` (or the URL's extension when that is `application/octet-stream`). A URL that can't be downloaded, or a file that breaks these rules, rejects the whole request (`422 attachment_fetch_failed`, `attachment_too_large`, `unsupported_attachment`, `attachment_combination_not_supported`) and nothing is sent. A file ID that isn't yours, or was deleted, is `404 file_not_found`; one past its `expires_at` is `422 file_expired`. Only with `to` or `contact_id`, and not with `effect` or `reply_to_message_id`. The items, in order, are part of the payload compared for idempotency; a replay never downloads or copies them again.",
+            "description": "Up to 10 files to send, in order: each an `https` URL iBubbl downloads when the request arrives, or the `id` of a file you uploaded with `POST /v1/files` (`file_` and 32 hex characters). Images (JPEG, PNG, WebP, HEIC, HEIF) and GIFs up to 25 MiB each, MP4/MOV video up to 50 MiB, PDF up to 10 MB, audio (MP3, M4A, AAC) up to 25 MiB on its own; 86 MB in all. With other files, audio must be one MP3 of at most 2 MB. (MB = 1,000,000 bytes; MiB = 1,048,576 bytes.) The type comes from the response's `Content-Type` (or the URL's extension when that is `application/octet-stream`). A URL that can't be downloaded, or a file that breaks these rules, rejects the whole request (`422 attachment_fetch_failed`, `attachment_too_large`, `unsupported_attachment`, `attachment_combination_not_supported`) and nothing is sent. A file ID that isn't yours, or was deleted, is `404 file_not_found`; one past its `expires_at` is `422 file_expired`. Only with `to` or `contact_id`, and not with `effect` or `reply_to_message_id`. The items, in order, are part of the payload compared for idempotency; a replay never downloads or copies them again.",
             "examples": [
               [
                 "https://example.com/photos/order-1042.jpg",
@@ -5325,9 +5358,9 @@
         "title": "MessageCreate",
         "description": "Fields not listed here are ignored without an error: the request still succeeds and they are not stored.",
         "example": {
+          "to": "+14155551234",
           "body": "Hey Sam \u2014 quick check-in about your order.",
-          "idempotency_key": "a3f2c8d9-e0f1-4b4d-9c5a-7b8e2d1f0c4a",
-          "to": "+14155551234"
+          "idempotency_key": "a3f2c8d9-e0f1-4b4d-9c5a-7b8e2d1f0c4a"
         }
       },
       "MessageEdit": {
@@ -5535,10 +5568,10 @@
         "title": "ScheduledMessageCreate",
         "description": "Fields not listed here are rejected with `422 validation_error`.",
         "example": {
+          "to": "+14155551234",
           "body": "Hi Sam, a reminder about your appointment tomorrow at 10.",
-          "idempotency_key": "a3f2c8d9-e0f1-4b4d-9c5a-7b8e2d1f0c4a",
           "send_at": "2026-11-20T14:00:00Z",
-          "to": "+14155551234"
+          "idempotency_key": "a3f2c8d9-e0f1-4b4d-9c5a-7b8e2d1f0c4a"
         }
       },
       "ScheduledMessageUpdate": {
@@ -5636,18 +5669,20 @@
             ]
           }
         },
+        "additionalProperties": false,
         "type": "object",
         "required": [
           "url"
         ],
         "title": "WebhookSubscriptionCreate",
+        "description": "Fields not listed here are rejected with `422 validation_error`, and the message names the field.",
         "example": {
+          "url": "https://api.example.com/ibubbl-webhooks",
           "event_types": [
             "message.sent",
             "message.failed",
             "message.inbound"
-          ],
-          "url": "https://api.example.com/ibubbl-webhooks"
+          ]
         }
       },
       "WebhookRevokeResponse": {
@@ -5745,15 +5780,16 @@
         ],
         "title": "WebhookSubscription",
         "example": {
-          "created_at": "2026-05-17T14:23:45.123Z",
+          "id": "4a5b6c7d-8e9f-0a1b-2c3d-4e5f6a7b8c9d",
+          "url": "https://api.example.com/ibubbl-webhooks",
+          "secret_prefix": "whsec_a3f2c8d9",
           "event_types": [
             "message.sent",
             "message.failed"
           ],
-          "id": "4a5b6c7d-8e9f-0a1b-2c3d-4e5f6a7b8c9d",
+          "created_at": "2026-05-17T14:23:45.123Z",
           "last_delivered_at": "2026-05-17T15:01:12.456Z",
-          "secret_prefix": "whsec_a3f2c8d9",
-          "url": "https://api.example.com/ibubbl-webhooks"
+          "revoked_at": null
         }
       },
       "WebhookSubscriptionCreated": {
@@ -5845,15 +5881,17 @@
         ],
         "title": "WebhookSubscriptionCreated",
         "example": {
-          "created_at": "2026-05-17T14:23:45.123Z",
+          "id": "4a5b6c7d-8e9f-0a1b-2c3d-4e5f6a7b8c9d",
+          "url": "https://api.example.com/ibubbl-webhooks",
+          "secret_prefix": "whsec_a3f2c8d9",
           "event_types": [
             "message.sent",
             "message.failed"
           ],
-          "id": "4a5b6c7d-8e9f-0a1b-2c3d-4e5f6a7b8c9d",
+          "created_at": "2026-05-17T14:23:45.123Z",
+          "last_delivered_at": null,
+          "revoked_at": null,
           "secret": "whsec_a3f2c8d9e0f1b4d52c8a1f4e23b9d4f7ca8e51d2c3b4a5e6f7a8b9c0d1e2f3a4",
-          "secret_prefix": "whsec_a3f2c8d9",
-          "url": "https://api.example.com/ibubbl-webhooks",
           "warning": "Save this secret now \u2014 it cannot be retrieved again."
         }
       }
@@ -5895,7 +5933,7 @@
       "name": "Webhooks"
     },
     {
-      "name": "Inbound Events"
+      "name": "Inbound events"
     }
   ],
   "security": [

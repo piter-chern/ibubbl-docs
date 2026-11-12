@@ -334,7 +334,7 @@ if not res.ok:
 </ResponseField>
 
 <ResponseField name="payload_too_large" type="413">
-  An [inbound event](/inbound-events/overview) body exceeded 256 KB.
+  An [inbound event](/inbound-events/overview) body exceeded 256 KiB (262,144 bytes).
 </ResponseField>
 
 <ResponseField name="rate_limited" type="429">
@@ -419,7 +419,7 @@ The general rule: **don't retry 4xx**. Most 4xxes are payload-level problems tha
 | `404` | Resource not found (or hidden across tenants), `group_not_found`, `line_not_found`, or `file_not_found`. |
 | `409` | Idempotency conflict, or a message in a state another request holds: `edit_in_flight`, `already_unsent`, `message_dispatching`, `scheduled_message_sending`. |
 | `408` | `upload_timeout`: an upload that took too long to arrive. |
-| `413` | Inbound event body over 256 KB. |
+| `413` | Inbound event body over 256 KiB. |
 | `422` | Validation, routing or send-limit failure. |
 | `429` | `rate_limited`: too many list requests, conversation actions or uploads from your account, or attachment downloads busy (all with `Retry-After`), or too many inbound events for one source on `/v1/events`. |
 | `500` | No owner rep (`no_owner_rep`) or an unexpected iBubbl error (`internal_error`). |

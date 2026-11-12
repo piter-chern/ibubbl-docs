@@ -14,7 +14,7 @@ openapi: 'POST /v1/events/{token}'
 #### Request Body
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
-| (the app's event) | object | Yes | The connected app's own payload, sent unchanged as JSON (or form-encoded), at most 256 KB. iBubbl doesn't require any fields; your workflow maps the ones it needs. The signature is checked against these exact bytes, so don't re-serialize the body. |
+| (the app's event) | object | Yes | The connected app's own payload, sent unchanged as JSON (or form-encoded), at most 256 KiB (262,144 bytes). iBubbl doesn't require any fields; your workflow maps the ones it needs. The signature is checked against these exact bytes, so don't re-serialize the body. |
 
 <RequestExample>
 

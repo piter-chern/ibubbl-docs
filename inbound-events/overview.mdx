@@ -47,7 +47,7 @@ Treat the URL like a password. If it leaks, use **New URL** on the source (the
 old URL stops working at once) or revoke the source.
 
 Bodies may be JSON or `application/x-www-form-urlencoded` form data, up to
-256 KB. `multipart/form-data` isn't supported: such a request is accepted but
+256 KiB (262,144 bytes). `multipart/form-data` isn't supported: such a request is accepted but
 recorded as **Event wasn't JSON or form data**, and starts nothing.
 
 ### What you get back
@@ -62,7 +62,7 @@ That is normal. When it is unexpectedly `0`, the source's row in **Settings →
 Inbound events** says which of those it was.
 
 Errors are limited to `403` (signature did not match), `404` (no such source, or
-it was revoked), `413` (body over 256 KB) and, for secret-URL sources only, `429`
+it was revoked), `413` (body over 256 KiB) and, for secret-URL sources only, `429`
 (over 60 events a minute, while a workflow is listening on the source — see
 [Source types](#source-types)). Everything else answers `200`, deliberately —
 see [Delivery](#delivery-and-retries). (Only `POST` is accepted; a `GET` to the

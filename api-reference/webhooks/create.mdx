@@ -17,6 +17,8 @@ openapi: 'POST /v1/webhooks'
 | `url` | string | Yes | Your HTTPS endpoint. Must start with `https://`. |
 | `event_types` | array of strings | No | Only send these types. Leave it out, or send `null` or `[]`, to receive every type, including ones added later. Each entry must be a type from the [event catalog](/webhooks/events). |
 
+Fields not listed above are rejected with `422 validation_error`, and the message names the field. A typo such as `events` for `event_types` is refused rather than creating a subscription to every event type.
+
 <RequestExample>
 
 ```bash cURL
@@ -166,6 +168,7 @@ Other `error` value: `validation_error`, for example an unknown event type:
   }
 }
 ```
+or a field this endpoint doesn't take (`events: Extra inputs are not permitted`).
 
 **500 Internal Server Error**
 ```json
