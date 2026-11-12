@@ -7,11 +7,11 @@ openapi: 'POST /v1/scheduled-messages'
 
 **Method:** `POST` | **Endpoint:** `/v1/scheduled-messages`
 
-**Description:** Schedule a one-to-one message to go out at `send_at`, from 1 minute to 90 days ahead, with the same content as [Send a message](/api-reference/messages/send): text, files, an effect or a reply. iBubbl keeps it, then sends it at that time; you don't need a job of your own. See [Schedule messages](/guides/schedule-messages).
+**Description:** Schedule a one-to-one message to go out at `send_at`, from 1 minute to 90 days ahead, with the same content as [Send a message](/api-reference/messages/send): text, files, an effect, a reply, or a link with a [preview card](#link-preview-cards). iBubbl keeps it, then sends it at that time; you don't need a job of your own. See [Schedule messages](/guides/schedule-messages).
 
 **Authentication:** API key in the `Authorization` header: `Authorization: Bearer ib_pk_<64 hex>`. Create keys in the dashboard under **Settings → API access**.
 
-**Rate limit:** 300 conversation actions per 60 seconds per account (schedule, update and cancel count together with edits, unsends, cancels, tapbacks, mark read and typing, across all your API keys). Over that, you get `429 rate_limited` with a `Retry-After` header; see [Rate limits](/concepts/limits#rate-limits).
+**Rate limit:** 300 conversation actions per 60 seconds per account (schedule, update, cancel and send now count together with edits, unsends, cancels, tapbacks, mark read and typing, across all your API keys). Over that, you get `429 rate_limited` with a `Retry-After` header; see [Rate limits](/concepts/limits#rate-limits).
 
 #### Request Body
 | Field | Type | Required | Description |
@@ -23,9 +23,20 @@ openapi: 'POST /v1/scheduled-messages'
 | `attachments` | array of 1–10 strings: `https` URLs or file IDs | No | Files to send, with the same types, sizes and errors as [Send attachments](/guides/attachments#supported-files-and-limits). iBubbl downloads each URL and copies each upload **when you schedule** and keeps the copies until the message is sent or cancelled, so an upload can expire, or be deleted, before `send_at` without affecting it. Not with `effect` or `reply_to_message_id`. |
 | `reply_to_message_id` | string (UUID) | No | Send as an inline reply quoting an earlier message in this contact's one-to-one conversation (`422 reply_target_not_found` otherwise). iMessage only. |
 | `effect` | string | No | An iMessage effect, as on [Send a message](/api-reference/messages/send). iMessage only. |
+| `link_preview` | boolean | No | Send the link with a preview card, as on [Send a message](/api-reference/messages/send#link-preview-cards). The body must end in exactly one `http(s)` link, with no other link in it; not with `attachments`, `effect` or `reply_to_message_id`. See [Link preview cards](#link-preview-cards). Default `false`. |
 | `idempotency_key` | string, 1–128 characters | Yes | Your unique key for this scheduled message; a UUIDv4 is recommended. Keys are shared with `POST /v1/messages`, and must not start with `sched:`. See [Idempotency](#idempotency) below. |
 
-Any other field is refused with `422 validation_error`, including `link_preview`. `chat_guid`, `participant_phones` and `group_name` are refused with `422 scheduled_group_unsupported`: groups can't be scheduled yet.
+Any other field is refused with `422 validation_error`. `chat_guid`, `participant_phones` and `group_name` are refused with `422 scheduled_group_unsupported`: groups can't be scheduled yet.
+
+#### Link preview cards
+
+With `"link_preview": true`, the link at the end of `body` goes out as a preview card (the page's title and image), exactly as on [Send a message](/api-reference/messages/send#link-preview-cards): a body that is only the link is the card alone, and text before the link arrives as its own bubble, followed by the card.
+
+- **The rules are checked when you schedule**, and again on every [update](/api-reference/scheduled-messages/update): a body that doesn't end in exactly one `http(s)` link, or a message with `attachments`, an `effect` or a reply, is `422 validation_error`. So a scheduled message never goes out plain while it says `link_preview: true`.
+- **Your line opens the page when the message is sent**, not when you schedule it. A click-tracked link counts a click then, and a one-time link (a login or reset link, a single-use coupon) may be used up: don't set it for those.
+- **It is part of the payload** for idempotency when `true`: a retry with the same key must repeat it.
+
+<Warning>Don't set `link_preview` on one-time or click-tracked links: the page is opened to build the card.</Warning>
 
 #### What is checked now, and what when it fires
 
@@ -36,7 +47,7 @@ At `send_at` the scheduled message becomes a normal message, `status` turns `fir
 #### Idempotency
 
 - **Same key + same payload**: `200 OK` with the scheduled message as it is now (perhaps `fired` or `cancelled` by then). Nothing is scheduled twice.
-- **Same key + different payload**: `409 idempotency_conflict`. The payload includes `send_at`, compared as an instant (`14:00:00Z` and `09:00:00-05:00` match). To move a scheduled message, [update it](/api-reference/scheduled-messages/update).
+- **Same key + different payload**: `409 idempotency_conflict`. The payload includes `send_at` and, when `true`, `link_preview`. `send_at` is compared as an instant (`14:00:00Z` and `09:00:00-05:00` match). To move a scheduled message, [update it](/api-reference/scheduled-messages/update).
 - **A key already used to send with `POST /v1/messages`**: `409 idempotency_conflict`, and the other way round. One key, one message, whichever endpoint you use.
 - A key starting with `sched:` is refused with `422 validation_error` on both endpoints.
 
@@ -134,6 +145,7 @@ print(data["id"], data["status"], data["send_at"])  # "scheduled"
   "attachments": [],
   "effect": null,
   "reply_to_message_id": null,
+  "link_preview": false,
   "message_id": null,
   "fired_at": null,
   "failed_reason": null,
@@ -201,7 +213,7 @@ The key was used before with a different payload, or to send a message with `POS
 
 **422 Unprocessable Entity**
 
-- `validation_error`: the body's shape, an unknown field (including `link_preview`), or a `send_at` without a time zone.
+- `validation_error`: the body's shape, an unknown field, a `send_at` without a time zone, or a `link_preview` the message can't have (a body that doesn't end in exactly one link, or `link_preview` with `attachments`, `effect` or `reply_to_message_id`).
 - `scheduled_group_unsupported`: `chat_guid`, `participant_phones` or `group_name`. Groups can't be scheduled yet.
 - `send_at_too_soon` / `send_at_too_far`: `send_at` is under 1 minute from now, or more than 90 days.
 - `scheduled_limit_reached`: your account already has 5,000 scheduled messages waiting.

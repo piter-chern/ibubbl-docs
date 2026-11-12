@@ -107,7 +107,8 @@
               "api-reference/scheduled-messages/list",
               "api-reference/scheduled-messages/retrieve",
               "api-reference/scheduled-messages/update",
-              "api-reference/scheduled-messages/cancel"
+              "api-reference/scheduled-messages/cancel",
+              "api-reference/scheduled-messages/send-now"
             ]
           },
           {

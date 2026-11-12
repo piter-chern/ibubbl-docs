@@ -7,11 +7,11 @@ openapi: 'PATCH /v1/scheduled-messages/{scheduled_message_id}'
 
 **Method:** `PATCH` | **Endpoint:** `/v1/scheduled-messages/{scheduled_message_id}`
 
-**Description:** Change the text, the time, or both, of a message that is still `scheduled`. Messages scheduled in the dashboard can be changed too.
+**Description:** Change the text, the time or the [preview card](/api-reference/scheduled-messages/create#link-preview-cards) of a message that is still `scheduled`. Messages scheduled in the dashboard can be changed too.
 
 **Authentication:** API key in the `Authorization` header: `Authorization: Bearer ib_pk_<64 hex>`. Create keys in the dashboard under **Settings → API access**.
 
-**Rate limit:** 300 conversation actions per 60 seconds per account, shared with scheduling, cancelling and the message actions. Over that, you get `429 rate_limited` with a `Retry-After` header; see [Rate limits](/concepts/limits#rate-limits).
+**Rate limit:** 300 conversation actions per 60 seconds per account, shared with scheduling, cancelling, sending now and the message actions. Over that, you get `429 rate_limited` with a `Retry-After` header; see [Rate limits](/concepts/limits#rate-limits).
 
 #### Request Body
 At least one of:
@@ -19,7 +19,8 @@ At least one of:
 | Field | Type | Description |
 | ----- | ---- | ----------- |
 | `send_at` | string (ISO 8601 with a time zone) | The new time, with the same rules as when scheduling: 1 minute to 90 days from now (`422 send_at_too_soon` / `send_at_too_far`). `null` is `422 validation_error`. |
-| `body` | string or null | The new text. `null` or `""` removes the text, which only a message with files can do (`422 scheduled_empty` otherwise), and not when it's the first message to the contact (`422 first_message_needs_text`). |
+| `body` | string or null | The new text. `null` or `""` removes the text, which only a message with files can do (`422 scheduled_empty` otherwise), and not when it's the first message to the contact (`422 first_message_needs_text`). With `link_preview` on, the new text must still end in exactly one `http(s)` link (`422 validation_error`). |
+| `link_preview` | boolean | Turn the [preview card](/api-reference/scheduled-messages/create#link-preview-cards) on or off. With it on, the text the message will have (the new `body`, or the current one) must end in exactly one `http(s)` link, and the message can't have files, an `effect` or a reply (`422 validation_error`). `null` is `422 validation_error`. |
 
 A field you leave out stays as it is. Files, `effect` and the reply can't be changed: [cancel](/api-reference/scheduled-messages/cancel) it and schedule a new one. Any other field, or an empty body `{}`, is `422 validation_error`.
 
@@ -27,6 +28,8 @@ A field you leave out stays as it is. Files, `effect` and the reply can't be cha
 
 - **Only while it's waiting.** A message that is being turned into a message right now gets `409 scheduled_message_sending`; it settles as `fired` (or `failed`) within seconds. One that has fired, failed or been cancelled gets `422 not_editable`. Once it has fired, the message itself can be [cancelled](/api-reference/messages/cancel) while it waits to go out, or [edited](/api-reference/messages/edit) after.
 - **Retries of the original schedule still match.** Repeating the original `POST /v1/scheduled-messages` with its `idempotency_key` returns `200` with the updated scheduled message: the update doesn't change what the key was first used for.
+- **The preview card's rules hold for every change.** On a message with `link_preview: true`, new text that loses its link is refused, and so is turning `link_preview` on over text without one. Send both in one request to change them together, for example `{"body": "See you at 11:30", "link_preview": false}`.
+- **Two changes at the same moment.** If another request changes the message between this one's read and its write, iBubbl checks again against the message as it is now. If that keeps happening, the answer is `409 scheduled_message_changed`: read it again and retry.
 - **No webhook fires** for an update.
 
 <RequestExample>
@@ -106,6 +109,7 @@ print(data["send_at"], data["body"])
   "attachments": [],
   "effect": null,
   "reply_to_message_id": null,
+  "link_preview": false,
   "message_id": null,
   "fired_at": null,
   "failed_reason": null,
@@ -146,9 +150,11 @@ The scheduled message, updated.
 
 `scheduled_message_sending`: it is being turned into a message right now. Nothing changed; read it again in a few seconds.
 
+`scheduled_message_changed`: other requests kept changing it at the same moment. Nothing changed; read it again and retry.
+
 **422 Unprocessable Entity**
 
-- `validation_error`: no field, a `null` `send_at`, an unknown field, or a time without a time zone.
+- `validation_error`: no field, a `null` `send_at` or `link_preview`, an unknown field, a time without a time zone, or a change that breaks the [preview card's rules](/api-reference/scheduled-messages/create#link-preview-cards).
 - `send_at_too_soon` / `send_at_too_far`: the new `send_at` is under 1 minute from now, or more than 90 days.
 - `scheduled_empty`: removing the text of a message without files.
 - `first_message_needs_text`: removing the text of the first message to a contact.

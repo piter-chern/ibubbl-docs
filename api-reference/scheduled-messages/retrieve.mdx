@@ -25,6 +25,7 @@ openapi: 'GET /v1/scheduled-messages/{scheduled_message_id}'
 | `attachments` | array | The files, in order: `kind` (`image`, `gif`, `video`, `audio` or `file`), `mime_type`, `size_bytes` and `filename` (the name the recipient sees; `null` without a usable name, and for messages scheduled in the dashboard). |
 | `effect` | string or null | The iMessage effect. |
 | `reply_to_message_id` | string (UUID) or null | The message it quotes. |
+| `link_preview` | boolean | Whether its link is sent as a [preview card](/api-reference/scheduled-messages/create#link-preview-cards). Always `false` for messages scheduled in the dashboard. |
 | `message_id` | string (UUID) or null | The message it created, once `fired`. Use it with [Retrieve a message](/api-reference/messages/retrieve), and to match the `message.*` webhooks. |
 | `fired_at` | string (ISO 8601 UTC) or null | When it fired. |
 | `failed_reason` | string or null | Why it was refused, while `failed`. |
@@ -32,7 +33,7 @@ openapi: 'GET /v1/scheduled-messages/{scheduled_message_id}'
 
 | `status` | Meaning |
 | -------- | ------- |
-| `scheduled` | Waiting for `send_at`. You can [update](/api-reference/scheduled-messages/update) or [cancel](/api-reference/scheduled-messages/cancel) it. |
+| `scheduled` | Waiting for `send_at`. You can [update](/api-reference/scheduled-messages/update), [cancel](/api-reference/scheduled-messages/cancel) or [send it now](/api-reference/scheduled-messages/send-now). |
 | `sending` | Being turned into a message right now. It settles within seconds. |
 | `fired` | The message was created (`message_id`). Follow that message for sending and delivery: it may still wait for the contact's [sending hours](/concepts/working-hours) or a [limit](/concepts/limits). |
 | `failed` | Refused when it fired: no message was created. See `failed_reason`. |
@@ -100,6 +101,7 @@ print(data["status"], data["message_id"])
   "attachments": [],
   "effect": null,
   "reply_to_message_id": null,
+  "link_preview": false,
   "message_id": "8b3a4e72-1c2d-4e5f-9a0b-2c3d4e5f6a7b",
   "fired_at": "2026-11-20T14:00:04.118230Z",
   "failed_reason": null,

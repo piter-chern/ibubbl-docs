@@ -11,7 +11,7 @@ openapi: 'POST /v1/scheduled-messages/{scheduled_message_id}/cancel'
 
 **Authentication:** API key in the `Authorization` header: `Authorization: Bearer ib_pk_<64 hex>`. Create keys in the dashboard under **Settings → API access**.
 
-**Rate limit:** 300 conversation actions per 60 seconds per account, shared with scheduling, updating and the message actions. Over that, you get `429 rate_limited` with a `Retry-After` header; see [Rate limits](/concepts/limits#rate-limits).
+**Rate limit:** 300 conversation actions per 60 seconds per account, shared with scheduling, updating, sending now and the message actions. Over that, you get `429 rate_limited` with a `Retry-After` header; see [Rate limits](/concepts/limits#rate-limits).
 
 #### Request Body
 
@@ -86,6 +86,7 @@ print(data["status"])  # "cancelled"
   "attachments": [],
   "effect": null,
   "reply_to_message_id": null,
+  "link_preview": false,
   "message_id": null,
   "fired_at": null,
   "failed_reason": null,

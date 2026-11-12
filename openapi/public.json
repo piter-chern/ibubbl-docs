@@ -498,7 +498,7 @@
             }
           },
           "429": {
-            "description": "`rate_limited`: more than 300 conversation actions in 60 seconds from your account (all keys, and tapbacks, read, typing, edit, unsend and cancel requests and scheduled-message creates, updates and cancels, count together; list requests have their own budget). Wait `Retry-After` seconds, then send the same request again.",
+            "description": "`rate_limited`: more than 300 conversation actions in 60 seconds from your account (all keys, and tapbacks, read, typing, edit, unsend and cancel requests and scheduled-message creates, updates, cancels and send-nows, count together; list requests have their own budget). Wait `Retry-After` seconds, then send the same request again.",
             "headers": {
               "Retry-After": {
                 "description": "Seconds to wait before retrying.",
@@ -608,7 +608,7 @@
             }
           },
           "429": {
-            "description": "`rate_limited`: more than 300 conversation actions in 60 seconds from your account (all keys, and tapbacks, read, typing, edit, unsend and cancel requests and scheduled-message creates, updates and cancels, count together; list requests have their own budget). Wait `Retry-After` seconds, then send the same request again.",
+            "description": "`rate_limited`: more than 300 conversation actions in 60 seconds from your account (all keys, and tapbacks, read, typing, edit, unsend and cancel requests and scheduled-message creates, updates, cancels and send-nows, count together; list requests have their own budget). Wait `Retry-After` seconds, then send the same request again.",
             "headers": {
               "Retry-After": {
                 "description": "Seconds to wait before retrying.",
@@ -719,7 +719,7 @@
             }
           },
           "429": {
-            "description": "`rate_limited`: more than 300 conversation actions in 60 seconds from your account (all keys, and tapbacks, read, typing, edit, unsend and cancel requests and scheduled-message creates, updates and cancels, count together; list requests have their own budget). Wait `Retry-After` seconds, then send the same request again.",
+            "description": "`rate_limited`: more than 300 conversation actions in 60 seconds from your account (all keys, and tapbacks, read, typing, edit, unsend and cancel requests and scheduled-message creates, updates, cancels and send-nows, count together; list requests have their own budget). Wait `Retry-After` seconds, then send the same request again.",
             "headers": {
               "Retry-After": {
                 "description": "Seconds to wait before retrying.",
@@ -840,7 +840,7 @@
             }
           },
           "429": {
-            "description": "`rate_limited`: more than 300 conversation actions in 60 seconds from your account (all keys, and tapbacks, read, typing, edit, unsend and cancel requests and scheduled-message creates, updates and cancels, count together; list requests have their own budget). Wait `Retry-After` seconds, then send the same request again.",
+            "description": "`rate_limited`: more than 300 conversation actions in 60 seconds from your account (all keys, and tapbacks, read, typing, edit, unsend and cancel requests and scheduled-message creates, updates, cancels and send-nows, count together; list requests have their own budget). Wait `Retry-After` seconds, then send the same request again.",
             "headers": {
               "Retry-After": {
                 "description": "Seconds to wait before retrying.",
@@ -941,7 +941,7 @@
             }
           },
           "429": {
-            "description": "`rate_limited`: more than 300 conversation actions in 60 seconds from your account (all keys, and tapbacks, read, typing, edit, unsend and cancel requests and scheduled-message creates, updates and cancels, count together; list requests have their own budget). Wait `Retry-After` seconds, then send the same request again.",
+            "description": "`rate_limited`: more than 300 conversation actions in 60 seconds from your account (all keys, and tapbacks, read, typing, edit, unsend and cancel requests and scheduled-message creates, updates, cancels and send-nows, count together; list requests have their own budget). Wait `Retry-After` seconds, then send the same request again.",
             "headers": {
               "Retry-After": {
                 "description": "Seconds to wait before retrying.",
@@ -997,7 +997,7 @@
           "Scheduled messages"
         ],
         "summary": "Schedule a message",
-        "description": "Schedule a 1:1 message to go out at `send_at`, from 1 minute to 90 days ahead. The same content as `POST /v1/messages`: text, files, an effect or a reply.\n\nOpt-outs, blocks and the contact are checked now, and again when it fires: a contact who opts out in the meantime doesn't get it (the scheduled message becomes `failed` and `scheduled_message.failed` fires). At `send_at` it becomes a normal message (`message_id`, `scheduled_message.fired`), with the usual sending hours, limits and `message.*` webhooks. See [Schedule messages](/guides/schedule-messages).\n\n**Idempotency is required**, and keys are shared with `POST /v1/messages`. A retry with the same key and payload answers `200` with the scheduled message as it is now.\n\nAn account can have 5,000 messages waiting (`422 scheduled_limit_reached`). Groups aren't supported yet.\n\nCounts toward the conversation-actions rate limit (300 a minute per account).",
+        "description": "Schedule a 1:1 message to go out at `send_at`, from 1 minute to 90 days ahead. The same content as `POST /v1/messages`: text, files, an effect, a reply, or a link with a preview card (`link_preview`).\n\nOpt-outs, blocks and the contact are checked now, and again when it fires: a contact who opts out in the meantime doesn't get it (the scheduled message becomes `failed` and `scheduled_message.failed` fires). At `send_at` it becomes a normal message (`message_id`, `scheduled_message.fired`), with the usual sending hours, limits and `message.*` webhooks. See [Schedule messages](/guides/schedule-messages).\n\n**Idempotency is required**, and keys are shared with `POST /v1/messages`. A retry with the same key and payload answers `200` with the scheduled message as it is now.\n\nAn account can have 5,000 messages waiting (`422 scheduled_limit_reached`). Groups aren't supported yet.\n\nCounts toward the conversation-actions rate limit (300 a minute per account).",
         "operationId": "v1_create_scheduled_message_v1_scheduled_messages_post",
         "requestBody": {
           "required": true,
@@ -1081,7 +1081,7 @@
             }
           },
           "429": {
-            "description": "`rate_limited`: more than 300 conversation actions in 60 seconds from your account (all keys, and tapbacks, read, typing, edit, unsend and cancel requests and scheduled-message creates, updates and cancels, count together; list requests have their own budget). Wait `Retry-After` seconds, then send the same request again.",
+            "description": "`rate_limited`: more than 300 conversation actions in 60 seconds from your account (all keys, and tapbacks, read, typing, edit, unsend and cancel requests and scheduled-message creates, updates, cancels and send-nows, count together; list requests have their own budget). Wait `Retry-After` seconds, then send the same request again.",
             "headers": {
               "Retry-After": {
                 "description": "Seconds to wait before retrying.",
@@ -1382,7 +1382,7 @@
           "Scheduled messages"
         ],
         "summary": "Update a scheduled message",
-        "description": "Change the text, the time, or both, of a message that is still `scheduled`. The new `send_at` follows the same rules as when scheduling. On a message with files, `\"body\": null` (or `\"\"`) removes the text and sends the files alone. Files, the effect and the reply can't be changed: cancel it and schedule a new one.\n\nA message that is firing right now can't be changed (`409 scheduled_message_sending`); one that has fired, failed or been cancelled is `422 not_editable`.\n\nRetrying the original `POST` with its `idempotency_key` returns the updated message.\n\nCounts toward the conversation-actions rate limit (300 a minute per account).",
+        "description": "Change the text, the time or the preview card of a message that is still `scheduled`. The new `send_at` follows the same rules as when scheduling. On a message with files, `\"body\": null` (or `\"\"`) removes the text and sends the files alone. With `link_preview` on, the text the message will have must still end in exactly one link (`422 validation_error`). Files, the effect and the reply can't be changed: cancel it and schedule a new one.\n\nA message that is firing right now can't be changed (`409 scheduled_message_sending`); one that has fired, failed or been cancelled is `422 not_editable`. If other changes to it keep landing at the same moment, the answer is `409 scheduled_message_changed`: read it again and retry.\n\nRetrying the original `POST` with its `idempotency_key` returns the updated message.\n\nCounts toward the conversation-actions rate limit (300 a minute per account).",
         "operationId": "v1_update_scheduled_message_v1_scheduled_messages__scheduled_message_id__patch",
         "parameters": [
           {
@@ -1437,7 +1437,7 @@
             }
           },
           "429": {
-            "description": "`rate_limited`: more than 300 conversation actions in 60 seconds from your account (all keys, and tapbacks, read, typing, edit, unsend and cancel requests and scheduled-message creates, updates and cancels, count together; list requests have their own budget). Wait `Retry-After` seconds, then send the same request again.",
+            "description": "`rate_limited`: more than 300 conversation actions in 60 seconds from your account (all keys, and tapbacks, read, typing, edit, unsend and cancel requests and scheduled-message creates, updates, cancels and send-nows, count together; list requests have their own budget). Wait `Retry-After` seconds, then send the same request again.",
             "headers": {
               "Retry-After": {
                 "description": "Seconds to wait before retrying.",
@@ -1455,7 +1455,7 @@
             }
           },
           "409": {
-            "description": "`scheduled_message_sending`: it is firing right now.",
+            "description": "`scheduled_message_sending` (it is firing right now) or `scheduled_message_changed` (another request changed it at the same moment).",
             "content": {
               "application/json": {
                 "schema": {
@@ -1465,7 +1465,7 @@
             }
           },
           "422": {
-            "description": "`validation_error` (no field, a null `send_at`, an unknown field, or a `send_at` without a time zone), `send_at_too_soon`, `send_at_too_far`, `scheduled_empty` (removing the text of a message without files), `first_message_needs_text` (removing it from the first message to a contact) or `not_editable` (it has already fired, failed or been cancelled).",
+            "description": "`validation_error` (no field, a null `send_at` or `link_preview`, an unknown field, a `send_at` without a time zone, or text that breaks the `link_preview` rules), `send_at_too_soon`, `send_at_too_far`, `scheduled_empty` (removing the text of a message without files), `first_message_needs_text` (removing it from the first message to a contact) or `not_editable` (it has already fired, failed or been cancelled).",
             "content": {
               "application/json": {
                 "schema": {
@@ -1538,7 +1538,7 @@
             }
           },
           "429": {
-            "description": "`rate_limited`: more than 300 conversation actions in 60 seconds from your account (all keys, and tapbacks, read, typing, edit, unsend and cancel requests and scheduled-message creates, updates and cancels, count together; list requests have their own budget). Wait `Retry-After` seconds, then send the same request again.",
+            "description": "`rate_limited`: more than 300 conversation actions in 60 seconds from your account (all keys, and tapbacks, read, typing, edit, unsend and cancel requests and scheduled-message creates, updates, cancels and send-nows, count together; list requests have their own budget). Wait `Retry-After` seconds, then send the same request again.",
             "headers": {
               "Retry-After": {
                 "description": "Seconds to wait before retrying.",
@@ -1567,6 +1567,107 @@
           },
           "422": {
             "description": "`not_cancellable`: it has already fired or failed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "`forbidden`: your iBubbl account is suspended or cancelled.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/scheduled-messages/{scheduled_message_id}/send-now": {
+      "post": {
+        "tags": [
+          "Scheduled messages"
+        ],
+        "summary": "Send a scheduled message now",
+        "description": "Send a message that is still `scheduled` right away, instead of at `send_at`. It fires in this request, with the same checks as at `send_at` (opt-outs, blocks, the contact), and the answer shows the result: `fired` with its `message_id`, or `failed` with a `failed_reason`. `scheduled_message.fired` (or `.failed`) fires as usual, and `send_at` becomes the time you sent it. The 1-minute minimum doesn't apply.\n\n`fired` means the message was created, not that it was delivered: it still waits for the contact's sending hours and your line's limits like any message. Follow it with `message.*` webhooks or `GET /v1/messages/{message_id}`.\n\nIdempotent: a message that is already `sending` or `fired` answers `200` as it is, and nothing is sent twice. One that failed or was cancelled is `422 not_editable`; if it was rescheduled by another request at the same moment, `409 scheduled_message_changed`.\n\nCounts toward the conversation-actions rate limit (300 a minute per account).",
+        "operationId": "v1_send_scheduled_message_now_v1_scheduled_messages__scheduled_message_id__send_now_post",
+        "parameters": [
+          {
+            "name": "scheduled_message_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Scheduled Message Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The scheduled message after sending: usually `fired` (or `failed`); `sending` if it was being sent already; `scheduled` only if sending couldn't start, in which case it is sent within seconds.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ScheduledMessage"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid API key.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "`not_found`: no scheduled message with that id on your account.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "`rate_limited`: more than 300 conversation actions in 60 seconds from your account (all keys, and tapbacks, read, typing, edit, unsend and cancel requests and scheduled-message creates, updates, cancels and send-nows, count together; list requests have their own budget). Wait `Retry-After` seconds, then send the same request again.",
+            "headers": {
+              "Retry-After": {
+                "description": "Seconds to wait before retrying.",
+                "schema": {
+                  "type": "integer"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "`scheduled_message_changed`: another request gave it a later `send_at` at the same moment.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "`not_editable`: it has already failed or been cancelled.",
             "content": {
               "application/json": {
                 "schema": {
@@ -2667,7 +2768,7 @@
             }
           },
           "429": {
-            "description": "`rate_limited`: more than 300 conversation actions in 60 seconds from your account (all keys, and tapbacks, read, typing, edit, unsend and cancel requests and scheduled-message creates, updates and cancels, count together; list requests have their own budget). Wait `Retry-After` seconds, then send the same request again.",
+            "description": "`rate_limited`: more than 300 conversation actions in 60 seconds from your account (all keys, and tapbacks, read, typing, edit, unsend and cancel requests and scheduled-message creates, updates, cancels and send-nows, count together; list requests have their own budget). Wait `Retry-After` seconds, then send the same request again.",
             "headers": {
               "Retry-After": {
                 "description": "Seconds to wait before retrying.",
@@ -2748,7 +2849,7 @@
             }
           },
           "429": {
-            "description": "`rate_limited`: more than 300 conversation actions in 60 seconds from your account (all keys, and tapbacks, read, typing, edit, unsend and cancel requests and scheduled-message creates, updates and cancels, count together; list requests have their own budget). Wait `Retry-After` seconds, then send the same request again.",
+            "description": "`rate_limited`: more than 300 conversation actions in 60 seconds from your account (all keys, and tapbacks, read, typing, edit, unsend and cancel requests and scheduled-message creates, updates, cancels and send-nows, count together; list requests have their own budget). Wait `Retry-After` seconds, then send the same request again.",
             "headers": {
               "Retry-After": {
                 "description": "Seconds to wait before retrying.",
@@ -2847,7 +2948,7 @@
             }
           },
           "429": {
-            "description": "`rate_limited`: more than 300 conversation actions in 60 seconds from your account (all keys, and tapbacks, read, typing, edit, unsend and cancel requests and scheduled-message creates, updates and cancels, count together; list requests have their own budget). Wait `Retry-After` seconds, then send the same request again.",
+            "description": "`rate_limited`: more than 300 conversation actions in 60 seconds from your account (all keys, and tapbacks, read, typing, edit, unsend and cancel requests and scheduled-message creates, updates, cancels and send-nows, count together; list requests have their own budget). Wait `Retry-After` seconds, then send the same request again.",
             "headers": {
               "Retry-After": {
                 "description": "Seconds to wait before retrying.",
@@ -4585,6 +4686,11 @@
             ],
             "title": "Reply To Message Id"
           },
+          "link_preview": {
+            "type": "boolean",
+            "title": "Link Preview",
+            "description": "Whether it is sent with a preview card for its link. Always `false` for messages scheduled in the dashboard."
+          },
           "message_id": {
             "anyOf": [
               {
@@ -4648,6 +4754,7 @@
           "conversation_id",
           "body",
           "attachments",
+          "link_preview",
           "created_at",
           "updated_at"
         ],
@@ -4663,6 +4770,7 @@
           "attachments": [],
           "effect": null,
           "reply_to_message_id": null,
+          "link_preview": false,
           "message_id": null,
           "fired_at": null,
           "failed_reason": null,
@@ -5548,6 +5656,15 @@
               "confetti"
             ]
           },
+          "link_preview": {
+            "type": "boolean",
+            "title": "Link Preview",
+            "description": "Send the link with a preview card, as `link_preview` on `POST /v1/messages`, with the same rules: the body must end in exactly one http(s) link, with no other link in it; not with `attachments`, `effect` or `reply_to_message_id` (`422 validation_error`). Your line opens the page when the message is sent, not when you schedule it, so a click-tracked link counts a click then, and a one-time link may be used up: don't set it for those.",
+            "default": false,
+            "examples": [
+              true
+            ]
+          },
           "idempotency_key": {
             "type": "string",
             "maxLength": 128,
@@ -5605,6 +5722,21 @@
             "description": "The new time, with the same rules as when scheduling (1 minute to 90 days from now).",
             "examples": [
               "2026-11-20T15:30:00Z"
+            ]
+          },
+          "link_preview": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Link Preview",
+            "description": "Turn the preview card on or off. With it on, the text the message will have (the new `body`, or the current one) must follow the `link_preview` rules (`422 validation_error`), and so must any later change of `body`.",
+            "examples": [
+              true
             ]
           }
         },

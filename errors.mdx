@@ -101,12 +101,16 @@ if not res.ok:
   [Update](/api-reference/scheduled-messages/update) and [cancel](/api-reference/scheduled-messages/cancel) a scheduled message: it is being turned into a message right now. Nothing changed. It settles within seconds as `fired` (then [`scheduled_message.fired`](/webhooks/events#scheduled-message-fired)) or `failed`; after it fires, the message itself can be [cancelled](/api-reference/messages/cancel) while it waits to go out.
 </ResponseField>
 
+<ResponseField name="scheduled_message_changed" type="409">
+  [Update](/api-reference/scheduled-messages/update) a scheduled message: other requests kept changing it between this one's read and its write, so it was checked again each time and still couldn't be applied. [Send it now](/api-reference/scheduled-messages/send-now): another request moved it to a later `send_at` at the same moment. Nothing changed and nothing was sent. Read it again, then retry if the change still makes sense.
+</ResponseField>
+
 <ResponseField name="message_dispatching" type="409">
   [Cancel a message](/api-reference/messages/cancel): your line has already picked the message up to send it, so it can't be stopped. It goes out, and `message.sent` fires. Within 110 seconds of sending you can still [unsend it](/api-reference/messages/unsend).
 </ResponseField>
 
 <ResponseField name="validation_error" type="422">
-  Generic request-shape failure. The `message` will identify the field. Common causes: missing required body field, malformed E.164 phone, body length zero, `to` and `contact_id` both omitted, neither `body` nor `attachments`, an `attachments` entry that is neither an `https` URL nor a file ID (or more than 10 of them), `attachments` with `chat_guid` or `participant_phones`, or `attachments` with `effect` or `reply_to_message_id`. On [Upload a file](/api-reference/files/upload): a body that isn't `multipart/form-data`, no part named `file`, another part or a second file, an empty file, or a cut-off body. On a list endpoint: an unknown or repeated query parameter, `limit` outside 1–100, or a time without a time zone. An `idempotency_key` starting with `sched:` (reserved). On [Schedule a message](/api-reference/scheduled-messages/create) and [Update a scheduled message](/api-reference/scheduled-messages/update): any field not in the body (including `link_preview`), a `send_at` without a time zone, a `null` `send_at`, or an update with no field.
+  Generic request-shape failure. The `message` will identify the field. Common causes: missing required body field, malformed E.164 phone, body length zero, `to` and `contact_id` both omitted, neither `body` nor `attachments`, an `attachments` entry that is neither an `https` URL nor a file ID (or more than 10 of them), `attachments` with `chat_guid` or `participant_phones`, or `attachments` with `effect` or `reply_to_message_id`. On [Upload a file](/api-reference/files/upload): a body that isn't `multipart/form-data`, no part named `file`, another part or a second file, an empty file, or a cut-off body. On a list endpoint: an unknown or repeated query parameter, `limit` outside 1–100, or a time without a time zone. An `idempotency_key` starting with `sched:` (reserved). On [Schedule a message](/api-reference/scheduled-messages/create) and [Update a scheduled message](/api-reference/scheduled-messages/update): any field not in the body, a `send_at` without a time zone, a `null` `send_at` or `link_preview`, an update with no field, or a `link_preview` the message can't have (a body that doesn't end in exactly one link, or files, an effect or a reply), including an update that would break it.
 </ResponseField>
 
 <ResponseField name="send_at_too_soon" type="422">
@@ -224,7 +228,7 @@ if not res.ok:
 </ResponseField>
 
 <ResponseField name="not_editable" type="422">
-  [Edit a message](/api-reference/messages/edit): the message can't be edited. It has no text (only files), or it failed, was cancelled or expired, or iMessage never confirmed it. Send a follow-up message instead. On [Update a scheduled message](/api-reference/scheduled-messages/update): it has already fired, failed or been cancelled.
+  [Edit a message](/api-reference/messages/edit): the message can't be edited. It has no text (only files), or it failed, was cancelled or expired, or iMessage never confirmed it. Send a follow-up message instead. On [Update a scheduled message](/api-reference/scheduled-messages/update): it has already fired, failed or been cancelled. On [Send a scheduled message now](/api-reference/scheduled-messages/send-now): it failed or was cancelled.
 </ResponseField>
 
 <ResponseField name="not_unsendable" type="422">
@@ -340,7 +344,7 @@ if not res.ok:
 <ResponseField name="rate_limited" type="429">
   Returned in five places, and nowhere else:
 
-  - **Conversation actions** ([Edit](/api-reference/messages/edit), [unsend](/api-reference/messages/unsend) and [cancel](/api-reference/messages/cancel) a message, [add](/api-reference/messages/react) and [remove](/api-reference/messages/remove-reaction) a tapback, [Mark read](/api-reference/conversations/mark-read), [start](/api-reference/conversations/start-typing) and [stop](/api-reference/conversations/stop-typing) typing, and [schedule](/api-reference/scheduled-messages/create), [update](/api-reference/scheduled-messages/update) and [cancel](/api-reference/scheduled-messages/cancel) a scheduled message): your account made more than 300 of these requests in 60 seconds (all API keys and all eleven endpoints together; a budget separate from lists). The response has a `Retry-After` header; wait that long and call again. See [Rate limits](/concepts/limits#rate-limits).
+  - **Conversation actions** ([Edit](/api-reference/messages/edit), [unsend](/api-reference/messages/unsend) and [cancel](/api-reference/messages/cancel) a message, [add](/api-reference/messages/react) and [remove](/api-reference/messages/remove-reaction) a tapback, [Mark read](/api-reference/conversations/mark-read), [start](/api-reference/conversations/start-typing) and [stop](/api-reference/conversations/stop-typing) typing, and [schedule](/api-reference/scheduled-messages/create), [update](/api-reference/scheduled-messages/update), [cancel](/api-reference/scheduled-messages/cancel) and [send now](/api-reference/scheduled-messages/send-now) a scheduled message): your account made more than 300 of these requests in 60 seconds (all API keys and all eleven endpoints together; a budget separate from lists). The response has a `Retry-After` header; wait that long and call again. See [Rate limits](/concepts/limits#rate-limits).
   - **List endpoints** ([List messages](/api-reference/messages/list), [List scheduled messages](/api-reference/scheduled-messages/list), [List contacts](/api-reference/contacts/list), [List lines](/api-reference/lines/list)): your account made more than 120 list requests in 60 seconds (all API keys and all lists together). The response has a `Retry-After` header with the seconds to wait; then send the same request again. See [Rate limits](/concepts/limits#rate-limits).
   - **[Uploads](/api-reference/files/upload)**: more than 60 uploads in 60 seconds from your account (all API keys together; a budget of its own), or 4 already in progress. The response has a `Retry-After` header; wait that long and upload again.
   - **Sends with attachment URLs**, rarely: iBubbl was already downloading as many attachment sends as it can, and no slot freed within 10 seconds. `Retry-After` is `5`; then send the same request with the same `idempotency_key`. Nothing was created.
@@ -363,6 +367,7 @@ if not res.ok:
 | `already_unsent` | 409 | ❌ The message was unsent. |
 | `message_dispatching` | 409 | ❌ It's being sent; unsend it within 110 seconds instead. |
 | `scheduled_message_sending` | 409 | ❌ It's firing; read it again in a few seconds, then act on the message. |
+| `scheduled_message_changed` | 409 | ⚠️ Read it again, then retry if the change still makes sense. |
 | `validation_error` | 422 | ❌ Fix the payload or query parameters. |
 | `invalid_cursor` | 422 | ❌ Use the last `id` from the previous page. |
 | `contact_opted_out` | 422 | ❌ Cannot bypass. |
@@ -417,7 +422,7 @@ The general rule: **don't retry 4xx**. Most 4xxes are payload-level problems tha
 | `401` | Auth failure. |
 | `403` | Account suspended or cancelled (`forbidden`), or an inbound event's signature failed (`invalid_signature`). |
 | `404` | Resource not found (or hidden across tenants), `group_not_found`, `line_not_found`, or `file_not_found`. |
-| `409` | Idempotency conflict, or a message in a state another request holds: `edit_in_flight`, `already_unsent`, `message_dispatching`, `scheduled_message_sending`. |
+| `409` | Idempotency conflict, or a message in a state another request holds: `edit_in_flight`, `already_unsent`, `message_dispatching`, `scheduled_message_sending`, `scheduled_message_changed`. |
 | `408` | `upload_timeout`: an upload that took too long to arrive. |
 | `413` | Inbound event body over 256 KiB. |
 | `422` | Validation, routing or send-limit failure. |

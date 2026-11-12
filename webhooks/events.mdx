@@ -611,7 +611,7 @@ After this event, [`POST /v1/messages`](/api-reference/messages/send) to this co
 </Accordion>
 
 <Accordion title="scheduled_message.fired" icon="clock">
-Fired when a [scheduled message](/guides/schedule-messages) reaches its `send_at` and becomes a message. `data` is the [scheduled message object](/api-reference/scheduled-messages/retrieve), now `fired`, with the new message's `message_id`.
+Fired when a [scheduled message](/guides/schedule-messages) reaches its `send_at`, or is [sent now](/api-reference/scheduled-messages/send-now), and becomes a message. `data` is the [scheduled message object](/api-reference/scheduled-messages/retrieve), now `fired`, with the new message's `message_id`.
 
 ```json
 {
@@ -629,6 +629,7 @@ Fired when a [scheduled message](/guides/schedule-messages) reaches its `send_at
     "attachments": [],
     "effect": null,
     "reply_to_message_id": null,
+    "link_preview": false,
     "message_id": "8b3a4e72-1c2d-4e5f-9a0b-2c3d4e5f6a7b",
     "fired_at": "2026-11-20T14:00:04.118230Z",
     "failed_reason": null,
@@ -660,6 +661,7 @@ Fired when a scheduled message is refused at its `send_at`. **No message is crea
     "attachments": [],
     "effect": null,
     "reply_to_message_id": null,
+    "link_preview": false,
     "message_id": null,
     "fired_at": null,
     "failed_reason": "contact_opted_out",
@@ -689,6 +691,7 @@ Fired when a scheduled message is cancelled before it fires: with [Cancel a sche
     "attachments": [],
     "effect": null,
     "reply_to_message_id": null,
+    "link_preview": false,
     "message_id": null,
     "fired_at": null,
     "failed_reason": null,

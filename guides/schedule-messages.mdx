@@ -10,7 +10,7 @@ It's the same feature as **Send later** in the dashboard. Messages scheduled the
 ## How it works
 
 1. **You schedule.** `POST /v1/scheduled-messages` answers `201` with a scheduled message (`status: "scheduled"`). Its `id` is not a message ID: no message exists yet.
-2. **It waits** until `send_at`. You can [change](/api-reference/scheduled-messages/update) its text or time, or [cancel](/api-reference/scheduled-messages/cancel) it.
+2. **It waits** until `send_at`. You can [change](/api-reference/scheduled-messages/update) its text or time, [cancel](/api-reference/scheduled-messages/cancel) it, or [send it now](/api-reference/scheduled-messages/send-now).
 3. **It fires** within about 15 seconds of `send_at`: iBubbl checks the contact again and creates a normal message. The scheduled message becomes `fired`, `message_id` points to the message, and [`scheduled_message.fired`](/webhooks/events#scheduled-message-fired) fires.
 4. **The message goes out** like any other: it waits for the contact's [sending hours](/concepts/working-hours) and your [limits](/concepts/limits), and the usual [`message.*` webhooks](/webhooks/events) follow (`message.sent`, `message.delivered`, …).
 
@@ -96,7 +96,87 @@ print(data["id"], data["status"], data["send_at"])  # "scheduled"
 
 </CodeGroup>
 
-The body takes what [Send a message](/api-reference/messages/send) takes for a one-to-one message: `to` or `contact_id`, `body`, `attachments`, `effect` and `reply_to_message_id`, plus `send_at`. Store the `id` it returns: it's how you change, cancel or look up the scheduled message, and `scheduled_message.*` webhooks carry it.
+The body takes what [Send a message](/api-reference/messages/send) takes for a one-to-one message: `to` or `contact_id`, `body`, `attachments`, `effect`, `reply_to_message_id` and `link_preview`, plus `send_at`. Store the `id` it returns: it's how you change, cancel or look up the scheduled message, and `scheduled_message.*` webhooks carry it.
+
+## Send a link with a preview card
+
+Set `"link_preview": true` and the link at the end of `body` goes out as a preview card, the page's title and image, as when a person sends it from an iPhone. The rules are those of [Send a message](/api-reference/messages/send#link-preview-cards): the body ends in exactly one `http(s)` link with no other link in it, and the message has no `attachments`, `effect` or reply. Text before the link arrives as its own bubble, then the card.
+
+<CodeGroup>
+
+```bash cURL
+IDEMPOTENCY_KEY=$(uuidgen)
+SEND_AT=$(date -u -v+1H +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || date -u -d "@$(( $(date +%s) + 3600 ))" +%Y-%m-%dT%H:%M:%SZ)
+
+curl -X POST https://api.ibubbl.com/v1/scheduled-messages \
+  -H "Authorization: Bearer $IBUBBL_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d "{
+    \"to\": \"+14155551234\",
+    \"body\": \"Hi Sam, here are directions to the office: https://example.com/directions\",
+    \"link_preview\": true,
+    \"send_at\": \"$SEND_AT\",
+    \"idempotency_key\": \"$IDEMPOTENCY_KEY\"
+  }"
+```
+
+```typescript TypeScript
+import { randomUUID } from "node:crypto";
+
+const res = await fetch("https://api.ibubbl.com/v1/scheduled-messages", {
+  method: "POST",
+  headers: {
+    Authorization: `Bearer ${process.env.IBUBBL_API_KEY}`,
+    "Content-Type": "application/json",
+  },
+  body: JSON.stringify({
+    to: "+14155551234",
+    body: "Hi Sam, here are directions to the office: https://example.com/directions",
+    link_preview: true,
+    send_at: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
+    idempotency_key: randomUUID(),
+  }),
+  signal: AbortSignal.timeout(10_000),
+});
+
+const data = await res.json();
+if (!res.ok) throw new Error(`${res.status} ${data.detail?.error}`);
+console.log(data.id, data.link_preview); // true
+```
+
+```python Python
+import os
+import uuid
+from datetime import datetime, timedelta, timezone
+
+import requests
+
+API_KEY = os.environ["IBUBBL_API_KEY"]
+
+res = requests.post(
+    "https://api.ibubbl.com/v1/scheduled-messages",
+    headers={"Authorization": f"Bearer {API_KEY}"},
+    json={
+        "to": "+14155551234",
+        "body": "Hi Sam, here are directions to the office: https://example.com/directions",
+        "link_preview": True,
+        "send_at": (datetime.now(timezone.utc) + timedelta(hours=1)).isoformat(),
+        "idempotency_key": str(uuid.uuid4()),
+    },
+    timeout=10,
+)
+data = res.json()
+if not res.ok:
+    raise RuntimeError(f"{res.status_code} {data['detail']['error']}")
+print(data["id"], data["link_preview"])  # True
+```
+
+</CodeGroup>
+
+- **Checked now and on every change.** A body that breaks the rules is `422 validation_error` when you schedule, and so is an [update](/api-reference/scheduled-messages/update) that would break them later: new text without its link, or turning `link_preview` on over text without one. A scheduled message never goes out plain while it says `link_preview: true`.
+- **The page is opened when the message is sent**, not when you schedule it.
+
+<Warning>Your line opens the page to build the card, which counts as a click on a click-tracked link and can use up a one-time link (a login or reset link, a single-use coupon). Don't set `link_preview` on those.</Warning>
 
 ## Time zones
 
@@ -123,6 +203,7 @@ To have it go out at `send_at`, schedule it inside the contact's sending hours. 
 | Not blocked | ✅ `422 contact_blocked` | ✅ `failed`, `contact_blocked` |
 | The reply target is in the conversation, not unsent | ✅ `422 reply_target_*` | Sent without the quote if the contact unsent it since |
 | Files download and meet the limits | ✅ `422` file errors | Already copied: not fetched again |
+| `link_preview`: the body ends in exactly one link, no files, effect or reply | ✅ `422 validation_error`, also on every update | Sent with its card |
 | A line of yours is active, if you have no conversation with the contact yet | ✅ `503 no_active_line` (retry with the same key) | |
 | A line of yours can send it | | ✅ `failed`, `no_eligible_line`; a line that moved to another account is never used |
 | Sending hours, new-contact limits | | Held or queued, as above |
@@ -137,9 +218,11 @@ A contact who opts out after you schedule never gets the message: you get `sched
 - A URL is read once, at scheduling. Changing what the URL serves afterwards doesn't change the message.
 - Files can't be changed later; cancel and schedule again. On a message with files, you can [remove the text](/api-reference/scheduled-messages/update) (`"body": null`) to send the files alone, unless it's the first message to the contact.
 
-## Change or cancel
+## Change, cancel or send now
 
-While it is `scheduled`, [Update a scheduled message](/api-reference/scheduled-messages/update) changes `body` and `send_at`, and [Cancel a scheduled message](/api-reference/scheduled-messages/cancel) stops it. Both answer `409 scheduled_message_sending` in the seconds it is firing; once it has fired or failed, they answer `422 not_editable` and `422 not_cancellable`.
+While it is `scheduled`, [Update a scheduled message](/api-reference/scheduled-messages/update) changes `body`, `send_at` and `link_preview`, and [Cancel a scheduled message](/api-reference/scheduled-messages/cancel) stops it. Both answer `409 scheduled_message_sending` in the seconds it is firing; once it has fired or failed, they answer `422 not_editable` and `422 not_cancellable`.
+
+[Send a scheduled message now](/api-reference/scheduled-messages/send-now) sends it right away instead of at `send_at`: the contact's details are checked as they would be at `send_at`, and the answer is the scheduled message `fired`, with its `message_id`, or `failed`, with the reason. Calling it again, or on one that is firing or has fired, answers `200` and sends nothing more. It still waits for the contact's [sending hours](#sending-hours-and-holds) once created.
 
 To find what is still due, list with `status=scheduled`, and narrow it with `send_before`, `send_after` or `contact_id`:
 
@@ -229,19 +312,19 @@ Three events follow a scheduled message. Their `data` is the [scheduled message 
 - [`scheduled_message.failed`](/webhooks/events#scheduled-message-failed): it was refused when it fired; `failed_reason` says why. No message exists, so no `message.*` event will tell you.
 - [`scheduled_message.cancelled`](/webhooks/events#scheduled-message-cancelled): it was cancelled, through the API or by a rep in the dashboard.
 
-Scheduling and updating fire nothing: the response is your confirmation.
+Scheduling and updating fire nothing: the response is your confirmation. [Sending one now](/api-reference/scheduled-messages/send-now) fires `scheduled_message.fired` (or `.failed`) as reaching `send_at` would.
 
 The message's own events start as soon as it exists, so `message.queued` or `message.sent` can reach you **before** `scheduled_message.fired`. Match them up by `message_id`: keep the scheduled message `id` with your record, and when you see a `message_id` you don't know, read the scheduled message (or wait for `scheduled_message.fired`). Events can also arrive more than once; see [Ordering and duplicates](/webhooks/events#ordering-and-duplicates).
 
 ## Late sends and the missed window
 
-A scheduled message fires within about 15 seconds of `send_at`. If iBubbl couldn't send for a while (an outage), a due message fires as soon as it can, unless it's more than **6 hours** late: then it becomes `failed` with `failed_reason: "missed_window"` instead of arriving at the wrong time. A "see you at 9" landing at 4 PM is worse than not landing. Schedule it again if it still makes sense.
+A scheduled message fires within about 15 seconds of `send_at`. If iBubbl couldn't send for a while (an outage), a due message fires as soon as it can, unless it's more than **6 hours** late: then it becomes `failed` with `failed_reason: "missed_window"` instead of arriving at the wrong time. A "see you at 9" landing at 4 PM is worse than not landing. Schedule it again if it still makes sense. [Sending it now](/api-reference/scheduled-messages/send-now) is never too late: a message you send now goes out however overdue it is.
 
 ## Limits
 
 - **5,000 waiting** per account: past that, scheduling is `422 scheduled_limit_reached` until some fire or you cancel some. Messages scheduled in the dashboard count.
-- **Rate limit:** scheduling, updating and cancelling share the 300-a-minute [conversation-actions budget](/concepts/limits#rate-limits); listing shares the 120-a-minute list budget.
-- **One-to-one only.** `chat_guid`, `participant_phones` and `group_name` are refused with `422 scheduled_group_unsupported`. `link_preview` isn't available on scheduled messages (`422 validation_error`).
+- **Rate limit:** scheduling, updating, cancelling and sending now share the 300-a-minute [conversation-actions budget](/concepts/limits#rate-limits); listing shares the 120-a-minute list budget.
+- **One-to-one only.** `chat_guid`, `participant_phones` and `group_name` are refused with `422 scheduled_group_unsupported`.
 - **Send limits** apply when the message is created, at `send_at`, not when you schedule.
 
 ## Idempotency

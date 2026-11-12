@@ -1,0 +1,139 @@
+---
+title: 'Send a scheduled message now'
+openapi: 'POST /v1/scheduled-messages/{scheduled_message_id}/send-now'
+---
+
+### Send a scheduled message now
+
+**Method:** `POST` | **Endpoint:** `/v1/scheduled-messages/{scheduled_message_id}/send-now`
+
+**Description:** Send a message that is still `scheduled` right away, instead of at its `send_at`. It fires in this request, and the answer shows the result. Messages scheduled in the dashboard can be sent now too.
+
+**Authentication:** API key in the `Authorization` header: `Authorization: Bearer ib_pk_<64 hex>`. Create keys in the dashboard under **Settings → API access**.
+
+**Rate limit:** 300 conversation actions per 60 seconds per account, shared with scheduling, updating, cancelling and the message actions. Over that, you get `429 rate_limited` with a `Retry-After` header; see [Rate limits](/concepts/limits#rate-limits).
+
+#### Request Body
+
+None.
+
+#### How it behaves
+
+- **It fires now, with the checks it would have at `send_at`.** The answer is `200` with the scheduled message `fired` and its `message_id`, and [`scheduled_message.fired`](/webhooks/events#scheduled-message-fired) fires. If the contact opted out, was blocked or was deleted since you scheduled it, it's `200` with `status: "failed"` and a `failed_reason` instead, and [`scheduled_message.failed`](/webhooks/events#scheduled-message-failed) fires.
+- **`send_at` becomes the time you sent it.** The 1-minute minimum for scheduling doesn't apply, and neither does the [6-hour missed window](/guides/schedule-messages#late-sends-and-the-missed-window): a message that is overdue goes out.
+- **`fired` means created, not delivered.** The message still waits for the contact's [sending hours](/concepts/working-hours) and your [limits](/concepts/limits) like any message. Follow it with the `message.*` webhooks or [Retrieve a message](/api-reference/messages/retrieve) on its `message_id`.
+- **It's safe to call twice.** A scheduled message that is already `sending` or `fired` answers `200` as it is, and nothing is sent again. If it is being sent at that moment by iBubbl's own schedule, you get it `sending`; it settles within seconds.
+- **Only while it's waiting.** One that failed or was cancelled gets `422 not_editable`. If another request moved it to a later `send_at` at the same moment, you get `409 scheduled_message_changed`: read it again and decide.
+- **A link preview card is kept.** A message scheduled with `link_preview: true` goes out with its card.
+
+<RequestExample>
+
+```bash cURL
+curl -X POST https://api.ibubbl.com/v1/scheduled-messages/5d1e2f3a-4b5c-4d6e-8f70-81920a1b2c3d/send-now \
+  -H "Authorization: Bearer $IBUBBL_API_KEY"
+```
+
+```typescript TypeScript
+const scheduledMessageId = "5d1e2f3a-4b5c-4d6e-8f70-81920a1b2c3d";
+
+const res = await fetch(
+  `https://api.ibubbl.com/v1/scheduled-messages/${encodeURIComponent(scheduledMessageId)}/send-now`,
+  {
+    method: "POST",
+    headers: { Authorization: `Bearer ${process.env.IBUBBL_API_KEY}` },
+    signal: AbortSignal.timeout(30_000),
+  },
+);
+
+const data = await res.json();
+if (!res.ok) throw new Error(`${res.status} ${data.detail?.error}`);
+// "fired" with the new message's ID, or "failed" with the reason.
+console.log(data.status, data.message_id ?? data.failed_reason);
+```
+
+```python Python
+import os
+import urllib.parse
+
+import requests
+
+API_KEY = os.environ["IBUBBL_API_KEY"]
+
+scheduled_message_id = "5d1e2f3a-4b5c-4d6e-8f70-81920a1b2c3d"
+
+res = requests.post(
+    f"https://api.ibubbl.com/v1/scheduled-messages/{urllib.parse.quote(scheduled_message_id, safe='')}/send-now",
+    headers={"Authorization": f"Bearer {API_KEY}"},
+    timeout=30,
+)
+data = res.json()
+if not res.ok:
+    raise RuntimeError(f"{res.status_code} {data['detail']['error']}")
+# "fired" with the new message's ID, or "failed" with the reason.
+print(data["status"], data["message_id"] or data["failed_reason"])
+```
+
+</RequestExample>
+
+<ResponseExample>
+
+```json 200 OK
+{
+  "id": "5d1e2f3a-4b5c-4d6e-8f70-81920a1b2c3d",
+  "status": "fired",
+  "send_at": "2026-11-19T16:20:11.880127Z",
+  "to": "+14155551234",
+  "contact_id": "c8a1f4e2-3b9d-4f7c-a8e5-1d2c3b4a5e6f",
+  "conversation_id": "3a4b5c6d-7e8f-9a0b-1c2d-3e4f5a6b7c8d",
+  "body": "Hi Sam, a reminder about your appointment tomorrow at 10.",
+  "attachments": [],
+  "effect": null,
+  "reply_to_message_id": null,
+  "link_preview": false,
+  "message_id": "8b3a4e72-1c2d-4e5f-9a0b-2c3d4e5f6a7b",
+  "fired_at": "2026-11-19T16:20:11.880127Z",
+  "failed_reason": null,
+  "created_at": "2026-11-19T14:00:02.532901Z",
+  "updated_at": "2026-11-19T16:20:12.214350Z"
+}
+```
+
+```json 422 Unprocessable Entity
+{
+  "detail": {
+    "error": "not_editable",
+    "message": "Only a scheduled message that hasn't fired can be sent now; this one is cancelled."
+  }
+}
+```
+
+</ResponseExample>
+
+#### Responses
+**200 OK**
+
+The scheduled message after sending: `fired` with its `message_id`, or `failed` with its `failed_reason`. Already `sending` or `fired` before this call: as it is. Rarely `scheduled`, with `send_at` set to now, when sending couldn't start in this request; iBubbl sends it within seconds.
+
+**401 Unauthorized**
+
+`unauthorized`: a missing, malformed or revoked API key.
+
+**403 Forbidden**
+
+`forbidden`: your iBubbl account is suspended or cancelled.
+
+**404 Not Found**
+
+`not_found`: no scheduled message with that ID on your account (also a malformed ID, and another account's).
+
+**409 Conflict**
+
+`scheduled_message_changed`: another request moved it to a later `send_at` at the same moment. Nothing was sent; read it again.
+
+**422 Unprocessable Entity**
+
+`not_editable`: it failed or was cancelled. Nothing was sent.
+
+**429 Too Many Requests**
+
+`rate_limited`: over 300 conversation actions in 60 seconds. Wait the `Retry-After` header's seconds, then send the same request again.
