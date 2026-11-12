@@ -91,6 +91,14 @@
             ]
           },
           {
+            "group": "Files",
+            "pages": [
+              "api-reference/files/upload",
+              "api-reference/files/retrieve",
+              "api-reference/files/delete"
+            ]
+          },
+          {
             "group": "Contacts",
             "pages": [
               "api-reference/contacts/upsert",

@@ -12,7 +12,7 @@
           "Messages"
         ],
         "summary": "Send a message",
-        "description": "Send a message to one contact (`contact_id`, or `to` \u2014 an E.164 phone number; the contact is created on first use), into an existing group (`chat_guid`), or to a new group (`participant_phones`). Exactly one of the four is required.\n\nThe response returns immediately with `status: \"pending\"` or `\"queued\"`. Delivery progress arrives as [webhook events](/webhooks/events) (`message.sent`, `message.delivered`, `message.read`, `message.failed`), or poll `GET /v1/messages/{id}`.\n\n**Idempotency is required.** Provide a unique `idempotency_key` per logical send (UUIDv4 recommended); a retry with the same key and payload replays the original response, while a reused key with a different payload returns `409 idempotency_conflict`. See the [Idempotency](/idempotency) guide.\n\nA send to an opted-out contact returns `422 contact_opted_out`; see [Suppression](/concepts/suppression).\n\nTo send files, list up to 10 `https` URLs in `attachments` (1:1 only); `body`, if set, is their caption. iBubbl downloads them before answering, which can take up to about 30 seconds, so allow 60 seconds before your client times out. See [Attachments](/guides/attachments).\n\nOn a `5xx` (including a `502`/`503` from the network edge during a deploy), retry with the same `idempotency_key`.",
+        "description": "Send a message to one contact (`contact_id`, or `to` \u2014 an E.164 phone number; the contact is created on first use), into an existing group (`chat_guid`), or to a new group (`participant_phones`). Exactly one of the four is required.\n\nThe response returns immediately with `status: \"pending\"` or `\"queued\"`. Delivery progress arrives as [webhook events](/webhooks/events) (`message.sent`, `message.delivered`, `message.read`, `message.failed`), or poll `GET /v1/messages/{id}`.\n\n**Idempotency is required.** Provide a unique `idempotency_key` per logical send (UUIDv4 recommended); a retry with the same key and payload replays the original response, while a reused key with a different payload returns `409 idempotency_conflict`. See the [Idempotency](/idempotency) guide.\n\nA send to an opted-out contact returns `422 contact_opted_out`; see [Suppression](/concepts/suppression).\n\nTo send files, list up to 10 `https` URLs or uploaded file IDs (`POST /v1/files`) in `attachments` (1:1 only); `body`, if set, is their caption. iBubbl downloads URLs before answering, which can take up to about 30 seconds, so allow 60 seconds before your client times out. See [Attachments](/guides/attachments).\n\nOn a `5xx` (including a `502`/`503` from the network edge during a deploy), retry with the same `idempotency_key`.",
         "operationId": "v1_send_message_v1_messages_post",
         "requestBody": {
           "required": true,
@@ -46,7 +46,7 @@
             }
           },
           "404": {
-            "description": "`not_found` (no contact with that `contact_id`) or `group_not_found` (no group with that `chat_guid`).",
+            "description": "`not_found` (no contact with that `contact_id`), `group_not_found` (no group with that `chat_guid`), or `file_not_found` (an `attachments` file ID that isn't yours, or was deleted).",
             "content": {
               "application/json": {
                 "schema": {
@@ -66,7 +66,7 @@
             }
           },
           "422": {
-            "description": "Request rejected; see `detail.error`. `validation_error` (bad request shape), `contact_opted_out`, `contact_blocked`, `no_eligible_line`, `unresponsive_contact`, `cold_cap_exhausted`, `followup_cap_exhausted`, `daily_cap_exhausted`, `group_outbound_blocked_suppression`, `insufficient_participants`, `reply_target_not_found`, `reply_target_unsent`, `reply_target_partly_unsent`, `first_message_needs_text`, `attachment_fetch_failed`, `attachment_too_large`, `unsupported_attachment`, or `attachment_combination_not_supported`.",
+            "description": "Request rejected; see `detail.error`. `validation_error` (bad request shape), `contact_opted_out`, `contact_blocked`, `no_eligible_line`, `unresponsive_contact`, `cold_cap_exhausted`, `followup_cap_exhausted`, `daily_cap_exhausted`, `group_outbound_blocked_suppression`, `insufficient_participants`, `reply_target_not_found`, `reply_target_unsent`, `reply_target_partly_unsent`, `first_message_needs_text`, `attachment_fetch_failed`, `attachment_too_large`, `unsupported_attachment`, `attachment_combination_not_supported`, or `file_expired`.",
             "content": {
               "application/json": {
                 "schema": {
@@ -970,6 +970,223 @@
           },
           "422": {
             "description": "`not_cancellable`: not a message of yours that is still waiting to go out (it was sent, failed or expired, or it is a message you received).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "`forbidden`: your iBubbl account is suspended or cancelled.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/files": {
+      "post": {
+        "tags": [
+          "Files"
+        ],
+        "summary": "Upload a file",
+        "description": "Upload one file to send in messages: a `multipart/form-data` body with one part named `file`. The answer is a file object; put its `id` in the `attachments` of `POST /v1/messages`, alone or with `https` URLs.\n\nThe same types and sizes as URL attachments: images (JPEG, PNG, WebP, HEIC, HEIF) and GIFs up to 25 MiB, MP4/MOV video up to 50 MiB, PDF up to 10 MB, audio (MP3, M4A, AAC) up to 25 MiB. A file is refused as soon as it breaks a rule, and its content must match its type.\n\nA file can be sent any number of times until `expires_at`, 24 hours after the upload; then it is deleted. Each send keeps its own copy, so deleting a file never touches messages already sent. An account holds at most 500 files and 1 GiB of uploads at once.\n\nUploads take no idempotency key: a retried upload stores a second file (the unused one expires). Uploads allow 60 requests a minute and 4 at once per account; over that, the answer is `429 rate_limited` with a `Retry-After` header in seconds. See [Send attachments](/guides/attachments).",
+        "operationId": "v1_upload_file_v1_files_post",
+        "responses": {
+          "201": {
+            "description": "The file, ready to send.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/File"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid API key.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "408": {
+            "description": "`upload_timeout`: the body took over 300 seconds, or paused for over 30. Nothing was stored.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Nothing was stored. `validation_error` (not multipart, no part named `file`, another part, two files, an empty file, or a cut-off body), `unsupported_attachment` (a type that can't be sent, or content that doesn't match its type), `attachment_too_large` (over its type's cap), or `file_quota_exceeded` (the account holds too many uploads).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "`rate_limited`: more than 60 uploads in 60 seconds from your account (all keys count together; other requests have their own budgets). Wait `Retry-After` seconds, then send the same request again.",
+            "headers": {
+              "Retry-After": {
+                "description": "Seconds to wait before retrying.",
+                "schema": {
+                  "type": "integer"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "`forbidden`: your iBubbl account is suspended or cancelled.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "file"
+                ],
+                "properties": {
+                  "file": {
+                    "type": "string",
+                    "format": "binary",
+                    "description": "The file. Its type is the part's `Content-Type`, or, when that is missing or `application/octet-stream`, the file name's extension. Its name becomes the name the recipient sees."
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/files/{file_id}": {
+      "get": {
+        "tags": [
+          "Files"
+        ],
+        "summary": "Retrieve a file",
+        "description": "Fetch an uploaded file's details by ID: its name, type, size and when it expires. The contents are not returned. Returns `404 file_not_found` once the file has expired or been deleted.",
+        "operationId": "v1_get_file_v1_files__file_id__get",
+        "parameters": [
+          {
+            "name": "file_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "File Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The file.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/File"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid API key.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "`file_not_found`: no file with that ID on your account, or it expired or was deleted.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "`forbidden`: your iBubbl account is suspended or cancelled.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "Files"
+        ],
+        "summary": "Delete a file",
+        "description": "Delete an uploaded file before it expires. Messages already sent with it keep their own copy. A later send naming it returns `404 file_not_found`.",
+        "operationId": "v1_delete_file_v1_files__file_id__delete",
+        "parameters": [
+          {
+            "name": "file_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "File Id"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Deleted."
+          },
+          "401": {
+            "description": "Missing or invalid API key.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "`file_not_found`: no file with that ID on your account, or it expired or was deleted.",
             "content": {
               "application/json": {
                 "schema": {
@@ -3479,6 +3696,21 @@
             "type": "integer",
             "title": "Size Bytes",
             "description": "Size in bytes. An inbound file can show `0` for a few seconds, until iBubbl has received it."
+          },
+          "filename": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Filename",
+            "description": "The name the recipient sees: an upload's `filename`, or a URL file's name (its `Content-Disposition`, else the last part of its path). Null for received files, and for files sent before names were kept or without a usable name.",
+            "examples": [
+              "Invoice 1042.pdf"
+            ]
           }
         },
         "type": "object",
@@ -3949,6 +4181,92 @@
           "timezone": "America/New_York"
         }
       },
+      "File": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id",
+            "description": "Unique file identifier: `file_` and 32 hex characters. Put it in a message's `attachments`, alone or with URLs.",
+            "examples": [
+              "file_3f2c8d9e0f144b4d9c5a7b8e2d1f0c4a"
+            ]
+          },
+          "filename": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Filename",
+            "description": "The name the recipient sees: the uploaded name without path, control characters or `/\\:*?\"<>|`, at most 100 characters before the extension, which is always the type's own (`.jpg`, `.pdf` ...). Null when the upload had no usable name; the file then goes out with a generated one.",
+            "examples": [
+              "Invoice 1042.pdf"
+            ]
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "image",
+              "gif",
+              "video",
+              "audio",
+              "file"
+            ],
+            "title": "Kind",
+            "description": "`file` is a PDF."
+          },
+          "mime_type": {
+            "type": "string",
+            "title": "Mime Type",
+            "examples": [
+              "application/pdf"
+            ]
+          },
+          "size_bytes": {
+            "type": "integer",
+            "title": "Size Bytes",
+            "description": "Size in bytes."
+          },
+          "created_at": {
+            "type": "string",
+            "title": "Created At",
+            "description": "ISO 8601 UTC timestamp of the upload.",
+            "examples": [
+              "2026-11-11T18:20:05.512000Z"
+            ]
+          },
+          "expires_at": {
+            "type": "string",
+            "title": "Expires At",
+            "description": "ISO 8601 UTC timestamp 24 hours after the upload. Until then the file can be sent any number of times; after it, sends naming it return `422 file_expired` and the file is deleted.",
+            "examples": [
+              "2026-11-12T18:20:05.512000Z"
+            ]
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "kind",
+          "mime_type",
+          "size_bytes",
+          "created_at",
+          "expires_at"
+        ],
+        "title": "File",
+        "example": {
+          "created_at": "2026-11-11T18:20:05.512000Z",
+          "expires_at": "2026-11-12T18:20:05.512000Z",
+          "filename": "Invoice 1042.pdf",
+          "id": "file_3f2c8d9e0f144b4d9c5a7b8e2d1f0c4a",
+          "kind": "file",
+          "mime_type": "application/pdf",
+          "size_bytes": 182344
+        }
+      },
       "MessageCreate": {
         "properties": {
           "contact_id": {
@@ -4054,10 +4372,18 @@
             "anyOf": [
               {
                 "items": {
-                  "type": "string",
-                  "maxLength": 2083,
-                  "minLength": 1,
-                  "format": "uri"
+                  "anyOf": [
+                    {
+                      "type": "string",
+                      "pattern": "^file_[0-9a-f]{32}$"
+                    },
+                    {
+                      "type": "string",
+                      "maxLength": 2083,
+                      "minLength": 1,
+                      "format": "uri"
+                    }
+                  ]
                 },
                 "type": "array",
                 "maxItems": 10,
@@ -4068,10 +4394,11 @@
               }
             ],
             "title": "Attachments",
-            "description": "Up to 10 files to send, each an `https` URL iBubbl downloads when the request arrives. Images (JPEG, PNG, WebP, HEIC, HEIF) and GIFs up to 25 MiB each, MP4/MOV video up to 50 MiB, PDF up to 10 MB, audio (MP3, M4A, AAC) up to 25 MiB on its own; 86 MB in all. With other files, audio must be one MP3 of at most 2 MB. The type comes from the response's `Content-Type` (or the URL's extension when that is `application/octet-stream`). A URL that can't be downloaded, or a file that breaks these rules, rejects the whole request (`422 attachment_fetch_failed`, `attachment_too_large`, `unsupported_attachment`, `attachment_combination_not_supported`) and nothing is sent. Only with `to` or `contact_id`, and not with `effect` or `reply_to_message_id`. The URLs, in order, are part of the payload compared for idempotency; a replay never downloads them again.",
+            "description": "Up to 10 files to send, in order: each an `https` URL iBubbl downloads when the request arrives, or the `id` of a file you uploaded with `POST /v1/files` (`file_` and 32 hex characters). Images (JPEG, PNG, WebP, HEIC, HEIF) and GIFs up to 25 MiB each, MP4/MOV video up to 50 MiB, PDF up to 10 MB, audio (MP3, M4A, AAC) up to 25 MiB on its own; 86 MB in all. With other files, audio must be one MP3 of at most 2 MB. The type comes from the response's `Content-Type` (or the URL's extension when that is `application/octet-stream`). A URL that can't be downloaded, or a file that breaks these rules, rejects the whole request (`422 attachment_fetch_failed`, `attachment_too_large`, `unsupported_attachment`, `attachment_combination_not_supported`) and nothing is sent. A file ID that isn't yours, or was deleted, is `404 file_not_found`; one past its `expires_at` is `422 file_expired`. Only with `to` or `contact_id`, and not with `effect` or `reply_to_message_id`. The items, in order, are part of the payload compared for idempotency; a replay never downloads or copies them again.",
             "examples": [
               [
-                "https://example.com/photos/order-1042.jpg"
+                "https://example.com/photos/order-1042.jpg",
+                "file_3f2c8d9e0f144b4d9c5a7b8e2d1f0c4a"
               ]
             ]
           },
@@ -4494,6 +4821,9 @@
   "tags": [
     {
       "name": "Messages"
+    },
+    {
+      "name": "Files"
     },
     {
       "name": "Contacts"

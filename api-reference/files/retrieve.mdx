@@ -1,0 +1,120 @@
+---
+title: 'Retrieve a file'
+openapi: 'GET /v1/files/{file_id}'
+---
+
+### Retrieve a file
+
+**Method:** `GET` | **Endpoint:** `/v1/files/{file_id}`
+
+**Description:** Fetch an uploaded file's details: its name, type, size and when it expires. Use it to check a file is still there before you send it. The contents are not returned.
+
+**Authentication:** API key in the `Authorization` header: `Authorization: Bearer ib_pk_<64 hex>`. Create keys in the dashboard under **Settings → API access**.
+
+#### Request Body
+None. The path parameter `file_id` is the `id` from [Upload a file](/api-reference/files/upload).
+
+<RequestExample>
+
+```bash cURL
+curl https://api.ibubbl.com/v1/files/file_3f2c8d9e0f144b4d9c5a7b8e2d1f0c4a \
+  -H "Authorization: Bearer $IBUBBL_API_KEY"
+```
+
+```typescript TypeScript
+const fileId = "file_3f2c8d9e0f144b4d9c5a7b8e2d1f0c4a";
+
+const res = await fetch(`https://api.ibubbl.com/v1/files/${fileId}`, {
+  headers: { Authorization: `Bearer ${process.env.IBUBBL_API_KEY}` },
+  signal: AbortSignal.timeout(10_000),
+});
+
+const data = await res.json();
+if (!res.ok) throw new Error(`${res.status} ${data.detail?.error}`);
+console.log(data.filename, data.expires_at);
+```
+
+```python Python
+import os
+
+import requests
+
+API_KEY = os.environ["IBUBBL_API_KEY"]
+
+file_id = "file_3f2c8d9e0f144b4d9c5a7b8e2d1f0c4a"
+
+res = requests.get(
+    f"https://api.ibubbl.com/v1/files/{file_id}",
+    headers={"Authorization": f"Bearer {API_KEY}"},
+    timeout=10,
+)
+data = res.json()
+if not res.ok:
+    raise RuntimeError(f"{res.status_code} {data['detail']['error']}")
+print(data["filename"], data["expires_at"])
+```
+
+</RequestExample>
+
+<ResponseExample>
+
+```json 200 OK
+{
+  "id": "file_3f2c8d9e0f144b4d9c5a7b8e2d1f0c4a",
+  "filename": "Invoice 1042.pdf",
+  "kind": "file",
+  "mime_type": "application/pdf",
+  "size_bytes": 182344,
+  "created_at": "2026-11-11T18:20:05.512000Z",
+  "expires_at": "2026-11-12T18:20:05.512000Z"
+}
+```
+
+```json 404 Not Found
+{
+  "detail": {
+    "error": "file_not_found",
+    "message": "No file with that id on this account (or it has expired)."
+  }
+}
+```
+
+</ResponseExample>
+
+#### Responses
+**200 OK**
+
+The file, in the same shape as [Upload a file](/api-reference/files/upload#responses) returns, where every field is described.
+
+**401 Unauthorized**
+```json
+{
+  "detail": {
+    "error": "unauthorized",
+    "message": "Invalid or revoked API key"
+  }
+}
+```
+Other `message` values: `Authorization Bearer token required`, `API key required (use Authorization: Bearer ib_pk_…)`, `Invalid API key format`, `Customer account not found`.
+
+**403 Forbidden**
+```json
+{
+  "detail": {
+    "error": "forbidden",
+    "message": "Account is suspended"
+  }
+}
+```
+Your iBubbl account is suspended or cancelled (`message` is then `Account is cancelled`). Every API-key endpoint returns this.
+
+**404 Not Found**
+```json
+{
+  "detail": {
+    "error": "file_not_found",
+    "message": "No file with that id on this account (or it has expired)."
+  }
+}
+```
+The file has expired or was deleted. Also returned for a malformed ID and for a file that belongs to another account.

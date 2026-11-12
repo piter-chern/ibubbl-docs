@@ -1,106 +1,233 @@
 ---
 title: 'Send attachments'
-description: 'Send photos, videos, PDFs and audio by URL, with an optional caption.'
+description: 'Send photos, videos, PDFs and audio by URL or by upload, with an optional caption.'
 ---
 
-Send files with a message by listing their URLs in `attachments` on [`POST /v1/messages`](/api-reference/messages/send). iBubbl downloads each file when the request arrives, checks it, and sends it from your line with your `body` as the caption.
+Send files with a message by listing them in `attachments` on [`POST /v1/messages`](/api-reference/messages/send): an `https` URL iBubbl downloads when the request arrives, or the ID of a file you uploaded first with [`POST /v1/files`](/api-reference/files/upload). iBubbl checks each file and sends it from your line with your `body` as the caption. You can mix both in one message.
 
 ```json
 {
   "to": "+14155551234",
-  "body": "Here's your receipt.",
-  "attachments": ["https://files.example.com/receipts/order-1042.pdf"],
+  "body": "Here's your receipt, and a photo of your order.",
+  "attachments": [
+    "file_3f2c8d9e0f144b4d9c5a7b8e2d1f0c4a",
+    "https://files.example.com/orders/1042/photo.jpg"
+  ],
   "idempotency_key": "…"
 }
 ```
 
+Each item is either a file ID from an upload or an `https` URL, in any mix, and the files arrive in the order you list them.
+
 ## Send files with a caption
 
-<CodeGroup>
+<Tabs>
+  <Tab title="Upload a file">
+    Upload the file, then send its `id`. Use this when the file is on your own system or behind a login, with no public URL. One upload can go in any number of messages for 24 hours, so upload a brochure once and send it to every contact who asks.
 
-```bash cURL
-# One key per message: generate it once, and reuse it if you retry.
-IDEMPOTENCY_KEY=$(uuidgen)
+    <CodeGroup>
 
-# iBubbl downloads the files before answering: allow up to 60 seconds.
-curl -X POST https://api.ibubbl.com/v1/messages \
-  --max-time 60 \
-  -H "Authorization: Bearer $IBUBBL_API_KEY" \
-  -H "Content-Type: application/json" \
-  -d "{
-    \"to\": \"+14155551234\",
-    \"body\": \"Here are the photos from today's visit.\",
-    \"attachments\": [
-      \"https://files.example.com/visits/1042/front.jpg\",
-      \"https://files.example.com/visits/1042/back.jpg\"
-    ],
-    \"idempotency_key\": \"$IDEMPOTENCY_KEY\"
-  }"
-```
+    ```bash cURL
+    # 1. Upload. ";type=" sets the file's type; the name is what your contact sees.
+    FILE_ID=$(curl -sS -X POST https://api.ibubbl.com/v1/files \
+      --max-time 120 \
+      -H "Authorization: Bearer $IBUBBL_API_KEY" \
+      -F "file=@Invoice 1042.pdf;type=application/pdf" | jq -r .id)
 
-```typescript TypeScript
-import { randomUUID } from "node:crypto";
+    # One key per message: generate it once, and reuse it if you retry.
+    IDEMPOTENCY_KEY=$(uuidgen)
 
-// One key per message: generate it once, and reuse it if you retry.
-const idempotencyKey = randomUUID();
+    # 2. Send it. A file ID can sit next to URLs in the same list.
+    curl -X POST https://api.ibubbl.com/v1/messages \
+      --max-time 60 \
+      -H "Authorization: Bearer $IBUBBL_API_KEY" \
+      -H "Content-Type: application/json" \
+      -d "{
+        \"to\": \"+14155551234\",
+        \"body\": \"Here's your invoice.\",
+        \"attachments\": [\"$FILE_ID\"],
+        \"idempotency_key\": \"$IDEMPOTENCY_KEY\"
+      }"
+    ```
 
-const res = await fetch("https://api.ibubbl.com/v1/messages", {
-  method: "POST",
-  headers: {
-    Authorization: `Bearer ${process.env.IBUBBL_API_KEY}`,
-    "Content-Type": "application/json",
-  },
-  body: JSON.stringify({
-    to: "+14155551234",
-    body: "Here are the photos from today's visit.",
-    attachments: [
-      "https://files.example.com/visits/1042/front.jpg",
-      "https://files.example.com/visits/1042/back.jpg",
-    ],
-    idempotency_key: idempotencyKey,
-  }),
-  // iBubbl downloads the files before answering: allow up to 60 seconds.
-  signal: AbortSignal.timeout(60_000),
-});
+    ```typescript TypeScript
+    import { randomUUID } from "node:crypto";
+    import { readFile } from "node:fs/promises";
 
-const data = await res.json();
-if (!res.ok) throw new Error(`${res.status} ${data.detail?.error}`);
-console.log(data.id, data.status, data.attachments);
-```
+    const headers = { Authorization: `Bearer ${process.env.IBUBBL_API_KEY}` };
 
-```python Python
-import os
-import uuid
+    // 1. Upload. The third argument is the name your contact sees.
+    const form = new FormData();
+    form.append(
+      "file",
+      new Blob([await readFile("Invoice 1042.pdf")], { type: "application/pdf" }),
+      "Invoice 1042.pdf",
+    );
+    const upload = await fetch("https://api.ibubbl.com/v1/files", {
+      method: "POST",
+      headers, // no Content-Type: fetch writes the multipart boundary
+      body: form,
+      signal: AbortSignal.timeout(120_000),
+    });
+    const file = await upload.json();
+    if (!upload.ok) throw new Error(`${upload.status} ${file.detail?.error}`);
 
-import requests
+    // One key per message: generate it once, and reuse it if you retry.
+    const idempotencyKey = randomUUID();
 
-API_KEY = os.environ["IBUBBL_API_KEY"]
+    // 2. Send it. A file ID can sit next to URLs in the same list.
+    const res = await fetch("https://api.ibubbl.com/v1/messages", {
+      method: "POST",
+      headers: { ...headers, "Content-Type": "application/json" },
+      body: JSON.stringify({
+        to: "+14155551234",
+        body: "Here's your invoice.",
+        attachments: [file.id],
+        idempotency_key: idempotencyKey,
+      }),
+      signal: AbortSignal.timeout(60_000),
+    });
 
-# One key per message: generate it once, and reuse it if you retry.
-idempotency_key = str(uuid.uuid4())
+    const data = await res.json();
+    if (!res.ok) throw new Error(`${res.status} ${data.detail?.error}`);
+    console.log(data.id, data.status, data.attachments);
+    ```
 
-res = requests.post(
-    "https://api.ibubbl.com/v1/messages",
-    headers={"Authorization": f"Bearer {API_KEY}"},
-    json={
-        "to": "+14155551234",
-        "body": "Here are the photos from today's visit.",
-        "attachments": [
-            "https://files.example.com/visits/1042/front.jpg",
-            "https://files.example.com/visits/1042/back.jpg",
-        ],
-        "idempotency_key": idempotency_key,
-    },
+    ```python Python
+    import os
+    import uuid
+
+    import requests
+
+    API_KEY = os.environ["IBUBBL_API_KEY"]
+    headers = {"Authorization": f"Bearer {API_KEY}"}
+
+    # 1. Upload. The tuple's first item is the name your contact sees.
+    with open("Invoice 1042.pdf", "rb") as f:
+        upload = requests.post(
+            "https://api.ibubbl.com/v1/files",
+            headers=headers,
+            files={"file": ("Invoice 1042.pdf", f, "application/pdf")},
+            timeout=120,
+        )
+    file = upload.json()
+    if not upload.ok:
+        raise RuntimeError(f"{upload.status_code} {file['detail']['error']}")
+
+    # One key per message: generate it once, and reuse it if you retry.
+    idempotency_key = str(uuid.uuid4())
+
+    # 2. Send it. A file ID can sit next to URLs in the same list.
+    res = requests.post(
+        "https://api.ibubbl.com/v1/messages",
+        headers=headers,
+        json={
+            "to": "+14155551234",
+            "body": "Here's your invoice.",
+            "attachments": [file["id"]],
+            "idempotency_key": idempotency_key,
+        },
+        timeout=60,
+    )
+    data = res.json()
+    if not res.ok:
+        raise RuntimeError(f"{res.status_code} {data['detail']['error']}")
+    print(data["id"], data["status"], data["attachments"])
+    ```
+
+    </CodeGroup>
+  </Tab>
+
+  <Tab title="From a URL">
+    List each file's `https` URL. iBubbl downloads it when the request arrives.
+
+    <CodeGroup>
+
+    ```bash cURL
+    # One key per message: generate it once, and reuse it if you retry.
+    IDEMPOTENCY_KEY=$(uuidgen)
+
     # iBubbl downloads the files before answering: allow up to 60 seconds.
-    timeout=60,
-)
-data = res.json()
-if not res.ok:
-    raise RuntimeError(f"{res.status_code} {data['detail']['error']}")
-print(data["id"], data["status"], data["attachments"])
-```
+    curl -X POST https://api.ibubbl.com/v1/messages \
+      --max-time 60 \
+      -H "Authorization: Bearer $IBUBBL_API_KEY" \
+      -H "Content-Type: application/json" \
+      -d "{
+        \"to\": \"+14155551234\",
+        \"body\": \"Here are the photos from today's visit.\",
+        \"attachments\": [
+          \"https://files.example.com/visits/1042/front.jpg\",
+          \"https://files.example.com/visits/1042/back.jpg\"
+        ],
+        \"idempotency_key\": \"$IDEMPOTENCY_KEY\"
+      }"
+    ```
 
-</CodeGroup>
+    ```typescript TypeScript
+    import { randomUUID } from "node:crypto";
+
+    // One key per message: generate it once, and reuse it if you retry.
+    const idempotencyKey = randomUUID();
+
+    const res = await fetch("https://api.ibubbl.com/v1/messages", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${process.env.IBUBBL_API_KEY}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        to: "+14155551234",
+        body: "Here are the photos from today's visit.",
+        attachments: [
+          "https://files.example.com/visits/1042/front.jpg",
+          "https://files.example.com/visits/1042/back.jpg",
+        ],
+        idempotency_key: idempotencyKey,
+      }),
+      // iBubbl downloads the files before answering: allow up to 60 seconds.
+      signal: AbortSignal.timeout(60_000),
+    });
+
+    const data = await res.json();
+    if (!res.ok) throw new Error(`${res.status} ${data.detail?.error}`);
+    console.log(data.id, data.status, data.attachments);
+    ```
+
+    ```python Python
+    import os
+    import uuid
+
+    import requests
+
+    API_KEY = os.environ["IBUBBL_API_KEY"]
+
+    # One key per message: generate it once, and reuse it if you retry.
+    idempotency_key = str(uuid.uuid4())
+
+    res = requests.post(
+        "https://api.ibubbl.com/v1/messages",
+        headers={"Authorization": f"Bearer {API_KEY}"},
+        json={
+            "to": "+14155551234",
+            "body": "Here are the photos from today's visit.",
+            "attachments": [
+                "https://files.example.com/visits/1042/front.jpg",
+                "https://files.example.com/visits/1042/back.jpg",
+            ],
+            "idempotency_key": idempotency_key,
+        },
+        # iBubbl downloads the files before answering: allow up to 60 seconds.
+        timeout=60,
+    )
+    data = res.json()
+    if not res.ok:
+        raise RuntimeError(f"{res.status_code} {data['detail']['error']}")
+    print(data["id"], data["status"], data["attachments"])
+    ```
+
+    </CodeGroup>
+  </Tab>
+</Tabs>
 
 The `202` response is the usual [message object](/api-reference/messages/send#responses), with an `attachments` array describing what will be sent, in your order:
 
@@ -110,8 +237,8 @@ The `202` response is the usual [message object](/api-reference/messages/send#re
   "status": "pending",
   "body": "Here are the photos from today's visit.",
   "attachments": [
-    { "kind": "image", "mime_type": "image/jpeg", "size_bytes": 2481133 },
-    { "kind": "image", "mime_type": "image/jpeg", "size_bytes": 1975020 }
+    { "kind": "image", "mime_type": "image/jpeg", "size_bytes": 2481133, "filename": "front.jpg" },
+    { "kind": "image", "mime_type": "image/jpeg", "size_bytes": 1975020, "filename": "back.jpg" }
   ]
 }
 ```
@@ -119,8 +246,24 @@ The `202` response is the usual [message object](/api-reference/messages/send#re
 (Other fields are omitted here.) [Retrieve a message](/api-reference/messages/retrieve) and [List messages](/api-reference/messages/list) return the same `attachments` array, including the files your contacts send you. They describe the files; they don't return their contents or URLs.
 
 <Note>
-**Set a 60-second client timeout on sends with attachments.** iBubbl answers only once every file is downloaded and stored, which can take up to about 30 seconds for large files. A text-only send still answers at once.
+**Set a 60-second client timeout on sends with URL attachments.** iBubbl answers only once every file is downloaded and stored, which can take up to about 30 seconds for large files. A send of uploaded files, or of text only, answers at once.
 </Note>
+
+## Upload a file
+
+When a file has no public URL, upload it with [`POST /v1/files`](/api-reference/files/upload) and put the `id` it returns (`file_` and 32 hex characters) in `attachments`.
+
+- **One file per upload,** as `multipart/form-data` with one part named `file`. Every HTTP client builds this for you: curl's `-F "file=@…"`, a `FormData` in TypeScript, `files=` in Python's `requests`.
+- **The type** is the part's `Content-Type`. When that is missing or `application/octet-stream`, the file name's extension decides instead (`.mov`, `.heic`, `.mp3` …). The content must match the type: a file named `.jpg` that isn't a JPEG is refused with `422 unsupported_attachment`.
+- **The same types and limits as URLs** (the table below). A file is refused as soon as it passes its limit, and nothing is stored.
+- **Send it as often as you like for 24 hours.** One upload can go in any number of messages, to any of your contacts, until its `expires_at`. Each message keeps its own copy, so a sent message never depends on the upload.
+- **Then it's deleted.** After `expires_at`, a send that names it returns `422 file_expired`, and [Retrieve a file](/api-reference/files/retrieve) returns `404`. To remove it sooner, [delete it](/api-reference/files/delete).
+- **Up to 500 files and 1 GiB** of uploads that haven't expired, per account. Over that, uploads return `422 file_quota_exceeded`.
+- **60 uploads a minute, and 4 at once,** per account. Over that, `429 rate_limited` with a `Retry-After` header.
+- **Uploads have no idempotency key.** An upload you retry is stored twice; the spare one expires on its own.
+- **Allow time for large files:** an upload must finish within 5 minutes, and may not pause for more than 30 seconds (`408 upload_timeout`).
+
+Only the account that uploaded a file can see it, send it or delete it. Another account's file ID is `404 file_not_found`.
 
 ## How the URLs are read
 
@@ -130,7 +273,18 @@ The `202` response is the usual [message object](/api-reference/messages/send#re
 - **Private and internal addresses are refused,** including `localhost`, private networks and cloud metadata addresses, at every hop.
 - **The whole request fails if one file does.** Nothing is sent and no message is created, so you can fix the URL and send again with the same `idempotency_key`.
 - **Downloads have a time limit:** all the files together get about 30 seconds, and a server that stops sending for 10 seconds fails the download.
-- **The file name your contact sees** is generated by iBubbl; it isn't taken from the URL.
+- **The file name your contact sees** is the one the server gives in `Content-Disposition`, or else the last part of the URL's path (after any redirects): `…/visits/1042/front.jpg` arrives as `front.jpg`. See [File names](#file-names).
+
+## File names
+
+Your contact sees each file's name, most visibly on a PDF. iBubbl keeps the name you give:
+
+- **Uploads:** the file name in the upload's `multipart` part.
+- **URLs:** the server's `Content-Disposition` file name, or else the last part of the URL's path.
+
+The name is cleaned before it is used: any folders, control characters and `/\:*?"<>|` are removed, it is cut to 100 characters before the extension, and the extension is always the file type's own. So `Invoice 1042.PDF` arrives as `Invoice 1042.pdf`, and a PNG at `…/photo.jpg` as `photo.png`. Two files with the same name in one message become `Invoice.pdf` and `Invoice (2).pdf`. With no usable name, iBubbl generates one.
+
+The `filename` field on each of a message's `attachments` shows the name that was sent. It is `null` for files your contacts send you, and for files sent before names were kept (see the [Changelog](/changelog)).
 
 ## Supported files and limits
 
@@ -176,9 +330,9 @@ Your `attachments` array and the `202` are the same whichever way the message go
 
 ## Idempotency
 
-The URLs are part of the [idempotency](/idempotency) payload, **in order**. A retry with the same `idempotency_key` must send the same URLs in the same order; a different URL, a missing one or a new order returns `409 idempotency_conflict`.
+The `attachments` list is part of the [idempotency](/idempotency) payload, **in order**: the URLs and file IDs exactly as you sent them. A retry with the same `idempotency_key` must send the same list in the same order; a different item, a missing one or a new order returns `409 idempotency_conflict`.
 
-A retry that replays an accepted message returns the original response **without downloading anything again**, even if the file at the URL has changed since. To send a changed file, use a new key.
+A retry that replays an accepted message returns the original response **without downloading or copying anything again**, even if the file at the URL has changed or the upload has expired since. To send a changed file, use a new key. To send the same upload to another contact, or again, use a new key too: it's a new message.
 
 ## Errors
 
@@ -186,15 +340,17 @@ A refused request creates no message, so its `idempotency_key` stays unused. Eac
 
 | `detail.error` | HTTP | Cause | What to do |
 | -------------- | ---- | ----- | ---------- |
+| `file_not_found` | 404 | A file ID in `attachments` isn't one of your uploads, or was deleted. | Upload the file again and send its new `id`. |
+| `file_expired` | 422 | A file ID's `expires_at` has passed. | Upload the file again and send its new `id`. |
 | `attachment_fetch_failed` | 422 | iBubbl couldn't download a URL: not `https`, the host doesn't resolve or is private, a non-`200` answer, more than 3 redirects, an empty file, or the download took too long. | Check the URL works from the public internet, then send again. |
 | `attachment_too_large` | 422 | A file is over its kind's limit, or the files are over 86 MB in all. | Send a smaller file, or split the files across messages. |
 | `unsupported_attachment` | 422 | A file's type isn't in the table above. | Convert it to a supported type. |
 | `attachment_combination_not_supported` | 422 | The files can't go together, for example an M4A with a photo, or two audio files. | Send the audio in a message of its own. |
 | `first_message_needs_text` | 422 | Files without `body` to a contact you've never exchanged a message with. | Add a `body`. |
-| `validation_error` | 422 | The request's shape: an empty `attachments` list, more than 10 URLs, something that isn't an `https` URL, `attachments` with `chat_guid` or `participant_phones`, `attachments` with `effect` or `reply_to_message_id`, or neither `body` nor `attachments`. | Fix the request. |
+| `validation_error` | 422 | The request's shape: an empty `attachments` list, more than 10 items, something that is neither an `https` URL nor a file ID (`file_` and 32 lower-case hex characters), `attachments` with `chat_guid` or `participant_phones`, `attachments` with `effect` or `reply_to_message_id`, or neither `body` nor `attachments`. | Fix the request. |
 | `rate_limited` | 429 | Rare: iBubbl is downloading too many attachment sends at once. Comes with a `Retry-After` header (5 seconds). | Wait `Retry-After` seconds, then send the same request again with the same `idempotency_key`. |
 
-The other send errors (opt-outs, limits and so on) work as for any send; see [Errors when sending](/guides/send-messages#errors-when-sending) and the [error catalog](/errors).
+Uploads have their own errors (`unsupported_attachment`, `attachment_too_large`, `file_quota_exceeded`, `upload_timeout`, `rate_limited`); see [Upload a file](/api-reference/files/upload#responses). The other send errors (opt-outs, limits and so on) work as for any send; see [Errors when sending](/guides/send-messages#errors-when-sending) and the [error catalog](/errors).
 
 ## Next
 
@@ -204,5 +360,8 @@ The other send errors (opt-outs, limits and so on) work as for any send; see [Er
   </Card>
   <Card title="Send a message (reference)" icon="code" href="/api-reference/messages/send">
     Every field of `POST /v1/messages`.
+  </Card>
+  <Card title="Upload a file (reference)" icon="upload" href="/api-reference/files/upload">
+    Every rule of `POST /v1/files`.
   </Card>
 </CardGroup>

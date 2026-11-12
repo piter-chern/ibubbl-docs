@@ -1,0 +1,181 @@
+---
+title: 'Upload a file'
+openapi: 'POST /v1/files'
+---
+
+### Upload a file
+
+**Method:** `POST` | **Endpoint:** `/v1/files`
+
+**Description:** Upload a photo, video, PDF or audio file from your own system, for a message to send. Use it when the file has no public `https` URL. The answer is a file object: put its `id` in the `attachments` of [Send a message](/api-reference/messages/send), alone or next to URLs. See [Send attachments](/guides/attachments#upload-a-file).
+
+**Authentication:** API key in the `Authorization` header: `Authorization: Bearer ib_pk_<64 hex>`. Create keys in the dashboard under **Settings → API access**.
+
+#### Request Body
+A `multipart/form-data` body with **one part, named `file`**, holding the file. Nothing else: another part, or a second file, is refused.
+
+- **Type:** the part's `Content-Type`. When it is missing or `application/octet-stream` (curl, `requests` and `Blob` send that for `.mov`, `.heic` and `.mp3`), the file name's extension decides instead. The content must match the type: a file named `.jpg` that isn't a JPEG is refused.
+- **Name:** the part's file name. Your contact sees it (cleaned up, with the type's own extension), so name the file the way you want it to arrive: `Invoice 1042.pdf`.
+- **Size and types:** the same as URL attachments: images (JPEG, PNG, WebP, HEIC, HEIF) and GIFs up to 25 MiB, MP4/MOV video up to 50 MiB, PDF up to 10 MB, audio (MP3, M4A, AAC) up to 25 MiB. A file over its limit is refused as soon as it passes it. See [Supported files and limits](/guides/attachments#supported-files-and-limits).
+
+Don't set the `Content-Type` header of the request yourself: let your HTTP client write `multipart/form-data` with its boundary.
+
+<RequestExample>
+
+```bash cURL
+# -F sets multipart/form-data and the part's name. ";type=" sets the file's
+# type; without it curl sends application/octet-stream for many types, and
+# iBubbl then goes by the extension.
+curl -X POST https://api.ibubbl.com/v1/files \
+  --max-time 120 \
+  -H "Authorization: Bearer $IBUBBL_API_KEY" \
+  -F "file=@Invoice 1042.pdf;type=application/pdf"
+```
+
+```typescript TypeScript
+import { readFile } from "node:fs/promises";
+
+const path = "Invoice 1042.pdf";
+
+const form = new FormData();
+form.append(
+  "file",
+  new Blob([await readFile(path)], { type: "application/pdf" }),
+  "Invoice 1042.pdf",
+);
+
+// No Content-Type header: fetch writes multipart/form-data with its boundary.
+const res = await fetch("https://api.ibubbl.com/v1/files", {
+  method: "POST",
+  headers: { Authorization: `Bearer ${process.env.IBUBBL_API_KEY}` },
+  body: form,
+  signal: AbortSignal.timeout(120_000),
+});
+
+const data = await res.json();
+if (!res.ok) throw new Error(`${res.status} ${data.detail?.error}`);
+console.log(data.id, data.filename, data.expires_at);
+```
+
+```python Python
+import os
+
+import requests
+
+API_KEY = os.environ["IBUBBL_API_KEY"]
+
+with open("Invoice 1042.pdf", "rb") as f:
+    res = requests.post(
+        "https://api.ibubbl.com/v1/files",
+        headers={"Authorization": f"Bearer {API_KEY}"},
+        files={"file": ("Invoice 1042.pdf", f, "application/pdf")},
+        timeout=120,
+    )
+data = res.json()
+if not res.ok:
+    raise RuntimeError(f"{res.status_code} {data['detail']['error']}")
+print(data["id"], data["filename"], data["expires_at"])
+```
+
+</RequestExample>
+
+<ResponseExample>
+
+```json 201 Created
+{
+  "id": "file_3f2c8d9e0f144b4d9c5a7b8e2d1f0c4a",
+  "filename": "Invoice 1042.pdf",
+  "kind": "file",
+  "mime_type": "application/pdf",
+  "size_bytes": 182344,
+  "created_at": "2026-11-11T18:20:05.512000Z",
+  "expires_at": "2026-11-12T18:20:05.512000Z"
+}
+```
+
+```json 422 Unprocessable Entity
+{
+  "detail": {
+    "error": "attachment_too_large",
+    "message": "application/pdf files can be at most 10000000 bytes"
+  }
+}
+```
+
+</ResponseExample>
+
+#### Responses
+**201 Created**
+
+The file, ready to send.
+
+| Field | Type | Description |
+| ----- | ---- | ----------- |
+| `id` | string | The file's ID: `file_` and 32 hex characters. Put it in a message's `attachments`. |
+| `filename` | string or null | The name your contact sees: the uploaded name without any folders, control characters or the characters `/` `\` `:` `*` `?` `"` `<` `>` and the vertical bar, at most 100 characters before the extension, which is always the type's own (`.jpg`, `.pdf` …). Null when the upload had no usable name; the file then goes out with a generated one. |
+| `kind` | string | `image`, `gif`, `video`, `audio` or `file` (a PDF). |
+| `mime_type` | string | The file's type, for example `application/pdf`. |
+| `size_bytes` | integer | Size in bytes. |
+| `created_at` | string | ISO 8601 UTC timestamp of the upload. |
+| `expires_at` | string | 24 hours after the upload. Until then the file can be sent **any number of times**; after it, sends that name it return `422 file_expired`, and the file is deleted. |
+
+Uploads take no idempotency key. If an upload fails on the network, upload again: you get a new file, and the unused one expires.
+
+**401 Unauthorized**
+```json
+{
+  "detail": {
+    "error": "unauthorized",
+    "message": "Invalid or revoked API key"
+  }
+}
+```
+Other `message` values: `Authorization Bearer token required`, `API key required (use Authorization: Bearer ib_pk_…)`, `Invalid API key format`, `Customer account not found`.
+
+**403 Forbidden**
+```json
+{
+  "detail": {
+    "error": "forbidden",
+    "message": "Account is suspended"
+  }
+}
+```
+Your iBubbl account is suspended or cancelled (`message` is then `Account is cancelled`). Every API-key endpoint returns this.
+
+**408 Request Timeout**
+```json
+{
+  "detail": {
+    "error": "upload_timeout",
+    "message": "the upload must arrive within 300 s, with no pause over 30 s"
+  }
+}
+```
+The file took longer than 5 minutes to arrive, or stopped for over 30 seconds. Nothing was stored; upload again.
+
+**422 Unprocessable Entity**
+```json
+{
+  "detail": {
+    "error": "unsupported_attachment",
+    "message": "the file's content isn't image/jpeg"
+  }
+}
+```
+Nothing was stored. `detail.error` is one of:
+- `validation_error`: the body isn't `multipart/form-data`, has no part named `file`, has another part or a second file, the file is empty, or the body was cut off.
+- `unsupported_attachment`: a type iBubbl can't send (see the table in [Send attachments](/guides/attachments#supported-files-and-limits)), or content that doesn't match its type.
+- `attachment_too_large`: over its type's limit. A body over 50 MiB in all is refused before it is read.
+- `file_quota_exceeded`: your account already holds 500 files, or 1 GiB, of uploads that haven't expired. Delete the ones you've sent ([Delete a file](/api-reference/files/delete)) or wait for them to expire.
+
+**429 Too Many Requests**
+```json
+{
+  "detail": {
+    "error": "rate_limited",
+    "message": "Too many uploads; wait 12s (limit 60 a minute per account)."
+  }
+}
+```
+Uploads allow 60 requests a minute per account (all your keys together; other requests have their own budgets), and 4 at once. Wait the `Retry-After` header's seconds, then upload again.

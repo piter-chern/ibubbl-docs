@@ -102,7 +102,7 @@ if not res.ok:
 </ResponseField>
 
 <ResponseField name="validation_error" type="422">
-  Generic request-shape failure. The `message` will identify the field. Common causes: missing required body field, malformed E.164 phone, body length zero, `to` and `contact_id` both omitted, neither `body` nor `attachments`, an `attachments` entry that isn't an `https` URL (or more than 10 of them), `attachments` with `chat_guid` or `participant_phones`, or `attachments` with `effect` or `reply_to_message_id`. On a list endpoint: an unknown or repeated query parameter, `limit` outside 1–100, or a time without a time zone.
+  Generic request-shape failure. The `message` will identify the field. Common causes: missing required body field, malformed E.164 phone, body length zero, `to` and `contact_id` both omitted, neither `body` nor `attachments`, an `attachments` entry that is neither an `https` URL nor a file ID (or more than 10 of them), `attachments` with `chat_guid` or `participant_phones`, or `attachments` with `effect` or `reply_to_message_id`. On [Upload a file](/api-reference/files/upload): a body that isn't `multipart/form-data`, no part named `file`, another part or a second file, an empty file, or a cut-off body. On a list endpoint: an unknown or repeated query parameter, `limit` outside 1–100, or a time without a time zone.
 </ResponseField>
 
 <ResponseField name="invalid_cursor" type="422">
@@ -249,16 +249,32 @@ if not res.ok:
   `POST /v1/messages` only: you sent `attachments` without a `body` to a contact you've never exchanged a message with. Messages can't open a new conversation with files alone. Add a `body`. See [Captions and the first message](/guides/attachments#captions-and-the-first-message).
 </ResponseField>
 
+<ResponseField name="file_not_found" type="404">
+  [Retrieve a file](/api-reference/files/retrieve), [Delete a file](/api-reference/files/delete), and `POST /v1/messages` when an `attachments` file ID names no upload of yours: it is malformed, belongs to another account, was deleted, or (on retrieve and delete) has expired. In a send, the `message` names it by position, for example `attachments[1]: no file file_3f2c… on this account`; nothing was created. Upload the file again and send its new `id`.
+</ResponseField>
+
+<ResponseField name="file_expired" type="422">
+  `POST /v1/messages` only: an `attachments` file ID is past its `expires_at`, 24 hours after its upload. Nothing was created. Upload the file again and send its new `id`. See [Upload a file](/guides/attachments#upload-a-file).
+</ResponseField>
+
+<ResponseField name="file_quota_exceeded" type="422">
+  [Upload a file](/api-reference/files/upload) only: your account already holds 500 files, or 1 GiB, of uploads that haven't expired. Nothing was stored. [Delete](/api-reference/files/delete) files you've sent, or wait for them to expire (24 hours after each upload).
+</ResponseField>
+
+<ResponseField name="upload_timeout" type="408">
+  [Upload a file](/api-reference/files/upload) only: the body took over 5 minutes to arrive, or paused for over 30 seconds. Nothing was stored; upload again.
+</ResponseField>
+
 <ResponseField name="attachment_fetch_failed" type="422">
   `POST /v1/messages` only: iBubbl couldn't download one of the `attachments` URLs. The `message` names it by position, for example `attachments[1]: attachment fetch answered 404`. Causes: the host doesn't resolve or is a private or internal address, the server answered something other than `200`, more than 3 redirects (or one to a non-`https` URL), an empty file, or the download took too long (about 30 seconds for all the files, or 10 seconds without data). Check the URL works from the public internet, then send again. Nothing was created. See [Send attachments](/guides/attachments#how-the-urls-are-read).
 </ResponseField>
 
 <ResponseField name="attachment_too_large" type="422">
-  `POST /v1/messages` only: a file is over its kind's limit (images and GIFs 25 MiB, video 50 MiB, PDF 10 MB, audio 25 MiB), or the files are over 86 MB in all. The `message` names the file. Send a smaller file, or split the files across messages. See [Supported files and limits](/guides/attachments#supported-files-and-limits).
+  `POST /v1/messages` and [Upload a file](/api-reference/files/upload): a file is over its kind's limit (images and GIFs 25 MiB, video 50 MiB, PDF 10 MB, audio 25 MiB), or the files are over 86 MB in all. The `message` names the file. Send a smaller file, or split the files across messages. See [Supported files and limits](/guides/attachments#supported-files-and-limits).
 </ResponseField>
 
 <ResponseField name="unsupported_attachment" type="422">
-  `POST /v1/messages` only: a file's type can't be sent through the API, for example a calendar invite (`.ics`), WebM or Ogg audio, SVG or a ZIP file. The type comes from the response's `Content-Type` (or the URL's extension when that is `application/octet-stream`). Convert the file to a supported type.
+  `POST /v1/messages` and [Upload a file](/api-reference/files/upload): a file's type can't be sent through the API, for example a calendar invite (`.ics`), WebM or Ogg audio, SVG or a ZIP file. The type comes from the URL response's (or the upload part's) `Content-Type`, or the file name's extension when that is `application/octet-stream`. An upload is also refused when its content doesn't match its type (`the file's content isn't image/jpeg`). Convert the file to a supported type.
 </ResponseField>
 
 <ResponseField name="attachment_combination_not_supported" type="422">
@@ -292,11 +308,12 @@ if not res.ok:
 </ResponseField>
 
 <ResponseField name="rate_limited" type="429">
-  Returned in four places, and nowhere else:
+  Returned in five places, and nowhere else:
 
   - **Conversation actions** ([Edit](/api-reference/messages/edit), [unsend](/api-reference/messages/unsend) and [cancel](/api-reference/messages/cancel) a message, [add](/api-reference/messages/react) and [remove](/api-reference/messages/remove-reaction) a tapback, [Mark read](/api-reference/conversations/mark-read), [start](/api-reference/conversations/start-typing) and [stop](/api-reference/conversations/stop-typing) typing): your account made more than 300 of these requests in 60 seconds (all API keys and all eight endpoints together; a budget separate from lists). The response has a `Retry-After` header; wait that long and call again. See [Rate limits](/concepts/limits#rate-limits).
   - **List endpoints** ([List messages](/api-reference/messages/list), [List contacts](/api-reference/contacts/list)): your account made more than 120 list requests in 60 seconds (all API keys and all lists together). The response has a `Retry-After` header with the seconds to wait; then send the same request again. See [Rate limits](/concepts/limits#rate-limits).
-  - **Sends with `attachments`**, rarely: iBubbl was already downloading as many attachment sends as it can, and no slot freed within 10 seconds. `Retry-After` is `5`; then send the same request with the same `idempotency_key`. Nothing was created.
+  - **[Uploads](/api-reference/files/upload)**: more than 60 uploads in 60 seconds from your account (all API keys together; a budget of its own), or 4 already in progress. The response has a `Retry-After` header; wait that long and upload again.
+  - **Sends with attachment URLs**, rarely: iBubbl was already downloading as many attachment sends as it can, and no slot freed within 10 seconds. `Retry-After` is `5`; then send the same request with the same `idempotency_key`. Nothing was created.
   - **`/v1/events`**: a secret-URL [inbound event](/inbound-events/overview) source received more than 60 events in 60 seconds. There is no `Retry-After` header here; send again after about a minute.
 
   Text-only sends (`POST /v1/messages` without `attachments`) never return it.
@@ -335,6 +352,10 @@ if not res.ok:
 | `first_message_needs_text` | 422 | ❌ Add a `body`. |
 | `attachment_fetch_failed` | 422 | ⚠️ Fix or check the URL, then send again; the key is still unused. |
 | `attachment_too_large` / `unsupported_attachment` / `attachment_combination_not_supported` | 422 | ❌ Change the files. |
+| `file_not_found` | 404 | ❌ Upload the file again and send its new `id`. |
+| `file_expired` | 422 | ❌ Upload the file again and send its new `id`. |
+| `file_quota_exceeded` | 422 | ⚠️ Delete uploads you've sent, or wait for them to expire, then upload again. |
+| `upload_timeout` | 408 | ✅ Upload again. |
 | `invalid_url` | 422 | ❌ Use an `https://` URL. |
 | `invalid_timezone` | 422 | ❌ Fix the timezone. |
 | `invalid_email` / `invalid_tag` / `duplicate_tag` | 422 | ❌ Fix the value. |
@@ -342,7 +363,7 @@ if not res.ok:
 | `daily_cap_exhausted` / `cold_cap_exhausted` | 422 | ⚠️ Not queued. Send again after the limit resets (midnight ET). |
 | `hourly_cap_hit` / `followup_cap_exhausted` | — | Legacy: not used on any current line. |
 | `no_eligible_line` | 422 | ⚠️ Send again once your line is back online. |
-| `rate_limited` | 429 | ✅ Lists, conversation actions and attachment sends: send the same request again (same `idempotency_key`) after `Retry-After` seconds. `/v1/events`: after about a minute. |
+| `rate_limited` | 429 | ✅ Lists, conversation actions, uploads and attachment sends: send the same request again (same `idempotency_key`) after `Retry-After` seconds. `/v1/events`: after about a minute. |
 | `invalid_signature` | 403 | ❌ Fix the signing secret. |
 | `payload_too_large` | 413 | ❌ Fix the payload size. |
 | `no_owner_rep` | 500 | ❌ Not until your account has an active owner rep; email [support@ibubbl.com](mailto:support@ibubbl.com). |
@@ -350,20 +371,21 @@ if not res.ok:
 | `opt_out_check_unavailable` | 503 | ✅ Retry after a short backoff. |
 | `limits_unavailable` | 503 | ✅ Retry after a few seconds. |
 
-The general rule: **don't retry 4xx**. Most 4xxes are payload-level problems that retrying won't fix. The exception is `429 rate_limited`: wait, then send the same request again (on a list, a conversation action or an attachment send, `Retry-After` says how long). The limit 422s (`daily_cap_exhausted`, `cold_cap_exhausted`) are retryable only after the limit resets at midnight ET; iBubbl does not queue them for you. The hourly new-contact limit and an offline line are different: those sends are accepted and wait (`pending` with `held_reason: "hourly_limit"`, or `queued`), so resending just creates a duplicate. The numbers are on [Limits and queues](/concepts/limits). A send refused with a `404` or `422` creates no message, so its `idempotency_key` stays unused and you can reuse it when you send again.
+The general rule: **don't retry 4xx**. Most 4xxes are payload-level problems that retrying won't fix. The exception is `429 rate_limited`: wait, then send the same request again (on a list, a conversation action, an upload or an attachment send, `Retry-After` says how long). The limit 422s (`daily_cap_exhausted`, `cold_cap_exhausted`) are retryable only after the limit resets at midnight ET; iBubbl does not queue them for you. The hourly new-contact limit and an offline line are different: those sends are accepted and wait (`pending` with `held_reason: "hourly_limit"`, or `queued`), so resending just creates a duplicate. The numbers are on [Limits and queues](/concepts/limits). A send refused with a `404` or `422` creates no message, so its `idempotency_key` stays unused and you can reuse it when you send again.
 
 ## HTTP status mapping summary
 
 | Status | When |
 | ------ | ---- |
-| `200` / `201` / `202` / `204` | Success. `202` for accepted-but-queued sends, edits and unsends; `201` for created resources; `204` (no body) for [Delete a contact](/api-reference/contacts/delete); `200` everywhere else. |
+| `200` / `201` / `202` / `204` | Success. `202` for accepted-but-queued sends, edits and unsends; `201` for created resources, including an [upload](/api-reference/files/upload); `204` (no body) for [Delete a contact](/api-reference/contacts/delete) and [Delete a file](/api-reference/files/delete); `200` everywhere else. |
 | `401` | Auth failure. |
 | `403` | Account suspended or cancelled (`forbidden`), or an inbound event's signature failed (`invalid_signature`). |
-| `404` | Resource not found (or hidden across tenants), `group_not_found`, or `line_not_found`. |
+| `404` | Resource not found (or hidden across tenants), `group_not_found`, `line_not_found`, or `file_not_found`. |
 | `409` | Idempotency conflict, or a message in a state another request holds: `edit_in_flight`, `already_unsent`, `message_dispatching`. |
+| `408` | `upload_timeout`: an upload that took too long to arrive. |
 | `413` | Inbound event body over 256 KB. |
 | `422` | Validation, routing or send-limit failure. |
-| `429` | `rate_limited`: too many list requests or conversation actions from your account, or attachment downloads busy (all with `Retry-After`), or too many inbound events for one source on `/v1/events`. |
+| `429` | `rate_limited`: too many list requests, conversation actions or uploads from your account, or attachment downloads busy (all with `Retry-After`), or too many inbound events for one source on `/v1/events`. |
 | `500` | No owner rep (`no_owner_rep`) or an unexpected iBubbl error (`internal_error`). |
 | `503` | `opt_out_check_unavailable` on a tapback, edit or typing call, or `limits_unavailable` on a lines read. Retry after a short backoff. |
 | `502` / `503` without a `detail.error` | The network edge during a deployment blip, not iBubbl itself. Retry with the same idempotency key after a short backoff. |

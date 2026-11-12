@@ -94,9 +94,10 @@ SENDING (POST /v1/messages)
   reply_target_not_found. Neither is allowed with participant_phones.
 
 ATTACHMENTS (POST /v1/messages; https://docs.ibubbl.com/guides/attachments)
-- attachments: 1-10 https URLs, 1:1 only (to or contact_id; never with
-  chat_guid or participant_phones). iBubbl downloads them during the request:
-  set the client timeout to 60 s for these sends.
+- attachments: 1-10 items, in order, each an https URL or an uploaded file
+  id (file_ + 32 lowercase hex), mixed freely; 1:1 only (to or contact_id;
+  never with chat_guid or participant_phones). iBubbl downloads URLs during
+  the request: set the client timeout to 60 s for sends with URLs.
 - body is optional with attachments (it is the caption), but the first
   message to a contact must have a body, else 422 first_message_needs_text.
 - Types and limits: JPEG/PNG/WebP/HEIC/HEIF and GIF 25 MiB each, MP4/MOV
@@ -105,13 +106,35 @@ ATTACHMENTS (POST /v1/messages; https://docs.ibubbl.com/guides/attachments)
   attachment_combination_not_supported. No .ics, WebM, Ogg, SVG, ZIP.
 - Errors (422, nothing created, key reusable): attachment_fetch_failed (URL
   not reachable/public, non-200, too slow), attachment_too_large,
-  unsupported_attachment, attachment_combination_not_supported. The message
-  names the file as attachments[i].
-- The URLs, in order, are part of the idempotency payload; a replay never
-  downloads again. effect and reply_to_message_id are not allowed with
-  attachments (422 validation_error): send them as a separate message.
-- Response: every message has attachments: [{kind, mime_type, size_bytes}]
-  ([] for text). No file contents or URLs.
+  unsupported_attachment, attachment_combination_not_supported,
+  file_expired; 404 file_not_found for a file id that is not this account's
+  or was deleted. The message names the file as attachments[i].
+- The items, in order, are part of the idempotency payload; a replay never
+  downloads or copies again. effect and reply_to_message_id are not allowed
+  with attachments (422 validation_error): send them as a separate message.
+- Response: every message has attachments: [{kind, mime_type, size_bytes,
+  filename}] ([] for text). filename is the name the recipient sees (null
+  for received files). No file contents or URLs.
+
+FILES (POST /v1/files, GET and DELETE /v1/files/{id};
+https://docs.ibubbl.com/api-reference/files/upload)
+- Use when a file has no public https URL. multipart/form-data with exactly
+  one part named "file"; never set the request's Content-Type yourself. Set
+  the part's type (e.g. application/pdf); with application/octet-stream the
+  file name's extension decides. The content must match the type, else 422
+  unsupported_attachment. Same types and caps as attachments.
+- The part's file name is what the recipient sees (cleaned; the extension
+  is always the type's own). Name files the way they should arrive.
+- 201 returns {id, filename, kind, mime_type, size_bytes, created_at,
+  expires_at}. Put id in attachments. One upload can be sent any number of
+  times, to any contacts, until expires_at (24 h after upload); do not
+  re-upload per send. After expiry: 422 file_expired; upload again.
+- Uploads have no idempotency key: a retried upload stores a second file
+  (the spare expires). 60 uploads a minute and 4 at once per account (429
+  rate_limited, Retry-After). At most 500 live files / 1 GiB per account
+  (422 file_quota_exceeded): DELETE files you have finished with. 408
+  upload_timeout if the body takes over 5 minutes. Use a 120 s client
+  timeout for uploads.
 
 LIMITS (per line; https://docs.ibubbl.com/concepts/limits)
 - 50 new contacts a day (resets at midnight America/New_York); the 51st gets
@@ -123,7 +146,7 @@ LIMITS (per line; https://docs.ibubbl.com/concepts/limits)
 - 6 unanswered messages in a row to a contact who never replied; the 7th gets
   422 unresponsive_contact.
 - No HTTP rate limit on POST /v1/messages (a text send never gets a 429; a
-  send with attachments rarely gets 429 rate_limited, Retry-After 5), but a
+  send with attachment URLs rarely gets 429 rate_limited, Retry-After 5), but a
   line sends one message at a time (about one a second). Send one request at
   a time per line; bursts only build a queue. Pace outreach to new contacts
   at about one every 2 minutes per line.
@@ -258,9 +281,9 @@ RETRIES AND ERRORS
   the same payload, with exponential backoff (1 s, 2 s, 4 s) and a small cap
   on attempts. Exception: 500 no_owner_rep will not succeed on retry.
 - Never retry a 4xx automatically. Fix the request instead. The one
-  exception: 429 rate_limited (a list, a tapback/read/typing call, or an
-  attachment send); wait Retry-After seconds, then repeat the same request
-  (same idempotency_key).
+  exception: 429 rate_limited (a list, a tapback/read/typing call, an upload,
+  or an attachment send); wait Retry-After seconds, then repeat the same
+  request (same idempotency_key).
 - 422 unresponsive_contact: the contact has not replied to 6 messages in a
   row. Stop messaging them until they reply.
 - 422 contact_opted_out: final. Never message this contact again, and never

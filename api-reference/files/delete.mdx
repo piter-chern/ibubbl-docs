@@ -1,0 +1,118 @@
+---
+title: 'Delete a file'
+openapi: 'DELETE /v1/files/{file_id}'
+---
+
+### Delete a file
+
+**Method:** `DELETE` | **Endpoint:** `/v1/files/{file_id}`
+
+**Description:** Delete an uploaded file before it expires, for example once you've sent it. Messages already sent with it keep their own copy, so they are not affected. A send that names the file afterwards returns `404 file_not_found`.
+
+You don't have to delete files: each one is deleted 24 hours after its upload. Deleting them early frees room in your account's [upload quota](/api-reference/files/upload#responses).
+
+**Authentication:** API key in the `Authorization` header: `Authorization: Bearer ib_pk_<64 hex>`. Create keys in the dashboard under **Settings → API access**.
+
+#### Request Body
+None. The path parameter `file_id` is the `id` from [Upload a file](/api-reference/files/upload).
+
+<RequestExample>
+
+```bash cURL
+curl -X DELETE https://api.ibubbl.com/v1/files/file_3f2c8d9e0f144b4d9c5a7b8e2d1f0c4a \
+  -H "Authorization: Bearer $IBUBBL_API_KEY"
+```
+
+```typescript TypeScript
+const fileId = "file_3f2c8d9e0f144b4d9c5a7b8e2d1f0c4a";
+
+const res = await fetch(`https://api.ibubbl.com/v1/files/${fileId}`, {
+  method: "DELETE",
+  headers: { Authorization: `Bearer ${process.env.IBUBBL_API_KEY}` },
+  signal: AbortSignal.timeout(10_000),
+});
+
+// 204 No Content: there is no body to read.
+if (!res.ok) {
+  const data = await res.json();
+  throw new Error(`${res.status} ${data.detail?.error}`);
+}
+console.log("deleted");
+```
+
+```python Python
+import os
+
+import requests
+
+API_KEY = os.environ["IBUBBL_API_KEY"]
+
+file_id = "file_3f2c8d9e0f144b4d9c5a7b8e2d1f0c4a"
+
+res = requests.delete(
+    f"https://api.ibubbl.com/v1/files/{file_id}",
+    headers={"Authorization": f"Bearer {API_KEY}"},
+    timeout=10,
+)
+# 204 No Content: there is no body to read.
+if not res.ok:
+    data = res.json()
+    raise RuntimeError(f"{res.status_code} {data['detail']['error']}")
+print("deleted")
+```
+
+</RequestExample>
+
+<ResponseExample>
+
+```json 204 No Content
+```
+
+```json 404 Not Found
+{
+  "detail": {
+    "error": "file_not_found",
+    "message": "No file with that id on this account (or it has expired)."
+  }
+}
+```
+
+</ResponseExample>
+
+#### Responses
+**204 No Content**
+
+Deleted. The response has no body.
+
+**401 Unauthorized**
+```json
+{
+  "detail": {
+    "error": "unauthorized",
+    "message": "Invalid or revoked API key"
+  }
+}
+```
+Other `message` values: `Authorization Bearer token required`, `API key required (use Authorization: Bearer ib_pk_…)`, `Invalid API key format`, `Customer account not found`.
+
+**403 Forbidden**
+```json
+{
+  "detail": {
+    "error": "forbidden",
+    "message": "Account is suspended"
+  }
+}
+```
+Your iBubbl account is suspended or cancelled (`message` is then `Account is cancelled`). Every API-key endpoint returns this.
+
+**404 Not Found**
+```json
+{
+  "detail": {
+    "error": "file_not_found",
+    "message": "No file with that id on this account (or it has expired)."
+  }
+}
+```
+Already deleted or expired, a malformed ID, or a file that belongs to another account.

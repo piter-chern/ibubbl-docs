@@ -7,7 +7,7 @@ openapi: 'POST /v1/messages'
 
 **Method:** `POST` | **Endpoint:** `/v1/messages`
 
-**Description:** Send a message to one contact (by `contact_id` or phone number), into an existing iMessage group (`chat_guid`), or to a new group (`participant_phones`). One-to-one messages can carry files by URL; see [Send attachments](/guides/attachments). The call returns at once; delivery progress arrives as [webhook events](/webhooks/events), or poll [Retrieve a message](/api-reference/messages/retrieve).
+**Description:** Send a message to one contact (by `contact_id` or phone number), into an existing iMessage group (`chat_guid`), or to a new group (`participant_phones`). One-to-one messages can carry files, by `https` URL or by [upload](/api-reference/files/upload); see [Send attachments](/guides/attachments). The call returns at once; delivery progress arrives as [webhook events](/webhooks/events), or poll [Retrieve a message](/api-reference/messages/retrieve).
 
 **Authentication:** API key in the `Authorization` header: `Authorization: Bearer ib_pk_<64 hex>`. Create keys in the dashboard under **Settings → API access**.
 
@@ -20,7 +20,7 @@ openapi: 'POST /v1/messages'
 | `participant_phones` | array of strings (E.164) | Exactly one of these four | Create a new group and send the first message. At least 2 numbers; your iBubbl line is added automatically, so don't include it. |
 | `group_name` | string, at most 80 characters | No | Display name for the new group. Only allowed with `participant_phones`. |
 | `body` | string, at least 1 character | Unless `attachments` is set | The message text. Plain text; emoji and Unicode are supported. For a line break, include a newline (`\n` in the JSON string); use `\n`, not `\r\n`. A retry with the same `idempotency_key` must send the identical body, line breaks included, or it returns `409 idempotency_conflict`. With `attachments` it's their caption. The first message to a contact must have one (`422 first_message_needs_text`). |
-| `attachments` | array of 1–10 strings (`https` URLs) | No | Files to send: photos, GIFs, videos, PDFs or audio. iBubbl downloads each URL when the request arrives. One-to-one only (`to` or `contact_id`), and not with `effect` or `reply_to_message_id`. Types, size limits and the combinations allowed are in [Send attachments](/guides/attachments#supported-files-and-limits). Allow up to 60 seconds for the response. |
+| `attachments` | array of 1–10 strings: `https` URLs or file IDs | No | Files to send: photos, GIFs, videos, PDFs or audio, in order. Each item is an `https` URL, which iBubbl downloads when the request arrives, or the `id` of a file from [Upload a file](/api-reference/files/upload) (`file_` and 32 hex characters), in any mix. An upload can be sent any number of times until its `expires_at`; another account's or a deleted file ID is `404 file_not_found`, an expired one `422 file_expired`. One-to-one only (`to` or `contact_id`), and not with `effect` or `reply_to_message_id`. Types, size limits and the combinations allowed are in [Send attachments](/guides/attachments#supported-files-and-limits). With URLs, allow up to 60 seconds for the response. |
 | `reply_to_message_id` | string (UUID) | No | Send as an inline reply that quotes an earlier message: a message `id`, or the `message_id` of a [`message.inbound`](/webhooks/events) event. It must be in the conversation you're sending to (the same contact, or the same group); otherwise `422 reply_target_not_found`. iMessage only. Not allowed with `participant_phones` or `attachments`. See [Reply and send with effects](/guides/send-messages#reply-to-a-message-and-send-with-effects). |
 | `effect` | string | No | An iMessage effect: `slam`, `loud`, `gentle`, `invisible`, `echo`, `spotlight`, `balloons`, `confetti`, `love`, `lasers`, `fireworks`, `celebration` or `shooting_star`. iMessage only. Not allowed with `participant_phones` or `attachments`. |
 | `link_preview` | boolean, default `false` | No | Send the link with a preview card (the page's title and image), as when a person types it on an iPhone. Without it, a link goes out as plain text. `body` must end in exactly one `http` or `https` link, with no other link before it. One-to-one only (`to` or `contact_id`), and not with `attachments`, `effect` or `reply_to_message_id`. Anything else is refused with `422 validation_error`. See [Link preview cards](#link-preview-cards). |
@@ -30,7 +30,7 @@ Fields not listed above are ignored without an error: the request still succeeds
 
 `reply_to_message_id` and `effect` only show on iMessage. If the message goes out as SMS (RCS included), it is sent as plain text without the quote or the effect, and the API doesn't refuse it. `channel` on [Retrieve a message](/api-reference/messages/retrieve) tells you which way it went. Neither can be combined with `attachments`: that request is refused with `422 validation_error`. Both fields count toward the [idempotency](/idempotency) payload when set.
 
-`attachments` count toward the idempotency payload too, in order. A replay never downloads them again. A request whose files can't be downloaded or don't meet the limits is refused with a `422` and creates no message; see [Send attachments](/guides/attachments#errors).
+`attachments` count toward the idempotency payload too, in order, URLs and file IDs alike. A replay never downloads or copies them again. A request whose files can't be downloaded or don't meet the limits is refused with a `422` and creates no message; see [Send attachments](/guides/attachments#errors).
 
 #### Link preview cards
 
@@ -257,7 +257,14 @@ print(data["id"], data["status"])
   "effect": null,
   "link_preview": false,
   "reply_to_message_id": null,
-  "attachments": [],
+  "attachments": [
+    {
+      "kind": "file",
+      "mime_type": "application/pdf",
+      "size_bytes": 182344,
+      "filename": "invoice.pdf"
+    }
+  ],
   "edited_at": null,
   "edit_count": 0,
   "edit_status": null,
@@ -265,7 +272,7 @@ print(data["id"], data["status"])
   "unsent_at": null
 }
 ```
-`status` is `pending` or `queued`. A message held by a capacity limit or an offline line is still accepted with `queued` and retried automatically. A message waiting for the contact's [working hours](/concepts/working-hours) or the line's hourly limit for new contacts is `pending`, with `held_until` and `held_reason` set. `line_id` and `line_number` name the line the message goes out on (the `id` and `phone_number` in [List lines](/api-reference/lines/list)). For a group send, `to` is `null` and `conversation_kind` is `"group"`; a new group's `chat_guid` is `null` until the group is created a few seconds later. `effect` and `reply_to_message_id` echo what you sent, or `null`; `link_preview` is `true` when you asked for a [preview card](#link-preview-cards). `attachments` lists the files the message carries, in your order, as `kind` (`image`, `gif`, `video`, `audio` or `file`), `mime_type` and `size_bytes`; it's `[]` for a text message. `direction` is always `outbound` here, and `created_at` is when iBubbl recorded the message; it never changes, and it's what [List messages](/api-reference/messages/list) sorts and filters by.
+`status` is `pending` or `queued`. A message held by a capacity limit or an offline line is still accepted with `queued` and retried automatically. A message waiting for the contact's [working hours](/concepts/working-hours) or the line's hourly limit for new contacts is `pending`, with `held_until` and `held_reason` set. `line_id` and `line_number` name the line the message goes out on (the `id` and `phone_number` in [List lines](/api-reference/lines/list)). For a group send, `to` is `null` and `conversation_kind` is `"group"`; a new group's `chat_guid` is `null` until the group is created a few seconds later. `effect` and `reply_to_message_id` echo what you sent, or `null`; `link_preview` is `true` when you asked for a [preview card](#link-preview-cards). `attachments` lists the files the message carries, in your order, as `kind` (`image`, `gif`, `video`, `audio` or `file`), `mime_type`, `size_bytes` and `filename` (the name your contact sees; see [File names](/guides/attachments#file-names)); it's `[]` for a text message. The example above carries one uploaded PDF. `direction` is always `outbound` here, and `created_at` is when iBubbl recorded the message; it never changes, and it's what [List messages](/api-reference/messages/list) sorts and filters by.
 
 **401 Unauthorized**
 ```json
@@ -298,7 +305,7 @@ Your iBubbl account is suspended or cancelled (`message` is then `Account is can
   }
 }
 ```
-Also returned for a `contact_id` that is malformed, belongs to another account, or was [deleted](/api-reference/contacts/delete); send with `to` to reach the number again (that creates a new contact). Other `error` value: `group_not_found` (no group with that `chat_guid` on your account).
+Also returned for a `contact_id` that is malformed, belongs to another account, or was [deleted](/api-reference/contacts/delete); send with `to` to reach the number again (that creates a new contact). Other `error` values: `group_not_found` (no group with that `chat_guid` on your account), and `file_not_found` (a file ID in `attachments` that isn't one of your uploads, or was deleted; the `message` names it as `attachments[i]`).
 
 **409 Conflict**
 ```json
@@ -319,7 +326,7 @@ Also returned for a `contact_id` that is malformed, belongs to another account, 
   }
 }
 ```
-Other `error` values: `contact_opted_out`, `contact_blocked`, `no_eligible_line`, `unresponsive_contact`, `cold_cap_exhausted`, `daily_cap_exhausted`, `followup_cap_exhausted`, `group_outbound_blocked_suppression` (with a `blocked_phones` list), `insufficient_participants`, `reply_target_not_found`, `reply_target_unsent`, `reply_target_partly_unsent`, and for attachments `first_message_needs_text`, `attachment_fetch_failed`, `attachment_too_large`, `unsupported_attachment` and `attachment_combination_not_supported`. See [Errors](/errors).
+Other `error` values: `contact_opted_out`, `contact_blocked`, `no_eligible_line`, `unresponsive_contact`, `cold_cap_exhausted`, `daily_cap_exhausted`, `followup_cap_exhausted`, `group_outbound_blocked_suppression` (with a `blocked_phones` list), `insufficient_participants`, `reply_target_not_found`, `reply_target_unsent`, `reply_target_partly_unsent`, and for attachments `first_message_needs_text`, `attachment_fetch_failed`, `attachment_too_large`, `unsupported_attachment`, `attachment_combination_not_supported` and `file_expired` (an uploaded file past its `expires_at`). See [Errors](/errors).
 
 **429 Too Many Requests**
 ```json
@@ -330,7 +337,7 @@ Other `error` values: `contact_opted_out`, `contact_blocked`, `no_eligible_line`
   }
 }
 ```
-Sends with `attachments` only, and rarely: iBubbl is already downloading as many attachment sends as it can. The `Retry-After` header says how many seconds to wait (5); then send the same request with the same `idempotency_key`. Text-only sends never get a `429`.
+Sends with attachment URLs only, and rarely: iBubbl is already downloading as many attachment sends as it can (a send of uploaded files alone never waits for this). The `Retry-After` header says how many seconds to wait (5); then send the same request with the same `idempotency_key`. Text-only sends never get a `429`.
 
 **500 Internal Server Error**
 ```json
