@@ -20,7 +20,7 @@ At least one of:
 | ----- | ---- | ----------- |
 | `send_at` | string (ISO 8601 with a time zone) | The new time, with the same rules as when scheduling: 1 minute to 90 days from now (`422 send_at_too_soon` / `send_at_too_far`). `null` is `422 validation_error`. |
 | `body` | string or null | The new text. `null` or `""` removes the text, which only a message with files can do (`422 scheduled_empty` otherwise), and not when it's the first message to the contact (`422 first_message_needs_text`). With `link_preview` on, the new text must still end in exactly one `http(s)` link (`422 validation_error`). |
-| `link_preview` | boolean | Turn the [preview card](/api-reference/scheduled-messages/create#link-preview-cards) on or off. With it on, the text the message will have (the new `body`, or the current one) must end in exactly one `http(s)` link, and the message can't have files, an `effect` or a reply (`422 validation_error`). `null` is `422 validation_error`. |
+| `link_preview` | boolean | Turn the [preview card](/api-reference/scheduled-messages/create#link-preview-cards) on or off. With it on, the text the message will have (the new `body`, or the current one) must end in exactly one `http(s)` link, and the message can't have files, an `effect` or a reply (`422 validation_error`). `null` is `422 validation_error`. On a message scheduled in the dashboard, `false` doesn't remove the card its text gets anyway (see [`link_preview`](/api-reference/scheduled-messages/retrieve)). |
 
 A field you leave out stays as it is. Files, `effect` and the reply can't be changed: [cancel](/api-reference/scheduled-messages/cancel) it and schedule a new one. Any other field, or an empty body `{}`, is `422 validation_error`.
 

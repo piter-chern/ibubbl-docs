@@ -25,7 +25,7 @@ openapi: 'GET /v1/scheduled-messages/{scheduled_message_id}'
 | `attachments` | array | The files, in order: `kind` (`image`, `gif`, `video`, `audio` or `file`), `mime_type`, `size_bytes` and `filename` (the name the recipient sees; `null` without a usable name, and for messages scheduled in the dashboard). |
 | `effect` | string or null | The iMessage effect. |
 | `reply_to_message_id` | string (UUID) or null | The message it quotes. |
-| `link_preview` | boolean | Whether its link is sent as a [preview card](/api-reference/scheduled-messages/create#link-preview-cards). Always `false` for messages scheduled in the dashboard. |
+| `link_preview` | boolean | Whether it was scheduled through the API with a [preview card](/api-reference/scheduled-messages/create#link-preview-cards) for its link. A message scheduled in the dashboard shows `false`, and still gets a card when it fires, like a message typed there, if its text ends in exactly one `http(s)` link with no other link in it and it has no files, `effect` or reply. |
 | `message_id` | string (UUID) or null | The message it created, once `fired`. Use it with [Retrieve a message](/api-reference/messages/retrieve), and to match the `message.*` webhooks. |
 | `fired_at` | string (ISO 8601 UTC) or null | When it fired. |
 | `failed_reason` | string or null | Why it was refused, while `failed`. |
