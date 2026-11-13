@@ -17,7 +17,7 @@ openapi: 'POST /v1/scheduled-messages'
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
 | `contact_id` | string (UUID) | Exactly one of these two | The contact to message. A deleted contact's ID returns `404 not_found`. |
-| `to` | string (E.164, e.g. `+14155551234`) | Exactly one of these two | The number to message. If no contact has this number, one is created when you schedule. |
+| `to` | string (E.164, e.g. `+14155551234`) | Exactly one of these two | The number to message. If no contact has this number, one is created when you schedule. Spaces, dashes and brackets are removed first; a number with an extra digit after the country code is refused as on [Send a message](/api-reference/messages/send) (`422 validation_error` with `suggested`). |
 | `send_at` | string (ISO 8601 with a time zone) | Yes | When to send, e.g. `2026-11-20T14:00:00Z` or `2026-11-20T09:00:00-05:00`. At least 1 minute from now (`422 send_at_too_soon`) and at most 90 days (`422 send_at_too_far`). A time without a time zone is `422 validation_error`. |
 | `body` | string | Unless `attachments` is set | The message text, as on [Send a message](/api-reference/messages/send). With `attachments` it's their caption. The first message to a contact must have one (`422 first_message_needs_text`). |
 | `attachments` | array of 1–10 strings: `https` URLs or file IDs | No | Files to send, with the same types, sizes and errors as [Send attachments](/guides/attachments#supported-files-and-limits). iBubbl downloads each URL and copies each upload **when you schedule** and keeps the copies until the message is sent or cancelled, so an upload can expire, or be deleted, before `send_at` without affecting it. Not with `effect` or `reply_to_message_id`. |
@@ -213,7 +213,7 @@ The key was used before with a different payload, or to send a message with `POS
 
 **422 Unprocessable Entity**
 
-- `validation_error`: the body's shape, an unknown field, a `send_at` without a time zone, or a `link_preview` the message can't have (a body that doesn't end in exactly one link, or `link_preview` with `attachments`, `effect` or `reply_to_message_id`).
+- `validation_error`: the body's shape, an unknown field, a `send_at` without a time zone, a `to` with an extra digit after the country code (the corrected number is in `suggested`), or a `link_preview` the message can't have (a body that doesn't end in exactly one link, or `link_preview` with `attachments`, `effect` or `reply_to_message_id`).
 - `scheduled_group_unsupported`: `chat_guid`, `participant_phones` or `group_name`. Groups can't be scheduled yet.
 - `send_at_too_soon` / `send_at_too_far`: `send_at` is under 1 minute from now, or more than 90 days.
 - `scheduled_limit_reached`: your account already has 5,000 scheduled messages waiting.

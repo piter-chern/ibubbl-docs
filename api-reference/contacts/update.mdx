@@ -23,7 +23,7 @@ The path parameter `contact_id` is the contact's ID (a UUID). Send at least one 
 | `state` | string or `null`, at most 128 characters | No | Trimmed, a 2-letter code upper-cased; blank or `null` clears it. |
 | `timezone` | string or `null` | No | Any real IANA zone, or `422 invalid_timezone`. `null` makes it automatic again: iBubbl infers the zone from the phone number. |
 
-Fields not listed above are rejected with `422 validation_error`, and the message names the field. `phone` can't be changed, and tags have their own endpoints: [Add a tag](/api-reference/contacts/add-tag) and [Remove a tag](/api-reference/contacts/remove-tag).
+Fields not listed above are rejected with `422 validation_error`, and the message names the field. `phone` can't be changed (a new contact's number is checked when it's created; see [Create or update a contact](/api-reference/contacts/upsert)), and tags have their own endpoints: [Add a tag](/api-reference/contacts/add-tag) and [Remove a tag](/api-reference/contacts/remove-tag).
 
 <RequestExample>
 

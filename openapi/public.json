@@ -66,7 +66,7 @@
             }
           },
           "422": {
-            "description": "Request rejected; see `detail.error`. `validation_error` (bad request shape), `contact_opted_out`, `contact_blocked`, `no_eligible_line` (no line on your account can send it: none is active, or the group's line no longer serves your account), `unresponsive_contact`, `cold_cap_exhausted`, `followup_cap_exhausted`, `daily_cap_exhausted`, `group_outbound_blocked_suppression`, `insufficient_participants`, `reply_target_not_found`, `reply_target_unsent`, `reply_target_partly_unsent`, `first_message_needs_text`, `attachment_fetch_failed`, `attachment_too_large`, `unsupported_attachment`, `attachment_combination_not_supported`, `file_expired`, `sms_attachment_refused` (a calendar file, `.ics`, to a contact who can only take SMS), or `account_setup_incomplete` (your account has no active manager in the dashboard; add or reactivate one, then retry).",
+            "description": "Request rejected; see `detail.error`. `validation_error` (bad request shape; for a `to` with an extra digit after the country code, `detail.suggested` holds the corrected number), `contact_opted_out`, `contact_blocked`, `no_eligible_line` (no line on your account can send it: none is active, or the group's line no longer serves your account), `unresponsive_contact`, `cold_cap_exhausted`, `followup_cap_exhausted`, `daily_cap_exhausted`, `group_outbound_blocked_suppression`, `insufficient_participants`, `reply_target_not_found`, `reply_target_unsent`, `reply_target_partly_unsent`, `first_message_needs_text`, `attachment_fetch_failed`, `attachment_too_large`, `unsupported_attachment`, `attachment_combination_not_supported`, `file_expired`, `sms_attachment_refused` (a calendar file, `.ics`, to a contact who can only take SMS), or `account_setup_incomplete` (your account has no active manager in the dashboard; add or reactivate one, then retry).",
             "content": {
               "application/json": {
                 "schema": {
@@ -1078,7 +1078,7 @@
             }
           },
           "422": {
-            "description": "`validation_error` (the body's shape, including a `send_at` without a time zone), `scheduled_group_unsupported` (`chat_guid`, `participant_phones` or `group_name`: groups can't be scheduled yet), `send_at_too_soon`, `send_at_too_far`, `scheduled_limit_reached`, `contact_opted_out`, `contact_blocked`, `reply_target_not_found`, `reply_target_unsent`, `reply_target_partly_unsent`, `first_message_needs_text`, `attachment_fetch_failed`, `attachment_too_large`, `unsupported_attachment`, `attachment_combination_not_supported`, `file_expired` or `account_setup_incomplete` (your account has no active manager in the dashboard; add or reactivate one, then retry).",
+            "description": "`validation_error` (the body's shape, including a `send_at` without a time zone; for a `to` with an extra digit after the country code, `detail.suggested` holds the corrected number), `scheduled_group_unsupported` (`chat_guid`, `participant_phones` or `group_name`: groups can't be scheduled yet), `send_at_too_soon`, `send_at_too_far`, `scheduled_limit_reached`, `contact_opted_out`, `contact_blocked`, `reply_target_not_found`, `reply_target_unsent`, `reply_target_partly_unsent`, `first_message_needs_text`, `attachment_fetch_failed`, `attachment_too_large`, `unsupported_attachment`, `attachment_combination_not_supported`, `file_expired` or `account_setup_incomplete` (your account has no active manager in the dashboard; add or reactivate one, then retry).",
             "content": {
               "application/json": {
                 "schema": {
@@ -1987,7 +1987,7 @@
             }
           },
           "422": {
-            "description": "`validation_error` (bad request shape, `phone` not E.164, an unknown field), `invalid_timezone`, `invalid_email`, `invalid_tag` or `duplicate_tag`.",
+            "description": "`validation_error` (bad request shape, `phone` not E.164, an unknown field, or `phone` with an extra digit after the country code, when `detail.suggested` holds the corrected number), `invalid_timezone`, `invalid_email`, `invalid_tag` or `duplicate_tag`.",
             "content": {
               "application/json": {
                 "schema": {
@@ -4486,7 +4486,7 @@
           "phone": {
             "type": "string",
             "title": "Phone",
-            "description": "Phone number in E.164 format (e.g. `+14155551234`). The unique key for contacts \u2014 upserting an existing phone returns the same contact ID.",
+            "description": "Phone number in E.164 format (e.g. `+14155551234`). Spaces, dashes and brackets are removed first. A number with an extra digit after the country code, such as a trunk `0` (`+4407911123456`), is refused with `422 validation_error` and the corrected number in `suggested`. The unique key for contacts \u2014 upserting an existing phone returns the same contact ID.",
             "examples": [
               "+14155551234"
             ]
@@ -4723,7 +4723,7 @@
         "properties": {
           "phone": {
             "type": "string",
-            "pattern": "^\\+[1-9]\\d{7,14}$",
+            "pattern": "^\\+[1-9][0-9]{7,14}$",
             "title": "Phone",
             "description": "The number to look up, in E.164 (e.g. `+14155551234`). Any country. A number that isn't one of your contacts yet becomes one when it has to be asked about, so its answer is reused by your next send.",
             "examples": [
@@ -4763,15 +4763,14 @@
           "to": {
             "anyOf": [
               {
-                "type": "string",
-                "pattern": "^\\+[1-9]\\d{7,14}$"
+                "type": "string"
               },
               {
                 "type": "null"
               }
             ],
             "title": "To",
-            "description": "1:1 send by E.164 phone number (e.g. `+14155551234`). If the number doesn't match an existing contact, one is created automatically. Mutually exclusive with `contact_id`, `chat_guid`, and `participant_phones`.",
+            "description": "1:1 send by E.164 phone number (e.g. `+14155551234`). Spaces, dashes and brackets are removed first. A number with an extra digit after the country code, such as a trunk `0` (`+4407911123456`), is refused with `422 validation_error` and the corrected number in `suggested`. If the number doesn't match an existing contact, one is created automatically. Mutually exclusive with `contact_id`, `chat_guid`, and `participant_phones`.",
             "examples": [
               "+14155551234"
             ]
@@ -5026,15 +5025,14 @@
           "to": {
             "anyOf": [
               {
-                "type": "string",
-                "pattern": "^\\+[1-9]\\d{7,14}$"
+                "type": "string"
               },
               {
                 "type": "null"
               }
             ],
             "title": "To",
-            "description": "The number to message, in E.164 (e.g. `+14155551234`). A number that isn't one of your contacts yet becomes one when you schedule. Exactly one of `contact_id` and `to`.",
+            "description": "The number to message, in E.164 (e.g. `+14155551234`), with spaces, dashes and brackets removed first; an extra digit after the country code is refused as on `POST /v1/messages` (`422 validation_error` with `suggested`). A number that isn't one of your contacts yet becomes one when you schedule. Exactly one of `contact_id` and `to`.",
             "examples": [
               "+14155551234"
             ]
@@ -5989,7 +5987,7 @@
               }
             ],
             "title": "Failed Reason",
-            "description": "Why a `failed` or `expired` message didn't go out: the same stable code as `failed_reason` on its `message.failed` webhook, for example `imessage_undeliverable`, `imessage_error:<code>`, `line_send_failed`, `line_offline_timeout`, `line_inactive` or `queue_expired`. On a `queued` message, why it waits: `line_offline`, as on its `message.queued` webhook. Treat it as opaque; new values may be added. Null for every other status, including a failed message that Apple later confirmed.",
+            "description": "Why a `failed` or `expired` message didn't go out: the same stable code as `failed_reason` on its `message.failed` webhook, for example `imessage_undeliverable`, `imessage_error:<code>`, `mac_send_failed`, `agent_offline`, `line_inactive` or `queue_expired`. On a `queued` message, why it waits: `line_offline`, as on its `message.queued` webhook. Treat it as opaque; new values may be added. Null for every other status, including a failed message that Apple later confirmed.",
             "examples": [
               "imessage_undeliverable"
             ]

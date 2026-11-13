@@ -15,7 +15,7 @@ openapi: 'POST /v1/messages'
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
 | `contact_id` | string (UUID) | Exactly one of these four | Send one-to-one to an existing contact. A deleted contact's ID returns `404 not_found`. |
-| `to` | string (E.164, e.g. `+14155551234`) | Exactly one of these four | Send one-to-one by phone number. If no contact has this number, one is created. |
+| `to` | string (E.164, e.g. `+14155551234`) | Exactly one of these four | Send one-to-one by phone number. If no contact has this number, one is created. Spaces, dashes and brackets are removed first. A number with an extra digit after the country code, such as the trunk `0` in `+44 07911 123456`, is refused with `422 validation_error` and the number to send instead in `suggested`; nothing is sent. |
 | `chat_guid` | string | Exactly one of these four | Send into an existing group. Read it from the response to a send into the group, or from [Retrieve a message](/api-reference/messages/retrieve) for any message in it. It changes when a participant is added; an old value returns `404 group_not_found`. |
 | `participant_phones` | array of strings (E.164) | Exactly one of these four | Create a new group and send the first message. At least 2 numbers; your iBubbl line is added automatically, so don't include it. |
 | `group_name` | string, at most 80 characters | No | Display name for the new group. Only allowed with `participant_phones`. |
@@ -331,6 +331,18 @@ The same answer, with `message` naming `POST /v1/scheduled-messages`, when the k
   }
 }
 ```
+A `to` with an extra digit after the country code also gets `validation_error`, with the corrected number in `suggested`:
+
+```json
+{
+  "detail": {
+    "error": "validation_error",
+    "message": "to: not in standard E.164 form; use the suggested number",
+    "suggested": "+447911123456"
+  }
+}
+```
+
 Other `error` values: `contact_opted_out`, `contact_blocked`, `no_eligible_line`, `unresponsive_contact`, `cold_cap_exhausted`, `daily_cap_exhausted`, `followup_cap_exhausted`, `group_outbound_blocked_suppression` (with a `blocked_phones` list), `insufficient_participants`, `reply_target_not_found`, `reply_target_unsent`, `reply_target_partly_unsent`, and for attachments `first_message_needs_text`, `attachment_fetch_failed`, `attachment_too_large`, `unsupported_attachment`, `attachment_combination_not_supported` and `file_expired` (an uploaded file past its `expires_at`), and `account_setup_incomplete` (your account has no active manager in the dashboard: add or reactivate one, then send again). See [Errors](/errors).
 
 **429 Too Many Requests**
