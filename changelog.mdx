@@ -7,6 +7,7 @@ description: 'Changes to the iBubbl API and these docs, newest first.'
 
 | Date | Change | Type |
 | ---- | ------ | ---- |
+| 2026-11-13 | PDFs can now be up to 50 MiB (52,428,800 bytes), up from 10 MB, on [Send a message](/api-reference/messages/send) and [Upload a file](/api-reference/files/upload). A message's files still total at most 86 MB. See [Supported files and limits](/guides/attachments#supported-files-and-limits). | Changed |
 | 2026-11-13 | **Breaking:** a tapback your line refused to send now has `failed_reason` `rejected` (was `bb_rejected`), on [Add a tapback](/api-reference/messages/react) responses and on [`message.reaction.failed`](/webhooks/events#message-reaction-failed). | Changed |
 | 2026-11-13 | `contact_id` on a [message](/api-reference/messages/retrieve) is described for every message: the sender of an inbound one (in a group, the participant who sent it) as well as the recipient of an outbound one. [Cancel a message](/api-reference/messages/cancel) works on any `pending` message your line hasn't picked up, held or not. A lookup's `503 line_offline` also covers having no line set up for lookups. | Correction |
 | 2026-11-13 | [Retrieve a message](/api-reference/messages/retrieve) and [List messages](/api-reference/messages/list): a `queued` message now carries `failed_reason` too, saying why it waits (`line_offline`, the same value as on its [`message.queued`](/webhooks/events#message-queued) event). `error` stays `null` for it. | New |
