@@ -20,7 +20,7 @@ openapi: 'POST /v1/contacts'
 | `email` | string, at most 254 characters | No | Must look like an email address (`name@domain.tld`, no spaces), or `422 invalid_email`. Only applied if the contact has no email yet. |
 | `city` | string, at most 128 characters | No | Trimmed; blank counts as not sent. Only applied if the contact has no city yet. |
 | `state` | string, at most 128 characters | No | Trimmed, and a 2-letter code is upper-cased (`ny` becomes `NY`). Only applied if the contact has no state yet. |
-| `timezone` | string | No | IANA zone used for the contact's sending hours. Must be one of 20 supported zones (the US, Canada and a few international ones, e.g. `Europe/London`). Only applied if the contact has no timezone yet, so set it on the first call, before you send. |
+| `timezone` | string | No | IANA zone used for the contact's sending hours. Any real IANA zone, e.g. `America/New_York`, `Europe/London` or `Africa/Lagos`. If you leave it out, iBubbl infers the zone from the phone number: the area code in the US and Canada, the country and prefix elsewhere. Only applied if the contact has no timezone yet, so set it on the first call, before you send. |
 | `tags` | array of strings, at most 20 | No | Tag names to add. Only ever adds: tags the contact has are kept and none are removed. A name matches an existing tag ignoring case and outer spaces (`vip` uses `VIP`); a new name creates the tag. Each name is 1–64 characters with no invisible characters. A newly added tag can start workflows with a "Tag added" trigger. |
 
 Fields not listed above are rejected with `422 validation_error`, and the message names the field. Every value is checked before anything is saved, so a rejected call changes nothing.

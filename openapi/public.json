@@ -1943,7 +1943,7 @@
           "Contacts"
         ],
         "summary": "Create or update a contact",
-        "description": "Upsert a contact by E.164 phone number. Returns `201 Created` on a new contact, `200 OK` on an existing match. A number whose only match is a deleted contact creates a new contact.\n\nOptional fields (`first_name`, `last_name`, `email`, `city`, `state`, `timezone`) apply only when the existing record's value is null \u2014 values set previously by a rep or by a prior API call are preserved. This protects human-edited data from being clobbered by automation; to overwrite, use `PATCH /v1/contacts/{id}`.\n\n`tags` only ever adds tags. Every value is checked before anything is saved.\n\nIf `timezone` is provided, it must be one of the 20 supported IANA timezones (US, Canada, and a few international zones such as `Europe/London`); anything else returns `422 invalid_timezone`.\n\nA new contact for a number that opted out earlier (for example, one you deleted after an opt-out) starts with `opted_out: true`.",
+        "description": "Upsert a contact by E.164 phone number. Returns `201 Created` on a new contact, `200 OK` on an existing match. A number whose only match is a deleted contact creates a new contact.\n\nOptional fields (`first_name`, `last_name`, `email`, `city`, `state`, `timezone`) apply only when the existing record's value is null \u2014 values set previously by a rep or by a prior API call are preserved. This protects human-edited data from being clobbered by automation; to overwrite, use `PATCH /v1/contacts/{id}`.\n\n`tags` only ever adds tags. Every value is checked before anything is saved.\n\nIf `timezone` is provided, it must be a supported IANA timezone (any real zone, such as `Europe/London` or `Africa/Lagos`); anything else returns `422 invalid_timezone`.\n\nA new contact for a number that opted out earlier (for example, one you deleted after an opt-out) starts with `opted_out: true`.",
         "operationId": "upsertContact",
         "requestBody": {
           "required": true,
@@ -4466,7 +4466,7 @@
               }
             ],
             "title": "Timezone",
-            "description": "One of the supported IANA zones, or `422 invalid_timezone`. `null` returns the contact to automatic: iBubbl infers the zone from a US or Canadian area code again.",
+            "description": "One of the supported IANA zones, or `422 invalid_timezone`. `null` returns the contact to automatic: iBubbl infers the zone from the phone number again.",
             "examples": [
               "America/New_York"
             ]
@@ -4581,7 +4581,7 @@
               }
             ],
             "title": "Timezone",
-            "description": "IANA timezone for working-hours scheduling. Must be one of the supported allowlist (US/Canada timezones, plus common international). Sends to this contact respect the timezone for outside-hours scheduling. Only set when the contact has none yet, like `first_name`.",
+            "description": "IANA timezone for working-hours scheduling. Must be one of the supported IANA timezones (any real zone, e.g. `America/New_York` or `Africa/Lagos`). Sends to this contact respect the timezone for outside-hours scheduling. Only set when the contact has none yet, like `first_name`.",
             "examples": [
               "America/New_York"
             ]
@@ -5403,7 +5403,7 @@
               }
             ],
             "title": "Timezone",
-            "description": "IANA timezone used for this contact's sending hours, or null if not set yet. When it is null and the number is a US or Canadian one, iBubbl infers the zone from the area code and saves it here when the contact's first message is processed; otherwise your account's timezone is used. Once set, an upsert never replaces it, so pass `timezone` on the first upsert, before you send, or change it with PATCH."
+            "description": "IANA timezone used for this contact's sending hours, or null if not set yet. When it is null, iBubbl infers the zone from the phone number (the area code in the US and Canada, the country and prefix elsewhere) and saves it here when the contact's first message is processed; when it can't, your account's timezone is used. Once set, an upsert never replaces it, so pass `timezone` on the first upsert, before you send, or change it with PATCH."
           },
           "tags": {
             "items": {
