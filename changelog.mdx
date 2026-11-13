@@ -7,6 +7,7 @@ description: 'Changes to the iBubbl API and these docs, newest first.'
 
 | Date | Change | Type |
 | ---- | ------ | ---- |
+| 2026-11-13 | **Breaking:** two `failed_reason` codes were renamed. A send your line couldn't make, or couldn't confirm within 10 minutes, is now `line_send_failed`. A `pending` message failed because its line was offline for over an hour is now `line_offline_timeout` (different from `line_offline`, which says why a `queued` message waits). Both appear in `failed_reason` and `error.code` on [`message.failed`](/webhooks/events#message-failed), [Retrieve a message](/api-reference/messages/retrieve) and [List messages](/api-reference/messages/list). `error.message` and `retryable` (`true`) are unchanged. | Changed |
 | 2026-11-13 | Reworded the pages on limits, routing, message statuses and sending to describe your line as one unit. No API change. | Docs |
 | 2026-11-13 | **Breaking:** the `failed_reason` for a line that couldn't be reached at send time was renamed and is now `line_unreachable`, in `failed_reason` and `error.code` on [`message.failed`](/webhooks/events#message-failed), [Retrieve a message](/api-reference/messages/retrieve) and [List messages](/api-reference/messages/list). `retryable` is unchanged (`true`). | Changed |
 | 2026-11-13 | `error_message` on [`message.failed`](/webhooks/events#message-failed) is now the same sentence as `error.message`, instead of a raw diagnostic. `error.message` no longer passes any stored text through: every `failed_reason` has its own sentence, and an unknown one reads "Send failed:" followed by its code. | Changed |
@@ -97,7 +98,7 @@ description: 'Changes to the iBubbl API and these docs, newest first.'
 | 2026-10-15 | `message.failed` can follow `message.sent`. New `failed_reason` values `imessage_undeliverable` and `imessage_error:<code>`. | New |
 | 2026-10-13 | New `cancelled` status and `message.cancelled` event, for a waiting message that is cancelled before it is sent. | New |
 | 2026-10-08 | Waiting messages carry `held_until` and `held_reason`. New default sending hours: Monday to Saturday 9 AM–8 PM, Sunday 12–8 PM. A message waiting for sending hours is `pending`, not `queued`. | New |
-| 2026-10-06 | `failed_reason: mac_send_failed` also covers a send not confirmed within 10 minutes. | Changed |
+| 2026-10-06 | The `failed_reason` for a send your line couldn't make also covers a send not confirmed within 10 minutes. | Changed |
 | 2026-10-05 | A contact's phone number is stored in the form it was first seen. | Correction |
 | 2026-10-03 | New `failed_reason` value `line_inactive`. | New |
 | 2026-10-01 | [Inbound events](/inbound-events/overview) from any app through a secret URL, iBubbl-signed sources, and a log of recent events. | New |

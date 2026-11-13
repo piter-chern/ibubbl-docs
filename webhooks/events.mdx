@@ -87,7 +87,7 @@ Fired when a one-to-one message is accepted. That covers every accepted one-to-o
 
 For a `queued` message, `failed_reason` names the capacity hold: today always `line_offline` (`hourly_cap_hit` is a legacy reason no current line uses; see [Limits and queues](/concepts/limits)). (Despite the name, this isn't a final failure: queued messages are retried automatically. One still queued 60–65 minutes after it was accepted expires, and [`message.failed`](#message-failed) fires with `status: "expired"` and `failed_reason: "queue_expired"`.) For a `pending` message it is `null`.
 
-A `pending` message is different: if its line has been offline for over an hour, it moves to `failed` and fires [`message.failed`](#message-failed) with `failed_reason: "agent_offline"`.
+A `pending` message is different: if its line has been offline for over an hour, it moves to `failed` and fires [`message.failed`](#message-failed) with `failed_reason: "line_offline_timeout"`.
 
 A `message.sent` event follows when the queued message dispatches, or `message.cancelled` if it was stopped first.
 
@@ -201,10 +201,10 @@ A failed message can also move back. If Apple later confirms delivery or a read 
     "occurred_at": "2026-05-17T14:23:45.123Z",
     "reply_to_message_id": null,
     "channel": "imessage",
-    "failed_reason": "mac_send_failed",
+    "failed_reason": "line_send_failed",
     "error_message": "Your line couldn't send it, or it wasn't confirmed sent within 10 minutes.",
     "error": {
-      "code": "mac_send_failed",
+      "code": "line_send_failed",
       "message": "Your line couldn't send it, or it wasn't confirmed sent within 10 minutes.",
       "retryable": true
     }
@@ -219,9 +219,9 @@ A failed message can also move back. If Apple later confirms delivery or a read 
 - `imessage_undeliverable` — iMessage couldn't deliver it to this number: the number isn't reachable on iMessage. Resending fails the same way; reach the contact another way.
 - `imessage_error:<code>` — iMessage reported another failure; `<code>` is its error number
 - `sms_attachment_refused` — the message was a calendar invite (`.ics`) to a contact who texts by plain SMS, which can't carry one. Resending fails the same way (`retryable: false`). On [`message.part_failed`](#message-part-failed) the same code also covers a PDF.
-- `mac_send_failed` — your line couldn't send it, or it wasn't confirmed sent within 10 minutes
+- `line_send_failed` — your line couldn't send it, or it wasn't confirmed sent within 10 minutes
 - `line_unreachable` — your line couldn't be reached at send time
-- `agent_offline` — your line was offline for over an hour, so the message was failed rather than sent late
+- `line_offline_timeout` — your line was offline for over an hour, so the message was failed rather than sent late
 - `line_inactive` — the line was suspended or retired before the message went out
 - `queue_expired` — the message was still `queued` 60–65 minutes after it was accepted, so it was dropped. This one arrives with `status: "expired"`, not `"failed"`, and `channel: null`. Its `idempotency_key` is released, so send it again if it still matters.
 - `no_eligible_line` — a queued message lost the line it was waiting for, so it can't go out

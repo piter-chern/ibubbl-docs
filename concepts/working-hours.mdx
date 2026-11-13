@@ -127,6 +127,6 @@ Separately from working hours, a one-to-one send can be accepted but parked. The
 
 iBubbl re-checks queued messages every 30 seconds and sends them once the line is back. A message still queued 60–65 minutes after it was accepted is dropped and moves to `status: "expired"`, and a [`message.failed`](/webhooks/events#message-failed) webhook fires with `status: "expired"` and `failed_reason: "queue_expired"`. Send it again (a new `idempotency_key`, or the same one: an expired message's key is released) if it still matters.
 
-A `pending` message works differently: if its line has been offline for over an hour, it is not sent late. It moves to `status: "failed"` with `failed_reason: "agent_offline"`, and a [`message.failed`](/webhooks/events) webhook fires.
+A `pending` message works differently: if its line has been offline for over an hour, it is not sent late. It moves to `status: "failed"` with `failed_reason: "line_offline_timeout"`, and a [`message.failed`](/webhooks/events) webhook fires.
 
 The daily limits do **not** queue: a send over 50 new contacts or 1,000 messages a day fails immediately with a `422`. See [Limits and queues](/concepts/limits) for every limit and [Errors](/errors) for the codes.

@@ -5989,7 +5989,7 @@
               }
             ],
             "title": "Failed Reason",
-            "description": "Why a `failed` or `expired` message didn't go out: the same stable code as `failed_reason` on its `message.failed` webhook, for example `imessage_undeliverable`, `imessage_error:<code>`, `mac_send_failed`, `agent_offline`, `line_inactive` or `queue_expired`. On a `queued` message, why it waits: `line_offline`, as on its `message.queued` webhook. Treat it as opaque; new values may be added. Null for every other status, including a failed message that Apple later confirmed.",
+            "description": "Why a `failed` or `expired` message didn't go out: the same stable code as `failed_reason` on its `message.failed` webhook, for example `imessage_undeliverable`, `imessage_error:<code>`, `line_send_failed`, `line_offline_timeout`, `line_inactive` or `queue_expired`. On a `queued` message, why it waits: `line_offline`, as on its `message.queued` webhook. Treat it as opaque; new values may be added. Null for every other status, including a failed message that Apple later confirmed.",
             "examples": [
               "imessage_undeliverable"
             ]

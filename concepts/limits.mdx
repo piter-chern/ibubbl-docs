@@ -61,7 +61,7 @@ If your line hasn't checked in with iBubbl for 2 minutes, it counts as offline:
 - **A contact your line has messaged before** is accepted as `202` with `status: "queued"`. It goes out when the line is back. A message still `queued` 60–65 minutes after it was accepted becomes `expired`, and [`message.failed`](/webhooks/events#message-failed) fires with `status: "expired"` and `failed_reason: "queue_expired"`. Send it again if it still matters: its `idempotency_key` is released.
 - **A contact with no line yet** (someone your account has never messaged) gets `422 no_eligible_line`, because iBubbl only gives new contacts to a line that is online. Nothing is created. Send again once the line is back.
 
-A message that is already `pending` when its line goes offline waits for it. If the line stays offline for more than an hour, the message becomes `failed` with `failed_reason: "agent_offline"`, and `message.failed` fires.
+A message that is already `pending` when its line goes offline waits for it. If the line stays offline for more than an hour, the message becomes `failed` with `failed_reason: "line_offline_timeout"`, and `message.failed` fires.
 
 ## Rate limits
 
