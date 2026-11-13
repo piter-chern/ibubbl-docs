@@ -7,7 +7,7 @@ openapi: 'POST /v1/messages/{message_id}/cancel'
 
 **Method:** `POST` | **Endpoint:** `/v1/messages/{message_id}/cancel`
 
-**Description:** Stop a message you sent before it goes out: one waiting for the contact's [sending hours](/concepts/working-hours) or the line's hourly limit for new contacts (`status: "pending"` with a `held_reason`), or one queued by a capacity hold (`status: "queued"`). It will never be sent. See [Edit, Undo Send and Cancel](/guides/editing-and-unsending#cancel-a-message-before-it-goes-out).
+**Description:** Stop a message you sent before your line picks it up: any `pending` message, including one held for the contact's [sending hours](/concepts/working-hours) or the line's hourly limit for new contacts (see `held_reason`), or one queued by a capacity hold (`status: "queued"`). It will never be sent. See [Edit, Undo Send and Cancel](/guides/editing-and-unsending#cancel-a-message-before-it-goes-out).
 
 **Authentication:** API key in the `Authorization` header: `Authorization: Bearer ib_pk_<64 hex>`. Create keys in the dashboard under **Settings → API access**.
 

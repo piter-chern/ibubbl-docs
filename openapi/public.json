@@ -912,7 +912,7 @@
           "Messages"
         ],
         "summary": "Cancel a message",
-        "description": "Stop a message you sent that hasn't gone out yet: one waiting for the contact's working hours or the line's hourly limit (`status: \"pending\"` with a `held_reason`), or queued by a capacity hold (`status: \"queued\"`). It moves to `cancelled`, will never be sent, and `message.cancelled` fires.\n\nA message that is already being sent can't be stopped (`409 message_dispatching`); it goes out, and `message.sent` fires. Retrying the original `POST /v1/messages` with the same `idempotency_key` returns the cancelled message and doesn't send it again.\n\nIdempotent: cancelling a cancelled message answers `200` with it, and no second webhook fires.\n\nCounts toward the conversation-actions rate limit (300 a minute per account).",
+        "description": "Stop a message you sent that your line hasn't picked up yet: any `pending` message, including one held for the contact's working hours or the line's hourly limit (see `held_reason`), or a `queued` one waiting for your line. It moves to `cancelled`, will never be sent, and `message.cancelled` fires.\n\nA message that is already being sent can't be stopped (`409 message_dispatching`); it goes out, and `message.sent` fires. Retrying the original `POST /v1/messages` with the same `idempotency_key` returns the cancelled message and doesn't send it again.\n\nIdempotent: cancelling a cancelled message answers `200` with it, and no second webhook fires.\n\nCounts toward the conversation-actions rate limit (300 a minute per account).",
         "operationId": "cancelMessage",
         "parameters": [
           {
@@ -3320,7 +3320,7 @@
             }
           },
           "503": {
-            "description": "`no_active_line`: your account has no active line. `line_offline`: none of your lines can look numbers up right now; try again in a few minutes. `lookup_unavailable`: the lookup couldn't be started; try again shortly. Nothing is queued in any of these cases.",
+            "description": "`no_active_line`: your account has no active line. `line_offline`: none of your lines can look numbers up right now, because they're offline or none is set up for lookups; try again in a few minutes, and contact support if it keeps happening. `lookup_unavailable`: the lookup couldn't be started; try again shortly. Nothing is queued in any of these cases.",
             "content": {
               "application/json": {
                 "schema": {
@@ -4226,7 +4226,7 @@
               }
             ],
             "title": "Failed Reason",
-            "description": "Why a `failed` tapback wasn't sent: `sms_target` (the message went by SMS), `target_not_found` (your line couldn't find the message), `bb_rejected` (your line refused to send it), `messages_error` (Messages reported an error sending it), `expired` (it couldn't go out in time), `retract_rejected` (removing it was refused, so it may still show on the contact's phone), `target_unsent` (the message was unsent) or `line_inactive` (its line was suspended or archived before it went out). Null otherwise."
+            "description": "Why a `failed` tapback wasn't sent: `sms_target` (the message went by SMS), `target_not_found` (your line couldn't find the message), `rejected` (your line refused to send it), `messages_error` (Messages reported an error sending it), `expired` (it couldn't go out in time), `retract_rejected` (removing it was refused, so it may still show on the contact's phone), `target_unsent` (the message was unsent) or `line_inactive` (its line was suspended or archived before it went out). Null otherwise."
           },
           "created_at": {
             "anyOf": [
@@ -4583,7 +4583,7 @@
             "title": "Timezone",
             "description": "IANA timezone for working-hours scheduling. Must be one of the supported allowlist (US/Canada timezones, plus common international). Sends to this contact respect the timezone for outside-hours scheduling. Only set when the contact has none yet, like `first_name`.",
             "examples": [
-              "America/Los_Angeles"
+              "America/New_York"
             ]
           },
           "tags": {
@@ -5746,7 +5746,7 @@
               }
             ],
             "title": "Contact Id",
-            "description": "ID of the contact this message was sent to. For groups, this is the 'primary' participant the message was addressed to (the first participant in `participant_phones` on a new group create). A group's other participants aren't listed here; `chat_guid` addresses the whole group."
+            "description": "ID of the contact on the other side of the message. One-to-one: the contact you sent it to, or who sent it to you. Group: for an inbound message, the participant who sent it (the `sender_phone` of its `message.inbound`); for an outbound message, the group's primary contact (on a group started with `participant_phones`, the first number). No endpoint lists a group's participants: each `message.inbound` webhook carries them in `participants`, and `chat_guid` addresses the whole group."
           },
           "conversation_id": {
             "anyOf": [
