@@ -70,6 +70,7 @@
           "guides/attachments",
           "guides/reactions-read-receipts-typing",
           "guides/editing-and-unsending",
+          "guides/check-imessage-availability",
           "guides/receive-messages",
           "guides/webhook-signatures",
           "guides/test-webhooks-locally",
@@ -147,6 +148,13 @@
             "pages": [
               "api-reference/lines/list",
               "api-reference/lines/retrieve"
+            ]
+          },
+          {
+            "group": "iMessage lookups",
+            "pages": [
+              "api-reference/imessage-lookups/create",
+              "api-reference/imessage-lookups/retrieve"
             ]
           },
           {

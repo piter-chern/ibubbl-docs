@@ -3189,6 +3189,179 @@
         }
       }
     },
+    "/v1/imessage-lookups": {
+      "post": {
+        "tags": [
+          "iMessage lookups"
+        ],
+        "summary": "Look up a number",
+        "description": "Find out whether a number can receive iMessages before you send it something that only works over iMessage, such as a voice memo, a message effect or an edit. Ordinary texts don't need a lookup: iBubbl already sends them by SMS when iMessage isn't available.\n\nWhen iBubbl already knows the answer (an iMessage delivered to the number from your account in the last 30 days, a failed iMessage send, or an earlier answer under 30 days old), the response is `200` with the result. Otherwise one of your lines asks Apple: the response is `202` with `status: pending`, and the answer arrives by `GET /v1/imessage-lookups/{id}` and by the `imessage_lookup.completed` webhook. A second request for a number that is still pending returns the same lookup.\n\nAsking Apple uses your line's lookup budget: 50 an hour and 100 a day per line, shared with GoHighLevel Check iMessage steps. Over it, the answer is `429 lookup_budget_exhausted` with a `Retry-After` header, and nothing is queued. Answers iBubbl already has are free. Lookups never count toward your send limits, and your sends always come before lookups.\n\nThis endpoint allows 60 requests a minute per account (`429 rate_limited`).",
+        "operationId": "v1_create_imessage_lookup_v1_imessage_lookups_post",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ImessageLookupCreate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "202": {
+            "description": "Pending: one of your lines is asking Apple.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ImessageLookup"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "Answered at once from what iBubbl already knows.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ImessageLookup"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid API key.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "`feature_disabled`: iMessage lookups aren't enabled for your account.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "`validation_error` (a missing or unknown field, or `phone` not in E.164) or `invalid_phone` (not a valid number for its country).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "`rate_limited`: more than 60 lookup requests in 60 seconds from your account (all keys count together; other requests have their own budgets). `lookup_budget_exhausted`: every line that could look the number up has used its lookup budget, 50 an hour and 100 a day (midnight to midnight, US Eastern) per line, shared with GoHighLevel Check iMessage steps; nothing was queued. Either way, wait `Retry-After` seconds, then send the same request again.",
+            "headers": {
+              "Retry-After": {
+                "description": "Seconds to wait before retrying.",
+                "schema": {
+                  "type": "integer"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "`no_active_line`: your account has no active line. `line_offline`: none of your lines can look numbers up right now; try again in a few minutes. `lookup_unavailable`: the lookup couldn't be started; try again shortly. Nothing is queued in any of these cases.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "`forbidden`: your iBubbl account is suspended or cancelled.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/imessage-lookups/{lookup_id}": {
+      "get": {
+        "tags": [
+          "iMessage lookups"
+        ],
+        "summary": "Retrieve a lookup",
+        "description": "Fetch one of your lookups by ID. A `pending` lookup usually completes within seconds; prefer the `imessage_lookup.completed` webhook to polling. Returns `404 not_found` for an ID that isn't one of your lookups.",
+        "operationId": "v1_get_imessage_lookup_v1_imessage_lookups__lookup_id__get",
+        "parameters": [
+          {
+            "name": "lookup_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Lookup Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The lookup.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ImessageLookup"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid API key.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "`not_found`: no lookup with that ID on your account. `feature_disabled`: iMessage lookups aren't enabled for your account.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "`forbidden`: your iBubbl account is suspended or cancelled.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/v1/webhooks": {
       "post": {
         "tags": [
@@ -3839,6 +4012,150 @@
         "example": {
           "received": true,
           "runs_started": 1
+        }
+      },
+      "ImessageLookup": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id",
+            "description": "The lookup's id."
+          },
+          "phone": {
+            "type": "string",
+            "title": "Phone",
+            "description": "The number looked up, in E.164.",
+            "examples": [
+              "+14155551234"
+            ]
+          },
+          "contact_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Contact Id",
+            "description": "The contact the number belongs to."
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "pending",
+              "completed"
+            ],
+            "title": "Status",
+            "description": "`completed` = `result` is final and never changes. `pending` = waiting for Apple's answer, usually seconds and at most about 20 minutes; it arrives by `GET` and by the `imessage_lookup.completed` webhook."
+          },
+          "result": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "imessage",
+                  "not_imessage",
+                  "unknown"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Result",
+            "description": "`imessage` = the number can receive iMessages. `not_imessage` = it can't, as far as Apple confirms: Android, a landline, or an iPhone with iMessage turned off. `unknown` = it couldn't be checked (`reason`); this is not a no. Null while `pending`."
+          },
+          "source": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "recent_imessage",
+                  "previous_lookup",
+                  "failed_imessage",
+                  "lookup"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source",
+            "description": "Where the answer came from: `recent_imessage` = an iMessage delivered to the number from your account in the last 30 days; `previous_lookup` = an earlier answer from Apple under 30 days old; `failed_imessage` = an iMessage send to it failed as not on iMessage; `lookup` = Apple was asked for this lookup. Null when `result` is `unknown` or pending."
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "timeout",
+                  "lookup_failed",
+                  "line_unavailable"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason",
+            "description": "Why `result` is `unknown`: `timeout` = no line could ask Apple in time (they were busy sending); `lookup_failed` = Apple didn't answer; `line_unavailable` = the line it was queued on stopped serving your account. Look the number up again later. Null otherwise."
+          },
+          "checked_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Checked At",
+            "description": "When the answer was obtained, ISO 8601 UTC: the delivery, the failed send or Apple's answer. Older than `created_at` for an answer iBubbl already had. Null when there is no answer.",
+            "examples": [
+              "2026-11-12T18:04:19.118204Z"
+            ]
+          },
+          "completed_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Completed At",
+            "description": "When the lookup completed, ISO 8601 UTC. Null while pending."
+          },
+          "created_at": {
+            "type": "string",
+            "title": "Created At",
+            "examples": [
+              "2026-11-12T18:04:11.532901Z"
+            ]
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "phone",
+          "status",
+          "created_at"
+        ],
+        "title": "ImessageLookup",
+        "example": {
+          "id": "7c1d2e3f-4a5b-4c6d-8e7f-90a1b2c3d4e5",
+          "phone": "+14155551234",
+          "contact_id": "c8a1f4e2-3b9d-4f7c-a8e5-1d2c3b4a5e6f",
+          "status": "completed",
+          "result": "imessage",
+          "source": "lookup",
+          "reason": null,
+          "checked_at": "2026-11-12T18:04:19.118204Z",
+          "completed_at": "2026-11-12T18:04:19.118204Z",
+          "created_at": "2026-11-12T18:04:11.532901Z"
         }
       },
       "Line": {
@@ -5259,6 +5576,29 @@
           "expires_at": "2026-11-12T18:20:05.512000Z"
         }
       },
+      "ImessageLookupCreate": {
+        "properties": {
+          "phone": {
+            "type": "string",
+            "pattern": "^\\+[1-9]\\d{7,14}$",
+            "title": "Phone",
+            "description": "The number to look up, in E.164 (e.g. `+14155551234`). Any country. A number that isn't one of your contacts yet becomes one when it has to be asked about, so its answer is reused by your next send.",
+            "examples": [
+              "+14155551234"
+            ]
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "phone"
+        ],
+        "title": "ImessageLookupCreate",
+        "description": "Fields not listed here are rejected with `422 validation_error`.",
+        "example": {
+          "phone": "+14155551234"
+        }
+      },
       "MessageCreate": {
         "properties": {
           "contact_id": {
@@ -6060,6 +6400,9 @@
     },
     {
       "name": "Lines"
+    },
+    {
+      "name": "iMessage lookups"
     },
     {
       "name": "Webhooks"

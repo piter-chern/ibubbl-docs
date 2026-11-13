@@ -325,6 +325,24 @@ https://docs.ibubbl.com/guides/schedule-messages)
   5,000 waiting per account (422 scheduled_limit_reached). Create, update,
   cancel and send-now use the 300/min action budget; the list uses the list budget.
 
+IMESSAGE LOOKUPS (POST /v1/imessage-lookups, GET /v1/imessage-lookups/{id};
+https://docs.ibubbl.com/guides/check-imessage-availability)
+- Never look a number up before a plain text: iBubbl already picks iMessage
+  or SMS on every send. Look up only before iMessage-only content (an effect,
+  a flow that edits or unsends later, an iMessage-only branch).
+- POST {"phone": E.164}. 200 = answered now (status "completed"); 202 =
+  pending, the answer arrives by the imessage_lookup.completed webhook or
+  GET. A repeat while pending returns the same lookup.
+- result: imessage | not_imessage | unknown. unknown is NOT a no (reason:
+  timeout | lookup_failed | line_unavailable): send something that works
+  either way, or look up again later. A completed lookup never changes.
+- Budget: 50 Apple lookups an hour and 100 a day per line (shared with
+  GoHighLevel checks); over it, 429 lookup_budget_exhausted with Retry-After,
+  nothing queued. 60 requests a minute per account (429 rate_limited). Never
+  bulk-look-up a whole list; look up only numbers you are about to message.
+- 404 feature_disabled = lookups aren't on for the account (support turns
+  them on); don't retry.
+
 RETRIES AND ERRORS
 - Branch on detail.error (the stable code), never on detail.message.
 - Log the X-Request-Id response header with every error; quote it to
@@ -366,4 +384,4 @@ WEBHOOKS
   adds new ones over time.
 ```
 
-The rules come from these pages, which have the details: [Message lifecycle](/concepts/message-lifecycle), [Limits and queues](/concepts/limits), [Lines and routing](/concepts/lines-and-routing), [Idempotency](/idempotency), [Errors](/errors), [Working hours](/concepts/working-hours), [Suppression and opt-outs](/concepts/suppression), [Webhook events](/webhooks/events) and [Signature verification](/guides/webhook-signatures).
+The rules come from these pages, which have the details: [Message lifecycle](/concepts/message-lifecycle), [Limits and queues](/concepts/limits), [Lines and routing](/concepts/lines-and-routing), [Idempotency](/idempotency), [Errors](/errors), [Working hours](/concepts/working-hours), [Suppression and opt-outs](/concepts/suppression), [Webhook events](/webhooks/events), [Signature verification](/guides/webhook-signatures) and [Check iMessage availability](/guides/check-imessage-availability).

@@ -166,7 +166,7 @@ if not res.ok:
 </ResponseField>
 
 <ResponseField name="line_offline" type="queued">
-  Your line's Mac is offline. This is not returned as an error: a one-to-one send to a contact your line has messaged before is accepted (`202`, `status: "queued"`) and goes out automatically when the Mac reconnects. The reason appears only as `failed_reason` on the [`message.queued`](/webhooks/events) webhook, not in the API response. If it is still queued 60–65 minutes after it was accepted it expires (`status: "expired"`), and [`message.failed`](/webhooks/events#message-failed) fires with `failed_reason: "queue_expired"`. A contact with no line yet gets `no_eligible_line` instead. See [Limits and queues](/concepts/limits#offline-lines).
+  On [Look up a number](/api-reference/imessage-lookups/create) it is a `503`: none of your lines is online to ask Apple right now. Nothing was queued; try again in a few minutes. On a send, your line's Mac is offline. This is not returned as an error: a one-to-one send to a contact your line has messaged before is accepted (`202`, `status: "queued"`) and goes out automatically when the Mac reconnects. The reason appears only as `failed_reason` on the [`message.queued`](/webhooks/events) webhook, not in the API response. If it is still queued 60–65 minutes after it was accepted it expires (`status: "expired"`), and [`message.failed`](/webhooks/events#message-failed) fires with `failed_reason: "queue_expired"`. A contact with no line yet gets `no_eligible_line` instead. See [Limits and queues](/concepts/limits#offline-lines).
 </ResponseField>
 
 <ResponseField name="daily_cap_exhausted" type="422">
@@ -273,6 +273,8 @@ if not res.ok:
 
 <ResponseField name="no_active_line" type="503">
   [Schedule a message](/api-reference/scheduled-messages/create) to a contact you have no conversation with yet: your account has no active line to start one on. Nothing was scheduled and the `idempotency_key` stays unused, so send the same request again, with the same key, once a line of yours is active. A contact you named with `to` is created all the same. Not the same as `422 no_eligible_line`: that is a send no line can take right now, or a scheduled message that finds no line when it fires.
+
+  [Look up a number](/api-reference/imessage-lookups/create): your account has no active line to ask Apple from. Nothing was queued.
 </ResponseField>
 
 <ResponseField name="limits_unavailable" type="503">
@@ -341,12 +343,29 @@ if not res.ok:
   An [inbound event](/inbound-events/overview) body exceeded 256 KiB (262,144 bytes).
 </ResponseField>
 
+<ResponseField name="feature_disabled" type="404">
+  [Look up a number](/api-reference/imessage-lookups/create) and [Retrieve a lookup](/api-reference/imessage-lookups/retrieve): iMessage lookups aren't on for your account. Email [support@ibubbl.com](mailto:support@ibubbl.com) to turn them on.
+</ResponseField>
+
+<ResponseField name="invalid_phone" type="422">
+  [Look up a number](/api-reference/imessage-lookups/create): `phone` has the E.164 shape but isn't a valid number in its country. Nothing was looked up.
+</ResponseField>
+
+<ResponseField name="lookup_budget_exhausted" type="429">
+  [Look up a number](/api-reference/imessage-lookups/create): every line that could ask Apple has used its lookup budget, 50 an hour and 100 a day (midnight to midnight, US Eastern) per line, shared with GoHighLevel **Check iMessage** steps. Nothing was queued. The `Retry-After` header is the seconds until one of those lines frees a slot; send the same request again then. Lookups iBubbl can answer from what it already knows never use the budget. See [Check iMessage availability](/guides/check-imessage-availability#limits).
+</ResponseField>
+
+<ResponseField name="lookup_unavailable" type="503">
+  [Look up a number](/api-reference/imessage-lookups/create): the lookup couldn't be started. Nothing was queued; try again after a short backoff.
+</ResponseField>
+
 <ResponseField name="rate_limited" type="429">
-  Returned in five places, and nowhere else:
+  Returned in six places, and nowhere else:
 
   - **Conversation actions** ([Edit](/api-reference/messages/edit), [unsend](/api-reference/messages/unsend) and [cancel](/api-reference/messages/cancel) a message, [add](/api-reference/messages/react) and [remove](/api-reference/messages/remove-reaction) a tapback, [Mark read](/api-reference/conversations/mark-read), [start](/api-reference/conversations/start-typing) and [stop](/api-reference/conversations/stop-typing) typing, and [schedule](/api-reference/scheduled-messages/create), [update](/api-reference/scheduled-messages/update), [cancel](/api-reference/scheduled-messages/cancel) and [send now](/api-reference/scheduled-messages/send-now) a scheduled message): your account made more than 300 of these requests in 60 seconds (all API keys and all eleven endpoints together; a budget separate from lists). The response has a `Retry-After` header; wait that long and call again. See [Rate limits](/concepts/limits#rate-limits).
   - **List endpoints** ([List messages](/api-reference/messages/list), [List scheduled messages](/api-reference/scheduled-messages/list), [List contacts](/api-reference/contacts/list), [List lines](/api-reference/lines/list)): your account made more than 120 list requests in 60 seconds (all API keys and all lists together). The response has a `Retry-After` header with the seconds to wait; then send the same request again. See [Rate limits](/concepts/limits#rate-limits).
   - **[Uploads](/api-reference/files/upload)**: more than 60 uploads in 60 seconds from your account (all API keys together; a budget of its own), or 4 already in progress. The response has a `Retry-After` header; wait that long and upload again.
+  - **[iMessage lookups](/api-reference/imessage-lookups/create)**: more than 60 lookup requests in 60 seconds from your account (all API keys together; a budget of its own). The response has a `Retry-After` header. Not the same as `lookup_budget_exhausted`, which is your lines' Apple lookup budget.
   - **Sends with attachment URLs**, rarely: iBubbl was already downloading as many attachment sends as it can, and no slot freed within 10 seconds. `Retry-After` is `5`; then send the same request with the same `idempotency_key`. Nothing was created.
   - **`/v1/events`**: a secret-URL [inbound event](/inbound-events/overview) source received more than 60 events in 60 seconds. There is no `Retry-After` header here; send again after about a minute.
 
@@ -403,7 +422,11 @@ if not res.ok:
 | `daily_cap_exhausted` / `cold_cap_exhausted` | 422 | ⚠️ Not queued. Send again after the limit resets (midnight ET). |
 | `hourly_cap_hit` / `followup_cap_exhausted` | — | Legacy: not used on any current line. |
 | `no_eligible_line` | 422 | ⚠️ A send: send again once your line is back online. ❌ Edit, unsend, tapbacks, typing: the message's line is no longer on your account; don't retry. |
-| `rate_limited` | 429 | ✅ Lists, conversation actions, uploads and attachment sends: send the same request again (same `idempotency_key`) after `Retry-After` seconds. `/v1/events`: after about a minute. |
+| `rate_limited` | 429 | ✅ Lists, conversation actions, uploads, lookups and attachment sends: send the same request again (same `idempotency_key`) after `Retry-After` seconds. `/v1/events`: after about a minute. |
+| `lookup_budget_exhausted` | 429 | ✅ After `Retry-After` seconds, when one of your lines frees a lookup slot. |
+| `feature_disabled` | 404 | ❌ Ask support to turn lookups on. |
+| `invalid_phone` | 422 | ❌ Fix the number. |
+| `lookup_unavailable` | 503 | ✅ Retry after a short backoff. |
 | `invalid_signature` | 403 | ❌ Fix the signing secret. |
 | `payload_too_large` | 413 | ❌ Fix the payload size. |
 | `no_owner_rep` | 500 | ❌ Not until your account has an active owner rep; email [support@ibubbl.com](mailto:support@ibubbl.com). |
@@ -421,12 +444,12 @@ The general rule: **don't retry 4xx**. Most 4xxes are payload-level problems tha
 | `200` / `201` / `202` / `204` | Success. `202` for accepted-but-queued sends, edits and unsends; `201` for created resources, including an [upload](/api-reference/files/upload) and a [scheduled message](/api-reference/scheduled-messages/create) (`200` for its retry); `204` (no body) for [Delete a contact](/api-reference/contacts/delete) and [Delete a file](/api-reference/files/delete); `200` everywhere else. |
 | `401` | Auth failure. |
 | `403` | Account suspended or cancelled (`forbidden`), or an inbound event's signature failed (`invalid_signature`). |
-| `404` | Resource not found (or hidden across tenants), `group_not_found`, `line_not_found`, or `file_not_found`. |
+| `404` | Resource not found (or hidden across tenants), `group_not_found`, `line_not_found`, `file_not_found`, or `feature_disabled` (iMessage lookups aren't on for your account). |
 | `409` | Idempotency conflict, or a message in a state another request holds: `edit_in_flight`, `already_unsent`, `message_dispatching`, `scheduled_message_sending`, `scheduled_message_changed`. |
 | `408` | `upload_timeout`: an upload that took too long to arrive. |
 | `413` | Inbound event body over 256 KiB. |
 | `422` | Validation, routing or send-limit failure. |
-| `429` | `rate_limited`: too many list requests, conversation actions or uploads from your account, or attachment downloads busy (all with `Retry-After`), or too many inbound events for one source on `/v1/events`. |
+| `429` | `rate_limited`: too many list requests, conversation actions, uploads or lookups from your account, or attachment downloads busy (all with `Retry-After`), or too many inbound events for one source on `/v1/events`. `lookup_budget_exhausted`: your lines' Apple lookup budget is used up (with `Retry-After`). |
 | `500` | No owner rep (`no_owner_rep`) or an unexpected iBubbl error (`internal_error`). |
-| `503` | `opt_out_check_unavailable` on a tapback, edit or typing call, `limits_unavailable` on a lines read (retry after a short backoff), or `no_active_line` when scheduling to a contact you have no conversation with yet while no line of yours is active (send the same request again, same `idempotency_key`, once one is). |
+| `503` | `opt_out_check_unavailable` on a tapback, edit or typing call, `limits_unavailable` on a lines read (retry after a short backoff), or `no_active_line` when scheduling to a contact you have no conversation with yet while no line of yours is active (send the same request again, same `idempotency_key`, once one is). On an [iMessage lookup](/api-reference/imessage-lookups/create): `line_offline`, `no_active_line` or `lookup_unavailable`, with nothing queued. |
 | `502` / `503` without a `detail.error` | The network edge during a deployment blip, not iBubbl itself. Retry with the same idempotency key after a short backoff. |

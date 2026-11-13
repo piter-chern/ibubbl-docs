@@ -1,0 +1,180 @@
+---
+title: 'Look up a number'
+openapi: 'POST /v1/imessage-lookups'
+---
+
+### Look up a number
+
+**Method:** `POST` | **Endpoint:** `/v1/imessage-lookups`
+
+**Description:** Find out whether a number can receive iMessages. Use it before you send something that only works over iMessage, such as a voice memo, a message [effect](/api-reference/messages/send) or an [edit](/api-reference/messages/edit). Ordinary texts don't need it: iBubbl already sends them by SMS when iMessage isn't available (see [Lines and routing](/concepts/lines-and-routing#imessage-or-sms)). See [Check iMessage availability](/guides/check-imessage-availability).
+
+**Authentication:** API key in the `Authorization` header: `Authorization: Bearer ib_pk_<64 hex>`. Create keys in the dashboard under **Settings → API access**.
+
+**Availability:** on request. If lookups aren't on for your account, both lookup endpoints answer `404 feature_disabled`; email [support@ibubbl.com](mailto:support@ibubbl.com) to turn them on.
+
+**Rate limit:** 60 requests per 60 seconds per account, across all your API keys (a budget of its own). Asking Apple also uses your line's lookup budget: 50 an hour and 100 a day per line. Over either, you get `429` with a `Retry-After` header; see [Limits](/guides/check-imessage-availability#limits).
+
+#### Request Body
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `phone` | string (E.164, e.g. `+14155551234`) | Yes | The number to look up. Any country. If no contact has this number and iBubbl has to ask Apple, a contact is created, so your next send to it uses the answer. |
+
+Any other field is rejected with `422 validation_error`.
+
+<RequestExample>
+
+```bash cURL
+curl -X POST https://api.ibubbl.com/v1/imessage-lookups \
+  -H "Authorization: Bearer $IBUBBL_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"phone": "+14155551234"}'
+```
+
+```typescript TypeScript
+const res = await fetch("https://api.ibubbl.com/v1/imessage-lookups", {
+  method: "POST",
+  headers: {
+    Authorization: `Bearer ${process.env.IBUBBL_API_KEY}`,
+    "Content-Type": "application/json",
+  },
+  body: JSON.stringify({ phone: "+14155551234" }),
+  signal: AbortSignal.timeout(10_000),
+});
+
+const data = await res.json();
+if (!res.ok) throw new Error(`${res.status} ${data.detail?.error}`);
+// 200: answered now. 202: pending; the answer comes by webhook or GET.
+console.log(res.status, data.id, data.status, data.result);
+```
+
+```python Python
+import os
+
+import requests
+
+API_KEY = os.environ["IBUBBL_API_KEY"]
+
+res = requests.post(
+    "https://api.ibubbl.com/v1/imessage-lookups",
+    headers={"Authorization": f"Bearer {API_KEY}"},
+    json={"phone": "+14155551234"},
+    timeout=10,
+)
+data = res.json()
+if not res.ok:
+    raise RuntimeError(f"{res.status_code} {data['detail']['error']}")
+# 200: answered now. 202: pending; the answer comes by webhook or GET.
+print(res.status_code, data["id"], data["status"], data["result"])
+```
+
+</RequestExample>
+
+<ResponseExample>
+
+```json 200 OK
+{
+  "id": "7c1d2e3f-4a5b-4c6d-8e7f-90a1b2c3d4e5",
+  "phone": "+14155551234",
+  "contact_id": "c8a1f4e2-3b9d-4f7c-a8e5-1d2c3b4a5e6f",
+  "status": "completed",
+  "result": "imessage",
+  "source": "recent_imessage",
+  "reason": null,
+  "checked_at": "2026-11-12T23:00:08.584000Z",
+  "completed_at": "2026-11-13T14:50:33.838565Z",
+  "created_at": "2026-11-13T14:50:33.838565Z"
+}
+```
+
+```json 202 Accepted
+{
+  "id": "3e4f5a6b-7c8d-4e9f-8a1b-2c3d4e5f6a7b",
+  "phone": "+14155551234",
+  "contact_id": "c8a1f4e2-3b9d-4f7c-a8e5-1d2c3b4a5e6f",
+  "status": "pending",
+  "result": null,
+  "source": null,
+  "reason": null,
+  "checked_at": null,
+  "completed_at": null,
+  "created_at": "2026-11-13T14:53:10.120411Z"
+}
+```
+
+```json 429 Too Many Requests
+{
+  "detail": {
+    "error": "lookup_budget_exhausted",
+    "message": "Your lines have used their iMessage lookup budget (50 an hour and 100 a day per line, shared with your GoHighLevel checks). Try again in 1510 s."
+  }
+}
+```
+
+</ResponseExample>
+
+#### Responses
+**200 OK**
+
+Answered at once, from what iBubbl already knows about the number: an iMessage delivered to it from your account in the last 30 days (`source: "recent_imessage"`), an iMessage send to it that failed as not on iMessage (`failed_imessage`), or an earlier answer from Apple under 30 days old (`previous_lookup`). `status` is `completed`. No Apple query was made and no lookup budget was used. The fields are described on [Retrieve a lookup](/api-reference/imessage-lookups/retrieve#responses).
+
+**202 Accepted**
+
+iBubbl doesn't know yet, so one of your lines is asking Apple: `status: "pending"`. The answer usually comes within seconds and at most about 20 minutes later, by the [`imessage_lookup.completed`](/webhooks/events#imessage-lookup-completed) webhook and by [Retrieve a lookup](/api-reference/imessage-lookups/retrieve). Your sends always go first, so a line that is busy sending answers later. Sending the same number again while it is pending returns this same lookup (`202`, same `id`) and asks Apple only once.
+
+**401 Unauthorized**
+```json
+{
+  "detail": {
+    "error": "unauthorized",
+    "message": "Invalid or revoked API key"
+  }
+}
+```
+Other `message` values: `Authorization Bearer token required`, `API key required (use Authorization: Bearer ib_pk_…)`, `Invalid API key format`, `Customer account not found`.
+
+**403 Forbidden**
+
+`forbidden`: your iBubbl account is suspended or cancelled.
+
+**404 Not Found**
+```json
+{
+  "detail": {
+    "error": "feature_disabled",
+    "message": "iMessage lookups aren't enabled for this account. Contact support to turn them on."
+  }
+}
+```
+Lookups aren't on for your account. Email [support@ibubbl.com](mailto:support@ibubbl.com).
+
+**422 Unprocessable Entity**
+```json
+{
+  "detail": {
+    "error": "invalid_phone",
+    "message": "phone isn't a valid number for its country."
+  }
+}
+```
+`invalid_phone`: the number has the E.164 shape but isn't a valid number in its country, so nothing was looked up. `validation_error`: `phone` is missing or not in E.164 (it must start with `+` and the country code), or the body has another field.
+
+**429 Too Many Requests**
+
+Two codes, both with a `Retry-After` header in seconds. Nothing was queued; send the same request again after that long.
+- `lookup_budget_exhausted`: every line that could ask Apple has used its lookup budget, 50 an hour and 100 a day (midnight to midnight, US Eastern) per line, shared with GoHighLevel **Check iMessage** steps. `Retry-After` is when the first of those lines frees a slot.
+- `rate_limited`: more than 60 lookup requests in 60 seconds from your account.
+
+**503 Service Unavailable**
+```json
+{
+  "detail": {
+    "error": "line_offline",
+    "message": "None of your lines can look numbers up right now. Try again in a few minutes."
+  }
+}
+```
+Nothing was queued and no contact was created.
+- `line_offline`: none of your lines is online to ask Apple. Try again in a few minutes.
+- `no_active_line`: your account has no active line.
+- `lookup_unavailable`: the lookup couldn't be started. Try again shortly.

@@ -1,0 +1,196 @@
+---
+title: 'Check iMessage availability'
+description: 'Find out whether a number can receive iMessages before you send something that only works over iMessage: what each answer means, how fresh it is, and the limits.'
+---
+
+[Look up a number](/api-reference/imessage-lookups/create) tells you whether a phone number can receive iMessages.
+
+**You don't need it for ordinary texts.** For one-to-one messages to US and Canadian numbers, iBubbl already decides between iMessage and SMS on every send, and falls back to SMS by itself (see [Lines and routing](/concepts/lines-and-routing#imessage-or-sms)). Look a number up when what you are about to do only works over iMessage:
+- a message [effect](/api-reference/messages/send), which goes out plain over SMS;
+- a flow that relies on [editing or unsending](/guides/editing-and-unsending) the message later, which SMS can't do;
+- choosing between an iMessage-only step and a text-message step in your own workflow.
+
+<Note>
+Lookups are available on request. If they aren't on for your account, the endpoints answer `404 feature_disabled`: email [support@ibubbl.com](mailto:support@ibubbl.com).
+</Note>
+
+## How it works
+
+1. **You ask.** `POST /v1/imessage-lookups` with `{"phone": "+14155551234"}`.
+2. **If iBubbl already knows, it answers at once with `200`**, `status: "completed"`. It knows when:
+   - an iMessage from your account was delivered to the number in the last 30 days;
+   - an iMessage send to it failed as not on iMessage;
+   - Apple answered for it less than 30 days ago.
+
+   These answers are free: no Apple query, no lookup budget.
+3. **Otherwise it answers `202`, `status: "pending"`,** and one of your lines asks Apple. Your sends always go first, so this happens when the line is not sending. That's usually within seconds.
+4. **The answer arrives** by the [`imessage_lookup.completed`](/webhooks/events#imessage-lookup-completed) webhook and by [Retrieve a lookup](/api-reference/imessage-lookups/retrieve). It is also saved on the contact, so your next send to the number, and your next lookup of it, use it.
+
+Asking for a number that is still pending returns the same lookup (`202`, same `id`), and Apple is asked only once.
+
+## Look up a number and wait for the answer
+
+The webhook is the best way to get the answer. If you need it inline, poll [Retrieve a lookup](/api-reference/imessage-lookups/retrieve) every few seconds for up to a minute or two:
+
+<CodeGroup>
+
+```bash cURL
+LOOKUP=$(curl -s -X POST https://api.ibubbl.com/v1/imessage-lookups \
+  -H "Authorization: Bearer $IBUBBL_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"phone": "+14155551234"}')
+ID=$(echo "$LOOKUP" | python3 -c 'import json,sys; print(json.load(sys.stdin)["id"])')
+
+# Pending until one of your lines has asked Apple: usually seconds.
+for i in $(seq 1 30); do
+  LOOKUP=$(curl -s https://api.ibubbl.com/v1/imessage-lookups/$ID \
+    -H "Authorization: Bearer $IBUBBL_API_KEY")
+  echo "$LOOKUP" | grep -q '"status":"completed"' && break
+  sleep 3
+done
+echo "$LOOKUP"
+```
+
+```typescript TypeScript
+const headers = {
+  Authorization: `Bearer ${process.env.IBUBBL_API_KEY}`,
+  "Content-Type": "application/json",
+};
+
+let res = await fetch("https://api.ibubbl.com/v1/imessage-lookups", {
+  method: "POST",
+  headers,
+  body: JSON.stringify({ phone: "+14155551234" }),
+  signal: AbortSignal.timeout(10_000),
+});
+let data = await res.json();
+if (!res.ok) throw new Error(`${res.status} ${data.detail?.error}`);
+
+// Pending until one of your lines has asked Apple: usually seconds.
+for (let i = 0; i < 30 && data.status === "pending"; i++) {
+  await new Promise((resolve) => setTimeout(resolve, 3_000));
+  res = await fetch(`https://api.ibubbl.com/v1/imessage-lookups/${data.id}`, {
+    headers,
+    signal: AbortSignal.timeout(10_000),
+  });
+  data = await res.json();
+  if (!res.ok) throw new Error(`${res.status} ${data.detail?.error}`);
+}
+
+if (data.result === "imessage") {
+  console.log("Send the iMessage-only version");
+} else if (data.result === "not_imessage") {
+  console.log("Send the text-message version");
+} else {
+  console.log("Couldn't check:", data.reason ?? "still pending");
+}
+```
+
+```python Python
+import os
+import time
+
+import requests
+
+API_KEY = os.environ["IBUBBL_API_KEY"]
+HEADERS = {"Authorization": f"Bearer {API_KEY}"}
+
+res = requests.post(
+    "https://api.ibubbl.com/v1/imessage-lookups",
+    headers=HEADERS,
+    json={"phone": "+14155551234"},
+    timeout=10,
+)
+data = res.json()
+if not res.ok:
+    raise RuntimeError(f"{res.status_code} {data['detail']['error']}")
+
+# Pending until one of your lines has asked Apple: usually seconds.
+for _ in range(30):
+    if data["status"] != "pending":
+        break
+    time.sleep(3)
+    res = requests.get(
+        f"https://api.ibubbl.com/v1/imessage-lookups/{data['id']}",
+        headers=HEADERS,
+        timeout=10,
+    )
+    data = res.json()
+    if not res.ok:
+        raise RuntimeError(f"{res.status_code} {data['detail']['error']}")
+
+if data["result"] == "imessage":
+    print("Send the iMessage-only version")
+elif data["result"] == "not_imessage":
+    print("Send the text-message version")
+else:
+    print("Couldn't check:", data["reason"] or "still pending")
+```
+
+</CodeGroup>
+
+## What each answer means
+
+| `result` | Meaning | What to do |
+|---|---|---|
+| `imessage` | The number can receive iMessages. | Send the iMessage-only content. |
+| `not_imessage` | Apple doesn't confirm iMessage for the number: an Android phone, a landline, or an iPhone with iMessage turned off. | Send something that works by text message. |
+| `unknown` | It couldn't be checked (`reason`). **This is not a no.** | Send something that works either way, or look it up again later. |
+
+`source` says where an `imessage` or `not_imessage` answer came from:
+
+| `source` | Where it came from |
+|---|---|
+| `recent_imessage` | An iMessage from your account was delivered to the number in the last 30 days. |
+| `failed_imessage` | An iMessage send to the number failed as not on iMessage. |
+| `previous_lookup` | Apple answered for this number less than 30 days ago. |
+| `lookup` | Apple was asked for this lookup. |
+
+`checked_at` is when that answer was obtained. For an answer iBubbl already had, it is older than `created_at`.
+
+## How fresh an answer is
+
+An answer is reused for **30 days**: answers from history, from Apple and from a failed send all count the same way. After that, the next lookup asks Apple again.
+
+People do switch phones in between. If a number answered `imessage` and an iMessage to it then fails as not on iMessage, iBubbl records that at once, and the next lookup answers `not_imessage` with `source: "failed_imessage"`.
+
+## Why `unknown` happens
+
+`reason` says which:
+- **`timeout`.** No line could ask Apple in time. A line asks only when it isn't sending, and gives up on a lookup after about 20 minutes. During a big send, your lines may be busy for that long.
+- **`lookup_failed`.** Apple didn't answer.
+- **`line_unavailable`.** The line the lookup was queued on stopped serving your account before it ran.
+
+**A completed lookup never changes.** If one comes back `unknown`, don't poll it expecting it to flip: look the number up again later. If Apple's answer arrived late, iBubbl saved it, so the new lookup answers at once (`200`, `previous_lookup`) without using your budget.
+
+## Limits
+
+- **60 lookup requests a minute** per account, across all your API keys. This is a budget of its own; other endpoints don't share it. Over it: `429 rate_limited`.
+- **50 Apple lookups an hour and 100 a day per line.** The day runs midnight to midnight, US Eastern. GoHighLevel **Check iMessage** steps share this budget with the API.
+  - Only `202` lookups use it. Answers iBubbl already had are free.
+  - Over it, the answer is `429 lookup_budget_exhausted` with a `Retry-After` header: the seconds until one of your lines frees a slot. Nothing is queued.
+  - Like the other limits, it protects the Apple ID behind each line.
+- **Lookups never count toward your [send limits](/concepts/limits)**, and they never delay your messages: your sends always go first.
+- **A pending lookup completes within about 20 minutes** at the latest, as `unknown` with `reason: "timeout"` if no line could ask in time.
+
+For a large list, look up only the numbers you are about to send iMessage-only content to, and spread the lookups over the day.
+
+## Contacts
+
+A lookup that has to ask Apple creates a contact for the number, if you don't have one. The answer is saved on the contact, so iBubbl doesn't ask Apple again when you send to it. The contact appears in your dashboard and in [List contacts](/api-reference/contacts/list).
+
+Looking up a number sends nothing to it, and works the same for contacts who [opted out](/concepts/suppression).
+
+## Numbers outside the US and Canada
+
+Any valid number can be looked up. But iBubbl only falls back to SMS for `+1` numbers: a message to another country always goes as iMessage, and fails if the number isn't on iMessage. A lookup first tells you whether such a message will arrive at all.
+
+## Webhook
+
+[`imessage_lookup.completed`](/webhooks/events#imessage-lookup-completed) fires once for every lookup that answered `202`, with the lookup as its data. It fires for `unknown` results too. A lookup answered at once (`200`) fires nothing: you already have the answer.
+
+## Next
+
+- [Look up a number](/api-reference/imessage-lookups/create) and [Retrieve a lookup](/api-reference/imessage-lookups/retrieve)
+- [Lines and routing](/concepts/lines-and-routing#imessage-or-sms): how iBubbl picks iMessage or SMS for each send
+- [Webhook events](/webhooks/events#imessage-lookup-completed)

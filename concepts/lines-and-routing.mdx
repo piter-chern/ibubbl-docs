@@ -60,6 +60,8 @@ For each one-to-one message to a US or Canadian number (`+1`), with or without f
 3. **Apple answered recently.** iBubbl asked Apple whether the number uses iMessage less than 30 days ago. **→ That answer.**
 4. **Ask Apple now.** Your line's Mac asks Apple whether the number uses iMessage. Yes **→ iMessage.** No, or no answer within 5 seconds **→ SMS.**
 
+To know the answer before you send, for something that only works over iMessage, use [Check iMessage availability](/guides/check-imessage-availability). It reads the same evidence, and the answers it gets from Apple are the ones routing uses next.
+
 The message that failed with error 22 is not resent automatically: it stays `failed` with `failed_reason: "imessage_undeliverable"`. Step 1 makes sure your *next* message to that number goes as SMS. Send it again yourself if it still matters.
 
 A message with [files](/guides/attachments) gets the same answer as a text. Over SMS, its files go as one MMS or as separate messages, and an Android phone with RCS gets one file per message. A PDF can't go over plain SMS, so it fails there. [Send attachments](/guides/attachments#what-your-contact-sees) shows how each kind arrives.
