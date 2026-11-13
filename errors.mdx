@@ -306,7 +306,7 @@ if not res.ok:
 </ResponseField>
 
 <ResponseField name="attachment_too_large" type="422">
-  `POST /v1/messages` and [Upload a file](/api-reference/files/upload): a file is over its kind's limit (images and GIFs 25 MiB, video 50 MiB, PDF 10 MB, audio 25 MiB), or the files are over 86 MB in all. The `message` names the file. Send a smaller file, or split the files across messages. See [Supported files and limits](/guides/attachments#supported-files-and-limits).
+  `POST /v1/messages` and [Upload a file](/api-reference/files/upload): a file is over its kind's limit (images and GIFs 25 MiB, video 50 MiB, PDF 50 MiB, audio 25 MiB), or the files are over 86 MB in all. The `message` names the file. Send a smaller file, or split the files across messages. See [Supported files and limits](/guides/attachments#supported-files-and-limits).
 </ResponseField>
 
 <ResponseField name="unsupported_attachment" type="422">

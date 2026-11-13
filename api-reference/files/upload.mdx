@@ -16,7 +16,7 @@ A `multipart/form-data` body with **one part, named `file`**, holding the file. 
 
 - **Type:** the part's `Content-Type`. When it is missing or `application/octet-stream` (curl, `requests` and `Blob` send that for `.mov`, `.heic` and `.mp3`), the file name's extension decides instead. The content must match the type: a file named `.jpg` that isn't a JPEG is refused.
 - **Name:** the part's file name. Your contact sees it (cleaned up, with the type's own extension), so name the file the way you want it to arrive: `Invoice 1042.pdf`.
-- **Size and types:** the same as URL attachments: images (JPEG, PNG, WebP, HEIC, HEIF) and GIFs up to 25 MiB, MP4/MOV video up to 50 MiB, PDF up to 10 MB, audio (MP3, M4A, AAC) up to 25 MiB. A file over its limit is refused as soon as it passes it. See [Supported files and limits](/guides/attachments#supported-files-and-limits).
+- **Size and types:** the same as URL attachments: images (JPEG, PNG, WebP, HEIC, HEIF) and GIFs up to 25 MiB, MP4/MOV video up to 50 MiB, PDF up to 50 MiB, audio (MP3, M4A, AAC) up to 25 MiB. A file over its limit is refused as soon as it passes it. See [Supported files and limits](/guides/attachments#supported-files-and-limits).
 
 Don't set the `Content-Type` header of the request yourself: let your HTTP client write `multipart/form-data` with its boundary.
 
@@ -97,7 +97,7 @@ print(data["id"], data["filename"], data["expires_at"])
 {
   "detail": {
     "error": "attachment_too_large",
-    "message": "application/pdf files can be at most 10000000 bytes"
+    "message": "application/pdf files can be at most 52428800 bytes"
   }
 }
 ```

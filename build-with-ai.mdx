@@ -103,7 +103,7 @@ ATTACHMENTS (POST /v1/messages; https://docs.ibubbl.com/guides/attachments)
 - body is optional with attachments (it is the caption), but the first
   message to a contact must have a body, else 422 first_message_needs_text.
 - Types and limits: JPEG/PNG/WebP/HEIC/HEIF and GIF 25 MiB each, MP4/MOV
-  50 MiB, PDF 10 MB, MP3/M4A/AAC audio 25 MiB alone; 86 MB in all. With other
+  50 MiB, PDF 50 MiB, MP3/M4A/AAC audio 25 MiB alone; 86 MB in all. With other
   files, audio must be one MP3 of at most 2 MB, else 422
   attachment_combination_not_supported. No .ics, WebM, Ogg, SVG, ZIP.
 - Errors (422, nothing created, key reusable): attachment_fetch_failed (URL
