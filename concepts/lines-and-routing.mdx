@@ -22,7 +22,7 @@ For a contact with no line yet, iBubbl picks among your lines that are active an
 
 ### You can't choose the line
 
-`POST /v1/messages` has no field for the sending line or number. Fields it doesn't know, such as `from` or `line_id`, are **ignored without an error**: the request succeeds and the line is chosen as above.
+`POST /v1/messages` has no field for the sending line or number. Fields it doesn't know, such as `from` or `line_id`, are ignored today: the request succeeds and the line is chosen as above. **From 2026-12-13** they are refused with `422 validation_error` (see [Versioning](/versioning)), so don't send them.
 
 To check that a line has room before you start a batch of first messages, read its counters with [List lines](/api-reference/lines/list) or [Retrieve a line](/api-reference/lines/retrieve).
 

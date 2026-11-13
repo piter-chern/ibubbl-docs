@@ -166,7 +166,7 @@ if not res.ok:
 </ResponseField>
 
 <ResponseField name="line_offline" type="queued">
-  On [Look up a number](/api-reference/imessage-lookups/create) it is a `503`: none of your lines is online to ask Apple right now. Nothing was queued; try again in a few minutes. On a send, your line's Mac is offline. This is not returned as an error: a one-to-one send to a contact your line has messaged before is accepted (`202`, `status: "queued"`) and goes out automatically when the Mac reconnects. The reason appears only as `failed_reason` on the [`message.queued`](/webhooks/events) webhook, not in the API response. If it is still queued 60–65 minutes after it was accepted it expires (`status: "expired"`), and [`message.failed`](/webhooks/events#message-failed) fires with `failed_reason: "queue_expired"`. A contact with no line yet gets `no_eligible_line` instead. See [Limits and queues](/concepts/limits#offline-lines).
+  On [Look up a number](/api-reference/imessage-lookups/create) it is a `503`: none of your lines is online to ask Apple right now. Nothing was queued; try again in a few minutes. On a send, your line's Mac is offline. This is not returned as an error: a one-to-one send to a contact your line has messaged before is accepted (`202`, `status: "queued"`) and goes out automatically when the Mac reconnects. The reason appears only as `failed_reason` on the [`message.queued`](/webhooks/events) webhook; the message itself shows `failed_reason: null` while it's queued. If it is still queued 60–65 minutes after it was accepted it expires (`status: "expired"`), and [`message.failed`](/webhooks/events#message-failed) fires with `failed_reason: "queue_expired"`. A contact with no line yet gets `no_eligible_line` instead. See [Limits and queues](/concepts/limits#offline-lines).
 </ResponseField>
 
 <ResponseField name="daily_cap_exhausted" type="422">
@@ -318,7 +318,7 @@ if not res.ok:
 </ResponseField>
 
 <ResponseField name="imessage_undeliverable" type="message.failed">
-  Not an API error: it appears only as `failed_reason` on a failed message and its [`message.failed`](/webhooks/events) webhook. iMessage couldn't deliver the message to this number because the number isn't reachable on iMessage. Resending fails the same way, so reach the contact another way. Other iMessage failures appear as `imessage_error:<code>`.
+  Not an API error: it appears as `failed_reason` (and `error.code`) on a failed message, in [Retrieve a message](/api-reference/messages/retrieve) and its [`message.failed`](/webhooks/events) webhook. iMessage couldn't deliver the message to this number because the number isn't reachable on iMessage. Resending fails the same way, so reach the contact another way. Other iMessage failures appear as `imessage_error:<code>`.
 </ResponseField>
 
 <ResponseField name="internal_error" type="500">
@@ -328,7 +328,7 @@ if not res.ok:
 </ResponseField>
 
 <ResponseField name="no_owner_rep" type="500">
-  Your account has no active owner rep to send as, so `POST /v1/messages` can't send. Retrying won't help until the account has one; email [support@ibubbl.com](mailto:support@ibubbl.com).
+  Your account's setup is incomplete, so nothing can be sent: [Send a message](/api-reference/messages/send), [Schedule a message](/api-reference/scheduled-messages/create) and [Add a tapback](/api-reference/messages/react) all answer this. Retrying won't help; email [support@ibubbl.com](mailto:support@ibubbl.com).
 </ResponseField>
 
 <ResponseField name="invalid_url" type="422">
@@ -429,7 +429,7 @@ if not res.ok:
 | `lookup_unavailable` | 503 | ✅ Retry after a short backoff. |
 | `invalid_signature` | 403 | ❌ Fix the signing secret. |
 | `payload_too_large` | 413 | ❌ Fix the payload size. |
-| `no_owner_rep` | 500 | ❌ Not until your account has an active owner rep; email [support@ibubbl.com](mailto:support@ibubbl.com). |
+| `no_owner_rep` | 500 | ❌ Your account's setup is incomplete; email [support@ibubbl.com](mailto:support@ibubbl.com). |
 | `internal_error` | 500 | ✅ Retry with the same idempotency key after a short backoff. |
 | `opt_out_check_unavailable` | 503 | ✅ Retry after a short backoff. |
 | `limits_unavailable` | 503 | ✅ Retry after a few seconds. |
@@ -450,6 +450,6 @@ The general rule: **don't retry 4xx**. Most 4xxes are payload-level problems tha
 | `413` | Inbound event body over 256 KiB. |
 | `422` | Validation, routing or send-limit failure. |
 | `429` | `rate_limited`: too many list requests, conversation actions, uploads or lookups from your account, or attachment downloads busy (all with `Retry-After`), or too many inbound events for one source on `/v1/events`. `lookup_budget_exhausted`: your lines' Apple lookup budget is used up (with `Retry-After`). |
-| `500` | No owner rep (`no_owner_rep`) or an unexpected iBubbl error (`internal_error`). |
+| `500` | Your account's setup is incomplete (`no_owner_rep`), or an unexpected iBubbl error (`internal_error`). |
 | `503` | `opt_out_check_unavailable` on a tapback, edit or typing call, `limits_unavailable` on a lines read (retry after a short backoff), or `no_active_line` when scheduling to a contact you have no conversation with yet while no line of yours is active (send the same request again, same `idempotency_key`, once one is). On an [iMessage lookup](/api-reference/imessage-lookups/create): `line_offline`, `no_active_line` or `lookup_unavailable`, with nothing queued. |
 | `502` / `503` without a `detail.error` | The network edge during a deployment blip, not iBubbl itself. Retry with the same idempotency key after a short backoff. |

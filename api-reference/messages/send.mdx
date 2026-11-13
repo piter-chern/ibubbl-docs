@@ -26,7 +26,7 @@ openapi: 'POST /v1/messages'
 | `link_preview` | boolean, default `false` | No | Send the link with a preview card (the page's title and image), as when a person types it on an iPhone. Without it, a link goes out as plain text. `body` must end in exactly one `http` or `https` link, with no other link before it. One-to-one only (`to` or `contact_id`), and not with `attachments`, `effect` or `reply_to_message_id`. Anything else is refused with `422 validation_error`. See [Link preview cards](#link-preview-cards). |
 | `idempotency_key` | string, 1–128 characters | Yes | Your unique key for this send; a UUIDv4 is recommended. The same key with the same payload replays the original message; the same key with a different payload returns `409`. A key whose message ended `failed` or `expired` is released, and a retry sends a new message. Keys are shared with [Schedule a message](/api-reference/scheduled-messages/create): a key used there is `409 idempotency_conflict` here. Keys starting with `sched:` are refused (`422 validation_error`). See [Idempotency](/idempotency). |
 
-Fields not listed above are ignored without an error: the request still succeeds, and they are not stored.
+Fields not listed above are ignored today: the request still succeeds, and they are not stored. **From 2026-12-13** they are refused with `422 validation_error`, naming the field (see [Versioning](/versioning)). Send only the fields above.
 
 `reply_to_message_id` and `effect` only show on iMessage. If the message goes out as SMS (RCS included), it is sent as plain text without the quote or the effect, and the API doesn't refuse it. `channel` on [Retrieve a message](/api-reference/messages/retrieve) tells you which way it went. Neither can be combined with `attachments`: that request is refused with `422 validation_error`. Both fields count toward the [idempotency](/idempotency) payload when set.
 
@@ -219,7 +219,9 @@ print(data["id"], data["status"])
   "edit_count": 0,
   "edit_status": null,
   "unsend_status": null,
-  "unsent_at": null
+  "unsent_at": null,
+  "failed_reason": null,
+  "error": null
 }
 ```
 
@@ -269,10 +271,12 @@ print(data["id"], data["status"])
   "edit_count": 0,
   "edit_status": null,
   "unsend_status": null,
-  "unsent_at": null
+  "unsent_at": null,
+  "failed_reason": null,
+  "error": null
 }
 ```
-`status` is `pending` or `queued`. A message held by a capacity limit or an offline line is still accepted with `queued` and retried automatically. A message waiting for the contact's [working hours](/concepts/working-hours) or the line's hourly limit for new contacts is `pending`, with `held_until` and `held_reason` set. `line_id` and `line_number` name the line the message goes out on (the `id` and `phone_number` in [List lines](/api-reference/lines/list)). For a group send, `to` is `null` and `conversation_kind` is `"group"`; a new group's `chat_guid` is `null` until the group is created a few seconds later. `effect` and `reply_to_message_id` echo what you sent, or `null`; `link_preview` is `true` when you asked for a [preview card](#link-preview-cards). `attachments` lists the files the message carries, in your order, as `kind` (`image`, `gif`, `video`, `audio` or `file`), `mime_type`, `size_bytes` and `filename` (the name your contact sees; see [File names](/guides/attachments#file-names)); it's `[]` for a text message. The example above carries one uploaded PDF. `direction` is always `outbound` here, and `created_at` is when iBubbl recorded the message; it never changes, and it's what [List messages](/api-reference/messages/list) sorts and filters by.
+`status` is `pending` or `queued`. A message for a line that's offline is still accepted with `queued` and goes out by itself when the line is back. A message waiting for the contact's [working hours](/concepts/working-hours) or the line's hourly limit for new contacts is `pending`, with `held_until` and `held_reason` set. `line_id` and `line_number` name the line the message goes out on (the `id` and `phone_number` in [List lines](/api-reference/lines/list)). For a group send, `to` is `null` and `conversation_kind` is `"group"`; a new group's `chat_guid` is `null` until the group is created a few seconds later. `effect` and `reply_to_message_id` echo what you sent, or `null`; `link_preview` is `true` when you asked for a [preview card](#link-preview-cards). `attachments` lists the files the message carries, in your order, as `kind` (`image`, `gif`, `video`, `audio` or `file`), `mime_type`, `size_bytes` and `filename` (the name your contact sees; see [File names](/guides/attachments#file-names)); it's `[]` for a text message. The example above carries one uploaded PDF. `direction` is always `outbound` here, and `created_at` is when iBubbl recorded the message; it never changes, and it's what [List messages](/api-reference/messages/list) sorts and filters by.
 
 **401 Unauthorized**
 ```json
@@ -344,9 +348,9 @@ Sends with attachment URLs only, and rarely: iBubbl is already downloading as ma
 ```json
 {
   "detail": {
-    "error": "no_owner_rep",
-    "message": "Customer is missing an Owner rep"
+    "error": "internal_error",
+    "message": "An unexpected error occurred. Please try again."
   }
 }
 ```
-Other `error` value: `internal_error`. Retry with the same `idempotency_key`.
+Retry with the same `idempotency_key`. The other `error` value, `no_owner_rep`, means your account's setup is incomplete: retrying won't help; email [support@ibubbl.com](mailto:support@ibubbl.com).

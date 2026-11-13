@@ -146,6 +146,8 @@ iBubbl hashes the routing field **exactly as you sent it**, plus the `body`:
 | `chat_guid` | the `chat_guid` string + `body` |
 | `participant_phones` | the phones, sorted, + `group_name` + `body` |
 
+Then, only when you send them: `effect`, `reply_to_message_id`, `attachments` (in order, URLs and file IDs alike), and `link_preview` when it's `true`. Leaving one out and sending it on a retry, or the other way round, is a different payload: a retry that adds `link_preview: true`, or drops it, gets `409 idempotency_conflict`. `link_preview: false` counts as not sending it.
+
 The routing field is compared as text, not by the contact it resolves to. So a retry that switches from `to` to the same contact's `contact_id` (or reformats the phone number) is a different payload and gets `409 idempotency_conflict`. Retry with the exact request you sent the first time.
 
 ## Common pitfalls

@@ -78,7 +78,9 @@ SENDING (POST /v1/messages)
   GET /v1/messages/{id}. A message outside the contact's sending hours stays
   "pending" with held_reason and held_until set; that is normal, not an error.
 - The request has no field for the sending line. Unknown fields such as from
-  or line_id are ignored without an error; each contact sticks to one line.
+  or line_id are ignored until 2026-12-13 and refused (422
+  validation_error) from then on: send only documented fields. Each
+  contact sticks to one line.
   Every message (send response, GET, list) says which line it was on:
   line_id and line_number (the line's E.164 number). "to" is always the
   contact's number, in both directions. Every message.* webhook carries
@@ -153,6 +155,9 @@ LIMITS (per line; https://docs.ibubbl.com/concepts/limits)
 - A "queued" message (line offline) that expires after about an hour fires
   message.failed with status "expired" and failed_reason "queue_expired".
   Branch on failed_reason, not status. Its idempotency_key is released.
+- GET /v1/messages/{id} (and the list) carry failed_reason and error
+  {code, message, retryable} on a "failed" or "expired" message, the same
+  as message.failed; both are null for every other status.
 
 LINES (GET /v1/lines, GET /v1/lines/{id})
 - Lists the account's lines (same pagination and rate limit as READING

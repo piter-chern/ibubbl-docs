@@ -190,7 +190,7 @@ iBubbl sends at that instant; it doesn't move it to the contact's time zone. To 
 
 - **Inside the window**, it goes out within seconds of `send_at`.
 - **Outside it**, the scheduled message still fires at `send_at` (`fired`, `message_id` set), but the message stays `pending` with `held_reason: "working_hours"` until the window opens, then goes out. With the default hours, a message scheduled for 23:00 goes out at 9:00 the next morning.
-- **A [new-contact limit](/concepts/limits)** can hold or queue it the same way (`held_reason: "hourly_limit"`, or `queued`).
+- **A [new-contact limit](/concepts/limits)** can hold it the same way (`held_reason: "hourly_limit"`). If your line is offline when it fires, the message is `queued` and goes out when the line is back.
 
 To have it go out at `send_at`, schedule it inside the contact's sending hours. While a fired message is still held, [Cancel a message](/api-reference/messages/cancel) on its `message_id` stops it.
 

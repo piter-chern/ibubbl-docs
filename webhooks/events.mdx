@@ -177,7 +177,7 @@ When a contact reads a message, iMessage implies they've read your earlier messa
 </Accordion>
 
 <Accordion title="message.failed" icon="circle-xmark">
-Fired when a send fails. `failed_reason` carries a stable failure code; `error_message` is a free-form diagnostic for your logs — don't parse it or show it to end users. `error` carries the same code with a readable `message` and `retryable`: `true` when sending the message again can work, `false` when it would fail the same way.
+Fired when a send fails. `failed_reason` carries a stable failure code; `error_message` is a free-form diagnostic for your logs — don't parse it or show it to end users. `error` carries the same code with a readable `message` (one sentence per code, safe to log) and `retryable`: `true` when sending the message again can work, `false` when it would fail the same way.
 
 It also fires when a `queued` message expires: then `status` is `"expired"` (the message's status in [`GET /v1/messages/{id}`](/api-reference/messages/retrieve)) and `failed_reason` is `queue_expired`. Both are final; branch on `failed_reason`, not on `status`.
 
@@ -205,7 +205,7 @@ A failed message can also move back. If Apple later confirms delivery or a read 
     "error_message": "Message failed to send",
     "error": {
       "code": "mac_send_failed",
-      "message": "Message failed to send",
+      "message": "Your line couldn't send it, or it wasn't confirmed sent within 10 minutes.",
       "retryable": true
     }
   }

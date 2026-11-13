@@ -13,7 +13,7 @@
         ],
         "summary": "Send a message",
         "description": "Send a message to one contact (`contact_id`, or `to` \u2014 an E.164 phone number; the contact is created on first use), into an existing group (`chat_guid`), or to a new group (`participant_phones`). Exactly one of the four is required.\n\nThe response returns immediately with `status: \"pending\"` or `\"queued\"`. Delivery progress arrives as [webhook events](/webhooks/events) (`message.sent`, `message.delivered`, `message.read`, `message.failed`), or poll `GET /v1/messages/{id}`.\n\n**Idempotency is required.** Provide a unique `idempotency_key` per logical send (UUIDv4 recommended); a retry with the same key and payload replays the original response, while a reused key with a different payload returns `409 idempotency_conflict`. See the [Idempotency](/idempotency) guide.\n\nA send to an opted-out contact returns `422 contact_opted_out`; see [Suppression](/concepts/suppression).\n\nTo send files, list up to 10 `https` URLs or uploaded file IDs (`POST /v1/files`) in `attachments` (1:1 only); `body`, if set, is their caption. iBubbl downloads URLs before answering, which can take up to about 30 seconds, so allow 60 seconds before your client times out. See [Attachments](/guides/attachments).\n\nOn a `5xx` (including a `502`/`503` from the network edge during a deploy), retry with the same `idempotency_key`.",
-        "operationId": "v1_send_message_v1_messages_post",
+        "operationId": "sendMessage",
         "requestBody": {
           "required": true,
           "content": {
@@ -56,7 +56,7 @@
             }
           },
           "409": {
-            "description": "Idempotency key reused with a different payload.",
+            "description": "`idempotency_conflict`: the `idempotency_key` was used before with a different payload, or to schedule a message with `POST /v1/scheduled-messages`.",
             "content": {
               "application/json": {
                 "schema": {
@@ -66,7 +66,7 @@
             }
           },
           "422": {
-            "description": "Request rejected; see `detail.error`. `validation_error` (bad request shape), `contact_opted_out`, `contact_blocked`, `no_eligible_line`, `unresponsive_contact`, `cold_cap_exhausted`, `followup_cap_exhausted`, `daily_cap_exhausted`, `group_outbound_blocked_suppression`, `insufficient_participants`, `reply_target_not_found`, `reply_target_unsent`, `reply_target_partly_unsent`, `first_message_needs_text`, `attachment_fetch_failed`, `attachment_too_large`, `unsupported_attachment`, `attachment_combination_not_supported`, or `file_expired`.",
+            "description": "Request rejected; see `detail.error`. `validation_error` (bad request shape), `contact_opted_out`, `contact_blocked`, `no_eligible_line`, `unresponsive_contact`, `cold_cap_exhausted`, `followup_cap_exhausted`, `daily_cap_exhausted`, `group_outbound_blocked_suppression`, `insufficient_participants`, `reply_target_not_found`, `reply_target_unsent`, `reply_target_partly_unsent`, `first_message_needs_text`, `attachment_fetch_failed`, `attachment_too_large`, `unsupported_attachment`, `attachment_combination_not_supported`, `file_expired`, or `sms_attachment_refused` (a calendar file, `.ics`, to a contact who can only take SMS).",
             "content": {
               "application/json": {
                 "schema": {
@@ -94,7 +94,7 @@
             }
           },
           "500": {
-            "description": "`no_owner_rep` (your account has no active owner rep to send as) or `internal_error`. Retry with the same `idempotency_key`.",
+            "description": "`internal_error`: retry with the same `idempotency_key`. `no_owner_rep`: your account's setup is incomplete, so nothing can be sent until iBubbl support fixes it; retrying won't help.",
             "content": {
               "application/json": {
                 "schema": {
@@ -121,7 +121,7 @@
         ],
         "summary": "List messages",
         "description": "List your messages, inbound and outbound, newest first. Use it to catch up after your webhook endpoint was down, or to read a conversation's history.\n\nResults are paginated: `has_more` tells you whether there is another page, and you get it by passing the `id` of the last message as `starting_after`. Pages are stable while new messages arrive: nothing is skipped or repeated. See [Pagination](/concepts/pagination).\n\nFilters combine with AND. A filter value that matches nothing (including another account's `contact_id` or `chat_guid`) returns an empty page. An unknown or repeated query parameter returns `422 validation_error`.\n\nMessages stay listed after their contact is deleted or blocked.\n\nLists allow 120 requests a minute per account, across all your API keys and all lists. Over that, the answer is `429 rate_limited` with a `Retry-After` header in seconds.",
-        "operationId": "v1_list_messages_v1_messages_get",
+        "operationId": "listMessages",
         "parameters": [
           {
             "name": "limit",
@@ -370,8 +370,8 @@
           "Messages"
         ],
         "summary": "Retrieve a message",
-        "description": "Fetch a single message by its ID. Useful for polling the current delivery state when you can't subscribe to webhooks.\n\nReturns `404 not_found` for both missing messages and messages owned by a different customer \u2014 existence is not leaked across tenants.",
-        "operationId": "v1_get_message_v1_messages__message_id__get",
+        "description": "Fetch a single message by its ID. Useful for polling the current delivery state when you can't subscribe to webhooks.\n\nReturns `404 not_found` for both missing messages and messages that belong to another account, so it never reveals whether an ID exists.",
+        "operationId": "retrieveMessage",
         "parameters": [
           {
             "name": "message_id",
@@ -379,6 +379,7 @@
             "required": true,
             "schema": {
               "type": "string",
+              "format": "uuid",
               "title": "Message Id"
             }
           }
@@ -405,7 +406,7 @@
             }
           },
           "404": {
-            "description": "Message not found.",
+            "description": "`not_found`: no message with this ID on your account.",
             "content": {
               "application/json": {
                 "schema": {
@@ -434,7 +435,7 @@
         ],
         "summary": "Add a tapback",
         "description": "Send one of the six iMessage tapbacks (`love`, `like`, `dislike`, `laugh`, `emphasize`, `question`) on a message you received. It goes out over iMessage, or RCS for an Android contact; it can't go out by SMS.\n\nThe tapback is accepted as `pending`. When it reaches the contact's phone, `message.reaction.added` fires with `direction: \"outbound\"`. If it can't be sent, `message.reaction.failed` fires with a `failed_reason`.\n\nOne tapback per message, as in iMessage: a different type replaces your previous one (`message.reaction.removed` fires for it if it was sent). Sending the type that's already on the message answers `200` with that reaction and sends nothing.\n\nCounts toward the conversation-actions rate limit (300 a minute per account).",
-        "operationId": "v1_add_reaction_v1_messages__message_id__reactions_post",
+        "operationId": "addReaction",
         "parameters": [
           {
             "name": "message_id",
@@ -442,6 +443,7 @@
             "required": true,
             "schema": {
               "type": "string",
+              "format": "uuid",
               "title": "Message Id"
             }
           }
@@ -488,7 +490,7 @@
             }
           },
           "404": {
-            "description": "Message (or reaction) not found.",
+            "description": "`not_found`: no message (or tapback) with this ID on your account.",
             "content": {
               "application/json": {
                 "schema": {
@@ -517,6 +519,16 @@
           },
           "422": {
             "description": "`validation_error` (bad body, unknown `type`), `invalid_target` (a message you sent), `contact_blocked`, `contact_opted_out`, `sms_not_supported` (the message came in by SMS, or the conversation is going out by SMS), `target_unsent` or `target_partly_unsent` (the contact unsent the message, or part of it), `no_eligible_line` (the line it came in on is no longer active on your account; don't retry).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "`no_owner_rep`: your account's setup is incomplete, so no tapback can be sent until iBubbl support fixes it; retrying won't help. `internal_error`: retry.",
             "content": {
               "application/json": {
                 "schema": {
@@ -555,7 +567,7 @@
         ],
         "summary": "Remove a tapback",
         "description": "Take back a tapback you sent. It's removed from the contact's phone, and `message.reaction.removed` fires when that happens. Only a tapback from you, on this message, can be removed.\n\nIdempotent: removing one already removed (or replaced, or failed) answers `200` with it unchanged.\n\nCounts toward the conversation-actions rate limit (300 a minute per account).",
-        "operationId": "v1_remove_reaction_v1_messages__message_id__reactions__reaction_id__delete",
+        "operationId": "removeReaction",
         "parameters": [
           {
             "name": "message_id",
@@ -563,6 +575,7 @@
             "required": true,
             "schema": {
               "type": "string",
+              "format": "uuid",
               "title": "Message Id"
             }
           },
@@ -572,6 +585,7 @@
             "required": true,
             "schema": {
               "type": "string",
+              "format": "uuid",
               "title": "Reaction Id"
             }
           }
@@ -598,7 +612,7 @@
             }
           },
           "404": {
-            "description": "Message (or reaction) not found.",
+            "description": "`not_found`: no message (or tapback) with this ID on your account.",
             "content": {
               "application/json": {
                 "schema": {
@@ -655,7 +669,7 @@
         ],
         "summary": "Edit a message",
         "description": "Change the text of a message you sent over iMessage, within 14 minutes 30 seconds of `sent_at` and up to five times, as on an iPhone.\n\nThe edit is accepted with `edit_status: \"pending\"`, and `body` shows the new text at once. When it reaches the recipient, `message.edited` fires with `direction: \"outbound\"` and `edit_count` goes up by one. If it doesn't, `message.edit_failed` fires and `body` goes back to the text they have.\n\nOn iOS 16, iPadOS 16.1, macOS 13 Ventura, visionOS 1 and later the message changes in place and is marked Edited. On earlier versions the recipient gets a follow-up message starting \"Edited to\" with the new text, and the original stays. In a group, only members using iMessage see the edit.\n\nSending the text the message already has answers `200` and changes nothing, so a retried request never spends a second edit.\n\nCounts toward the conversation-actions rate limit (300 a minute per account).",
-        "operationId": "v1_edit_message_v1_messages__message_id__edit_post",
+        "operationId": "editMessage",
         "parameters": [
           {
             "name": "message_id",
@@ -663,6 +677,7 @@
             "required": true,
             "schema": {
               "type": "string",
+              "format": "uuid",
               "title": "Message Id"
             }
           }
@@ -709,7 +724,7 @@
             }
           },
           "404": {
-            "description": "Message not found.",
+            "description": "`not_found`: no message with this ID on your account.",
             "content": {
               "application/json": {
                 "schema": {
@@ -786,7 +801,7 @@
         ],
         "summary": "Unsend a message",
         "description": "Take back a message you sent over iMessage, within 110 seconds of `sent_at` (iMessage allows two minutes).\n\nThe Undo Send is accepted with `unsend_status: \"pending\"`, and `body` is empty at once. When it reaches the recipient, `message.unsent` fires with `direction: \"outbound\"`. If it doesn't, `message.unsend_failed` fires and `body` comes back.\n\nOn iOS 16, iPadOS 16.1, macOS 13 Ventura, visionOS 1 and later the message disappears and both sides see a note that it was unsent. On earlier versions the original stays in the conversation: never rely on Undo Send to retract sensitive information.\n\nA message with text and a link preview card (sent with `link_preview: true`, or typed in the dashboard) is two bubbles; both are unsent. A message with files (text and files, or several files) can't be unsent through the API (`422 multi_part`).\n\nRepeating the request while the Undo Send is pending or done answers `200` and changes nothing; after `message.unsend_failed` it tries again, if it's still within the window.\n\nCounts toward the conversation-actions rate limit (300 a minute per account).",
-        "operationId": "v1_unsend_message_v1_messages__message_id__unsend_post",
+        "operationId": "unsendMessage",
         "parameters": [
           {
             "name": "message_id",
@@ -794,6 +809,7 @@
             "required": true,
             "schema": {
               "type": "string",
+              "format": "uuid",
               "title": "Message Id"
             }
           }
@@ -830,7 +846,7 @@
             }
           },
           "404": {
-            "description": "Message not found.",
+            "description": "`not_found`: no message with this ID on your account.",
             "content": {
               "application/json": {
                 "schema": {
@@ -858,7 +874,7 @@
             }
           },
           "409": {
-            "description": "`edit_in_flight`: an edit of this message hasn't reached the recipient yet. Retry in a few seconds.",
+            "description": "`edit_in_flight`: an edit of this message hasn't reached the recipient yet. Retry in a few seconds. `already_unsent`: another Undo Send of this message got there first.",
             "content": {
               "application/json": {
                 "schema": {
@@ -897,7 +913,7 @@
         ],
         "summary": "Cancel a message",
         "description": "Stop a message you sent that hasn't gone out yet: one waiting for the contact's working hours or the line's hourly limit (`status: \"pending\"` with a `held_reason`), or queued by a capacity hold (`status: \"queued\"`). It moves to `cancelled`, will never be sent, and `message.cancelled` fires.\n\nA message that is already being sent can't be stopped (`409 message_dispatching`); it goes out, and `message.sent` fires. Retrying the original `POST /v1/messages` with the same `idempotency_key` returns the cancelled message and doesn't send it again.\n\nIdempotent: cancelling a cancelled message answers `200` with it, and no second webhook fires.\n\nCounts toward the conversation-actions rate limit (300 a minute per account).",
-        "operationId": "v1_cancel_message_v1_messages__message_id__cancel_post",
+        "operationId": "cancelMessage",
         "parameters": [
           {
             "name": "message_id",
@@ -905,6 +921,7 @@
             "required": true,
             "schema": {
               "type": "string",
+              "format": "uuid",
               "title": "Message Id"
             }
           }
@@ -931,7 +948,7 @@
             }
           },
           "404": {
-            "description": "Message not found.",
+            "description": "`not_found`: no message with this ID on your account.",
             "content": {
               "application/json": {
                 "schema": {
@@ -998,7 +1015,7 @@
         ],
         "summary": "Schedule a message",
         "description": "Schedule a 1:1 message to go out at `send_at`, from 1 minute to 90 days ahead. The same content as `POST /v1/messages`: text, files, an effect, a reply, or a link with a preview card (`link_preview`).\n\nOpt-outs, blocks and the contact are checked now, and again when it fires: a contact who opts out in the meantime doesn't get it (the scheduled message becomes `failed` and `scheduled_message.failed` fires). At `send_at` it becomes a normal message (`message_id`, `scheduled_message.fired`), with the usual sending hours, limits and `message.*` webhooks. See [Schedule messages](/guides/schedule-messages).\n\n**Idempotency is required**, and keys are shared with `POST /v1/messages`. A retry with the same key and payload answers `200` with the scheduled message as it is now.\n\nAn account can have 5,000 messages waiting (`422 scheduled_limit_reached`). Groups aren't supported yet.\n\nCounts toward the conversation-actions rate limit (300 a minute per account).",
-        "operationId": "v1_create_scheduled_message_v1_scheduled_messages_post",
+        "operationId": "createScheduledMessage",
         "requestBody": {
           "required": true,
           "content": {
@@ -1070,8 +1087,18 @@
               }
             }
           },
+          "500": {
+            "description": "`internal_error`: retry with the same `idempotency_key`. `no_owner_rep`: your account's setup is incomplete, so nothing can be scheduled until iBubbl support fixes it; retrying won't help.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
           "503": {
-            "description": "`no_active_line`: the account has no active line to send from.",
+            "description": "`no_active_line`: you haven't messaged this contact yet and your account has no active line to start the conversation on. Nothing was scheduled; retry with the same `idempotency_key` once a line is active.",
             "content": {
               "application/json": {
                 "schema": {
@@ -1116,7 +1143,7 @@
         ],
         "summary": "List scheduled messages",
         "description": "List your scheduled messages, most recently scheduled first, including the ones scheduled in the dashboard. For what is still due, filter on `status=scheduled`.\n\nResults are paginated: pass the `id` of the last item as `starting_after` while `has_more` is true. See [Pagination](/concepts/pagination).\n\nFilters combine with AND. A filter value that matches nothing (including another account's `contact_id`) returns an empty page. An unknown or repeated query parameter returns `422 validation_error`.\n\nLists allow 120 requests a minute per account, across all your API keys and all lists. Over that, the answer is `429 rate_limited` with a `Retry-After` header in seconds.",
-        "operationId": "v1_list_scheduled_messages_v1_scheduled_messages_get",
+        "operationId": "listScheduledMessages",
         "parameters": [
           {
             "name": "limit",
@@ -1322,7 +1349,7 @@
         ],
         "summary": "Retrieve a scheduled message",
         "description": "Fetch one scheduled message by its id: its `status`, and once it has fired, the `message_id` of the message it created.\n\nReturns `404 not_found` both for ids that don't exist and for another account's.",
-        "operationId": "v1_get_scheduled_message_v1_scheduled_messages__scheduled_message_id__get",
+        "operationId": "retrieveScheduledMessage",
         "parameters": [
           {
             "name": "scheduled_message_id",
@@ -1330,6 +1357,7 @@
             "required": true,
             "schema": {
               "type": "string",
+              "format": "uuid",
               "title": "Scheduled Message Id"
             }
           }
@@ -1383,7 +1411,7 @@
         ],
         "summary": "Update a scheduled message",
         "description": "Change the text, the time or the preview card of a message that is still `scheduled`. The new `send_at` follows the same rules as when scheduling. On a message with files, `\"body\": null` (or `\"\"`) removes the text and sends the files alone. With `link_preview` on, the text the message will have must still end in exactly one link (`422 validation_error`). Files, the effect and the reply can't be changed: cancel it and schedule a new one.\n\nA message that is firing right now can't be changed (`409 scheduled_message_sending`); one that has fired, failed or been cancelled is `422 not_editable`. If other changes to it keep landing at the same moment, the answer is `409 scheduled_message_changed`: read it again and retry.\n\nRetrying the original `POST` with its `idempotency_key` returns the updated message.\n\nCounts toward the conversation-actions rate limit (300 a minute per account).",
-        "operationId": "v1_update_scheduled_message_v1_scheduled_messages__scheduled_message_id__patch",
+        "operationId": "updateScheduledMessage",
         "parameters": [
           {
             "name": "scheduled_message_id",
@@ -1391,6 +1419,7 @@
             "required": true,
             "schema": {
               "type": "string",
+              "format": "uuid",
               "title": "Scheduled Message Id"
             }
           }
@@ -1494,7 +1523,7 @@
         ],
         "summary": "Cancel a scheduled message",
         "description": "Cancel a message that is still `scheduled`. It never fires, its copied files are deleted, and `scheduled_message.cancelled` fires.\n\nIdempotent: cancelling a cancelled message answers `200` with it, and no second webhook fires. A message that is firing right now can't be stopped (`409 scheduled_message_sending`); once it has fired, cancel the message itself with `POST /v1/messages/{message_id}/cancel` while it is still waiting to go out. One that fired or failed is `422 not_cancellable`.\n\nCounts toward the conversation-actions rate limit (300 a minute per account).",
-        "operationId": "v1_cancel_scheduled_message_v1_scheduled_messages__scheduled_message_id__cancel_post",
+        "operationId": "cancelScheduledMessage",
         "parameters": [
           {
             "name": "scheduled_message_id",
@@ -1502,6 +1531,7 @@
             "required": true,
             "schema": {
               "type": "string",
+              "format": "uuid",
               "title": "Scheduled Message Id"
             }
           }
@@ -1595,7 +1625,7 @@
         ],
         "summary": "Send a scheduled message now",
         "description": "Send a message that is still `scheduled` right away, instead of at `send_at`. It fires in this request, with the same checks as at `send_at` (opt-outs, blocks, the contact), and the answer shows the result: `fired` with its `message_id`, or `failed` with a `failed_reason`. `scheduled_message.fired` (or `.failed`) fires as usual, and `send_at` becomes the time you sent it. The 1-minute minimum doesn't apply.\n\n`fired` means the message was created, not that it was delivered: it still waits for the contact's sending hours and your line's limits like any message. Follow it with `message.*` webhooks or `GET /v1/messages/{message_id}`.\n\nIdempotent: a message that is already `sending` or `fired` answers `200` as it is, and nothing is sent twice. One that failed or was cancelled is `422 not_editable`; if it was rescheduled by another request at the same moment, `409 scheduled_message_changed`.\n\nCounts toward the conversation-actions rate limit (300 a minute per account).",
-        "operationId": "v1_send_scheduled_message_now_v1_scheduled_messages__scheduled_message_id__send_now_post",
+        "operationId": "sendScheduledMessageNow",
         "parameters": [
           {
             "name": "scheduled_message_id",
@@ -1603,6 +1633,7 @@
             "required": true,
             "schema": {
               "type": "string",
+              "format": "uuid",
               "title": "Scheduled Message Id"
             }
           }
@@ -1696,7 +1727,7 @@
         ],
         "summary": "Upload a file",
         "description": "Upload one file to send in messages: a `multipart/form-data` body with one part named `file`. The answer is a file object; put its `id` in the `attachments` of `POST /v1/messages`, alone or with `https` URLs.\n\nThe same types and sizes as URL attachments: images (JPEG, PNG, WebP, HEIC, HEIF) and GIFs up to 25 MiB, MP4/MOV video up to 50 MiB, PDF up to 10 MB, audio (MP3, M4A, AAC) up to 25 MiB (MB = 1,000,000 bytes; MiB = 1,048,576 bytes). A file is refused as soon as it breaks a rule, and its content must match its type.\n\nA file can be sent any number of times until `expires_at`, 24 hours after the upload; then it is deleted. Each send keeps its own copy, so deleting a file never touches messages already sent. An account holds at most 500 files and 1 GiB of uploads at once.\n\nUploads take no idempotency key: a retried upload stores a second file (the unused one expires). Uploads allow 60 requests a minute and 4 at once per account; over that, the answer is `429 rate_limited` with a `Retry-After` header in seconds. See [Send attachments](/guides/attachments).",
-        "operationId": "v1_upload_file_v1_files_post",
+        "operationId": "uploadFile",
         "responses": {
           "201": {
             "description": "The file, ready to send.",
@@ -1796,7 +1827,7 @@
         ],
         "summary": "Retrieve a file",
         "description": "Fetch an uploaded file's details by ID: its name, type, size and when it expires. The contents are not returned. Returns `404 file_not_found` once the file has expired or been deleted.",
-        "operationId": "v1_get_file_v1_files__file_id__get",
+        "operationId": "retrieveFile",
         "parameters": [
           {
             "name": "file_id",
@@ -1857,7 +1888,7 @@
         ],
         "summary": "Delete a file",
         "description": "Delete an uploaded file before it expires. Messages already sent with it keep their own copy. A later send naming it returns `404 file_not_found`.",
-        "operationId": "v1_delete_file_v1_files__file_id__delete",
+        "operationId": "deleteFile",
         "parameters": [
           {
             "name": "file_id",
@@ -1913,7 +1944,7 @@
         ],
         "summary": "Create or update a contact",
         "description": "Upsert a contact by E.164 phone number. Returns `201 Created` on a new contact, `200 OK` on an existing match. A number whose only match is a deleted contact creates a new contact.\n\nOptional fields (`first_name`, `last_name`, `email`, `city`, `state`, `timezone`) apply only when the existing record's value is null \u2014 values set previously by a rep or by a prior API call are preserved. This protects human-edited data from being clobbered by automation; to overwrite, use `PATCH /v1/contacts/{id}`.\n\n`tags` only ever adds tags. Every value is checked before anything is saved.\n\nIf `timezone` is provided, it must be one of the 20 supported IANA timezones (US, Canada, and a few international zones such as `Europe/London`); anything else returns `422 invalid_timezone`.\n\nA new contact for a number that opted out earlier (for example, one you deleted after an opt-out) starts with `opted_out: true`.",
-        "operationId": "v1_upsert_contact_v1_contacts_post",
+        "operationId": "upsertContact",
         "requestBody": {
           "required": true,
           "content": {
@@ -1993,7 +2024,7 @@
         ],
         "summary": "List contacts",
         "description": "List your contacts, newest first. Deleted contacts are never listed.\n\nResults are paginated: `has_more` tells you whether there is another page, and you get it by passing the `id` of the last contact as `starting_after`. Pages are stable while contacts are added: nothing is skipped or repeated. See [Pagination](/concepts/pagination).\n\nFilters combine with AND. A filter value that matches nothing (including a tag you don't have) returns an empty page. An unknown or repeated query parameter returns `422 validation_error`.\n\nLists allow 120 requests a minute per account, across all your API keys and all lists. Over that, the answer is `429 rate_limited` with a `Retry-After` header in seconds.",
-        "operationId": "v1_list_contacts_v1_contacts_get",
+        "operationId": "listContacts",
         "parameters": [
           {
             "name": "limit",
@@ -2173,8 +2204,8 @@
           "Contacts"
         ],
         "summary": "Retrieve a contact",
-        "description": "Fetch a single contact by ID. Returns `404 not_found` for both missing contacts and contacts owned by a different customer \u2014 existence is not leaked across tenants.",
-        "operationId": "v1_get_contact_v1_contacts__contact_id__get",
+        "description": "Fetch a single contact by ID. Returns `404 not_found` for both missing contacts and contacts that belong to another account, so it never reveals whether an ID exists.",
+        "operationId": "retrieveContact",
         "parameters": [
           {
             "name": "contact_id",
@@ -2182,6 +2213,7 @@
             "required": true,
             "schema": {
               "type": "string",
+              "format": "uuid",
               "title": "Contact Id"
             }
           }
@@ -2208,7 +2240,7 @@
             }
           },
           "404": {
-            "description": "Contact not found.",
+            "description": "`not_found`: no contact with this ID on your account.",
             "content": {
               "application/json": {
                 "schema": {
@@ -2235,7 +2267,7 @@
         ],
         "summary": "Update a contact",
         "description": "Overwrite the fields you send. Fields you leave out are not touched; a field sent as `null` is cleared. Unlike the upsert, this replaces values a rep set.\n\n`phone` can't be changed. Tags have their own endpoints.",
-        "operationId": "v1_update_contact_v1_contacts__contact_id__patch",
+        "operationId": "updateContact",
         "parameters": [
           {
             "name": "contact_id",
@@ -2243,6 +2275,7 @@
             "required": true,
             "schema": {
               "type": "string",
+              "format": "uuid",
               "title": "Contact Id"
             }
           }
@@ -2279,7 +2312,7 @@
             }
           },
           "404": {
-            "description": "Contact not found.",
+            "description": "`not_found`: no contact with this ID on your account.",
             "content": {
               "application/json": {
                 "schema": {
@@ -2316,7 +2349,7 @@
         ],
         "summary": "Delete a contact",
         "description": "Delete a contact. It disappears from the list and from `GET /v1/contacts/{id}`, and every endpoint that takes its `id` (including `POST /v1/messages` with `contact_id`) returns `404 not_found`. Deleting it again also returns `404`.\n\nWhat stays: its messages and conversations, which `GET /v1/messages` still lists under the old `contact_id`; messages already accepted for it and still waiting, which still go out (cancel them with `POST /v1/messages/{message_id}/cancel` or in the dashboard to stop them); and its opt-out, which belongs to the number.\n\nUpserting the same number, sending to it with `to`, or an inbound message from it creates a **new** contact with a new `id`. Names, tags and a block are not carried over; an opt-out is.",
-        "operationId": "v1_delete_contact_v1_contacts__contact_id__delete",
+        "operationId": "deleteContact",
         "parameters": [
           {
             "name": "contact_id",
@@ -2324,6 +2357,7 @@
             "required": true,
             "schema": {
               "type": "string",
+              "format": "uuid",
               "title": "Contact Id"
             }
           }
@@ -2343,7 +2377,7 @@
             }
           },
           "404": {
-            "description": "Contact not found.",
+            "description": "`not_found`: no contact with this ID on your account.",
             "content": {
               "application/json": {
                 "schema": {
@@ -2372,7 +2406,7 @@
         ],
         "summary": "Add a tag to a contact",
         "description": "Add one tag. Idempotent: a tag the contact already has answers `200` unchanged. The name matches an existing tag trimmed and case-insensitively; a new name creates the tag. A newly added tag can start workflows with a \"Tag added\" trigger.",
-        "operationId": "v1_add_contact_tag_v1_contacts__contact_id__tags_post",
+        "operationId": "addContactTag",
         "parameters": [
           {
             "name": "contact_id",
@@ -2380,6 +2414,7 @@
             "required": true,
             "schema": {
               "type": "string",
+              "format": "uuid",
               "title": "Contact Id"
             }
           }
@@ -2416,7 +2451,7 @@
             }
           },
           "404": {
-            "description": "Contact not found.",
+            "description": "`not_found`: no contact with this ID on your account.",
             "content": {
               "application/json": {
                 "schema": {
@@ -2465,7 +2500,7 @@
         ],
         "summary": "Remove a tag from a contact",
         "description": "Remove a tag by name (URL-encode it), matched trimmed and case-insensitively. Idempotent: a tag the contact doesn't have answers `200` unchanged. Removing a tag starts no workflow.",
-        "operationId": "v1_remove_contact_tag_v1_contacts__contact_id__tags__name__delete",
+        "operationId": "removeContactTag",
         "parameters": [
           {
             "name": "contact_id",
@@ -2473,6 +2508,7 @@
             "required": true,
             "schema": {
               "type": "string",
+              "format": "uuid",
               "title": "Contact Id"
             }
           },
@@ -2508,7 +2544,7 @@
             }
           },
           "404": {
-            "description": "Contact not found.",
+            "description": "`not_found`: no contact with this ID on your account.",
             "content": {
               "application/json": {
                 "schema": {
@@ -2537,7 +2573,7 @@
         ],
         "summary": "Opt a contact out",
         "description": "Record that this person opted out of messages, as a STOP reply does. **This can't be undone**, through the API or the dashboard: every later send to this number answers `422 contact_opted_out`, even after the contact is deleted and created again.\n\nThe first opt-out fires a `contact.opted_out` webhook with `source: \"api\"`. New sends are refused from then on, but a message accepted earlier and still waiting (held for sending hours, or queued) can still go out; cancel it with `POST /v1/messages/{message_id}/cancel` or in the dashboard to stop it.\n\nIdempotent: a contact already opted out (in any way) answers `200` with its current state, and no second webhook fires.",
-        "operationId": "v1_opt_out_contact_v1_contacts__contact_id__opt_out_post",
+        "operationId": "optOutContact",
         "parameters": [
           {
             "name": "contact_id",
@@ -2545,6 +2581,7 @@
             "required": true,
             "schema": {
               "type": "string",
+              "format": "uuid",
               "title": "Contact Id"
             }
           }
@@ -2571,7 +2608,7 @@
             }
           },
           "404": {
-            "description": "Contact not found.",
+            "description": "`not_found`: no contact with this ID on your account.",
             "content": {
               "application/json": {
                 "schema": {
@@ -2600,7 +2637,7 @@
         ],
         "summary": "Block a contact",
         "description": "A block is yours, on this contact: sends to them return `422 contact_blocked` (group conversations they're in are not affected). Their inbound messages are still stored and still fire `message.inbound`, but don't mark the conversation unread, notify anyone or start workflows. Unlike an opt-out, a block fires no webhook and can be undone with `DELETE /v1/contacts/{id}/block`. A contact deleted and created again starts unblocked.\n\nIdempotent: blocking a blocked contact answers `200` and keeps the original `blocked_at`.",
-        "operationId": "v1_block_contact_v1_contacts__contact_id__block_post",
+        "operationId": "blockContact",
         "parameters": [
           {
             "name": "contact_id",
@@ -2608,6 +2645,7 @@
             "required": true,
             "schema": {
               "type": "string",
+              "format": "uuid",
               "title": "Contact Id"
             }
           }
@@ -2634,7 +2672,7 @@
             }
           },
           "404": {
-            "description": "Contact not found.",
+            "description": "`not_found`: no contact with this ID on your account.",
             "content": {
               "application/json": {
                 "schema": {
@@ -2661,7 +2699,7 @@
         ],
         "summary": "Unblock a contact",
         "description": "Undo a block: sends to this contact are accepted again. An opt-out is not affected.\n\nIdempotent: unblocking a contact that isn't blocked answers `200` unchanged.",
-        "operationId": "v1_unblock_contact_v1_contacts__contact_id__block_delete",
+        "operationId": "unblockContact",
         "parameters": [
           {
             "name": "contact_id",
@@ -2669,6 +2707,7 @@
             "required": true,
             "schema": {
               "type": "string",
+              "format": "uuid",
               "title": "Contact Id"
             }
           }
@@ -2695,7 +2734,7 @@
             }
           },
           "404": {
-            "description": "Contact not found.",
+            "description": "`not_found`: no contact with this ID on your account.",
             "content": {
               "application/json": {
                 "schema": {
@@ -2724,7 +2763,7 @@
         ],
         "summary": "Mark a conversation read",
         "description": "Mark every message you've received in this conversation read. It clears the unread badge in the iBubbl inbox and, when read receipts are on for your account, sends the contact a read receipt: they see \"Read\" under their latest message on iMessage, and on RCS (Android). SMS has no read receipts.\n\nA receipt goes out only when there was something unread, and never to a group, a blocked contact or one who opted out. `read_receipt` says whether one was queued, and why not.\n\nIdempotent: calling again with nothing new answers `200` with `marked_count: 0`.\n\nCounts toward the conversation-actions rate limit (300 a minute per account).",
-        "operationId": "v1_mark_conversation_read_v1_conversations__conversation_id__read_post",
+        "operationId": "markConversationRead",
         "parameters": [
           {
             "name": "conversation_id",
@@ -2732,6 +2771,7 @@
             "required": true,
             "schema": {
               "type": "string",
+              "format": "uuid",
               "title": "Conversation Id"
             }
           }
@@ -2758,7 +2798,7 @@
             }
           },
           "404": {
-            "description": "Conversation not found.",
+            "description": "`not_found`: no conversation with this ID on your account.",
             "content": {
               "application/json": {
                 "schema": {
@@ -2805,7 +2845,7 @@
         ],
         "summary": "Start typing",
         "description": "Show the contact the typing bubble (the three dots) in this conversation. It lasts 10 seconds: call again every 5 seconds to keep it going. Sending a message clears it on the contact's phone; so does `DELETE`, or simply not calling again.\n\nTyping shows only in a 1:1 iMessage conversation the contact has already messaged. Anywhere else the call answers `200` with `status: \"ignored\"` and an `ignored_reason`, and does nothing.\n\nTyping is a signal to the contact, so it's refused for a blocked contact or one who opted out.\n\nCounts toward the conversation-actions rate limit (300 a minute per account); calls closer than 3 seconds apart are answered without doing anything new.",
-        "operationId": "v1_start_typing_v1_conversations__conversation_id__typing_post",
+        "operationId": "startTyping",
         "parameters": [
           {
             "name": "conversation_id",
@@ -2813,6 +2853,7 @@
             "required": true,
             "schema": {
               "type": "string",
+              "format": "uuid",
               "title": "Conversation Id"
             }
           }
@@ -2839,7 +2880,7 @@
             }
           },
           "404": {
-            "description": "Conversation not found.",
+            "description": "`not_found`: no conversation with this ID on your account.",
             "content": {
               "application/json": {
                 "schema": {
@@ -2904,7 +2945,7 @@
         ],
         "summary": "Stop typing",
         "description": "Stop showing the typing bubble. You don't need this before sending: a sent message clears it on its own. Some phones keep showing the bubble for up to a minute after a stop that isn't followed by a message.\n\nTyping shows only in a 1:1 iMessage conversation the contact has already messaged. Anywhere else the call answers `200` with `status: \"ignored\"` and an `ignored_reason`, and does nothing.\n\nIdempotent: stopping when nothing is typing answers `200` `stopped`.\n\nCounts toward the conversation-actions rate limit (300 a minute per account).",
-        "operationId": "v1_stop_typing_v1_conversations__conversation_id__typing_delete",
+        "operationId": "stopTyping",
         "parameters": [
           {
             "name": "conversation_id",
@@ -2912,6 +2953,7 @@
             "required": true,
             "schema": {
               "type": "string",
+              "format": "uuid",
               "title": "Conversation Id"
             }
           }
@@ -2938,7 +2980,7 @@
             }
           },
           "404": {
-            "description": "Conversation not found.",
+            "description": "`not_found`: no conversation with this ID on your account.",
             "content": {
               "application/json": {
                 "schema": {
@@ -2985,7 +3027,7 @@
         ],
         "summary": "List lines",
         "description": "List your lines, newest first: each line's number, status, whether it is online, and today's usage against its send limits. Retired lines stay listed, so the `line_id` on an older message always resolves.\n\nThe counts are live: read them before a batch of first messages to new contacts to see how many the line can still take today and this hour. See [Limits and queues](/concepts/limits).\n\nResults are paginated like every list: pass the `id` of the last line as `starting_after` while `has_more` is true. See [Pagination](/concepts/pagination). An unknown or repeated query parameter returns `422 validation_error`.\n\nLists allow 120 requests a minute per account, across all your API keys and all lists. Over that, the answer is `429 rate_limited` with a `Retry-After` header in seconds.",
-        "operationId": "v1_list_lines_v1_lines_get",
+        "operationId": "listLines",
         "parameters": [
           {
             "name": "limit",
@@ -3123,7 +3165,7 @@
         ],
         "summary": "Retrieve a line",
         "description": "Fetch one of your lines by ID, with today's usage against its send limits. Use it to look up the `line_id` on a message. Returns `404 line_not_found` for an ID that isn't one of your lines.",
-        "operationId": "v1_get_line_v1_lines__line_id__get",
+        "operationId": "retrieveLine",
         "parameters": [
           {
             "name": "line_id",
@@ -3131,6 +3173,7 @@
             "required": true,
             "schema": {
               "type": "string",
+              "format": "uuid",
               "title": "Line Id"
             }
           }
@@ -3196,7 +3239,7 @@
         ],
         "summary": "Look up a number",
         "description": "Find out whether a number can receive iMessages before you send it something that only works over iMessage, such as a voice memo, a message effect or an edit. Ordinary texts don't need a lookup: iBubbl already sends them by SMS when iMessage isn't available.\n\nWhen iBubbl already knows the answer (an iMessage delivered to the number from your account in the last 30 days, a failed iMessage send, or an earlier answer under 30 days old), the response is `200` with the result. Otherwise one of your lines asks Apple: the response is `202` with `status: pending`, and the answer arrives by `GET /v1/imessage-lookups/{id}` and by the `imessage_lookup.completed` webhook. A second request for a number that is still pending returns the same lookup.\n\nAsking Apple uses your line's lookup budget: 50 an hour and 100 a day per line, shared with GoHighLevel Check iMessage steps. Over it, the answer is `429 lookup_budget_exhausted` with a `Retry-After` header, and nothing is queued. Answers iBubbl already has are free. Lookups never count toward your send limits, and your sends always come before lookups.\n\nThis endpoint allows 60 requests a minute per account (`429 rate_limited`).",
-        "operationId": "v1_create_imessage_lookup_v1_imessage_lookups_post",
+        "operationId": "createImessageLookup",
         "requestBody": {
           "required": true,
           "content": {
@@ -3306,7 +3349,7 @@
         ],
         "summary": "Retrieve a lookup",
         "description": "Fetch one of your lookups by ID. A `pending` lookup usually completes within seconds; prefer the `imessage_lookup.completed` webhook to polling. Returns `404 not_found` for an ID that isn't one of your lookups.",
-        "operationId": "v1_get_imessage_lookup_v1_imessage_lookups__lookup_id__get",
+        "operationId": "retrieveImessageLookup",
         "parameters": [
           {
             "name": "lookup_id",
@@ -3314,6 +3357,7 @@
             "required": true,
             "schema": {
               "type": "string",
+              "format": "uuid",
               "title": "Lookup Id"
             }
           }
@@ -3369,7 +3413,7 @@
         ],
         "summary": "Create a webhook subscription",
         "description": "Register an HTTPS endpoint to receive events. The response includes the signing secret **once** \u2014 store it immediately; it cannot be retrieved again. Use the secret to verify incoming webhook signatures (see [Signature verification](/guides/webhook-signatures)).\n\nIf `event_types` is omitted, the subscription receives all event types. You can register multiple subscriptions per account (e.g., one for production, one for staging).\n\nDelivery is at-least-once with exponential backoff. Customer endpoints should be idempotent based on the event `id`.",
-        "operationId": "v1_create_webhook_v1_webhooks_post",
+        "operationId": "createWebhookSubscription",
         "requestBody": {
           "required": true,
           "content": {
@@ -3439,7 +3483,7 @@
         ],
         "summary": "List webhook subscriptions",
         "description": "Returns all currently active webhook subscriptions for the authenticated customer. Revoked subscriptions are omitted \u2014 query them by ID directly (`GET /v1/webhooks/{id}`) if you need their history.",
-        "operationId": "v1_list_webhooks_v1_webhooks_get",
+        "operationId": "listWebhookSubscriptions",
         "responses": {
           "200": {
             "description": "Array of active subscriptions.",
@@ -3450,7 +3494,7 @@
                   "items": {
                     "$ref": "#/components/schemas/WebhookSubscription"
                   },
-                  "title": "Response V1 List Webhooks V1 Webhooks Get"
+                  "title": "Response Listwebhooksubscriptions"
                 }
               }
             }
@@ -3485,7 +3529,7 @@
         ],
         "summary": "Retrieve a webhook subscription",
         "description": "Fetch a single subscription by ID. Returns the subscription regardless of revoked status (so you can inspect history). `404 not_found` is returned for both missing subscriptions and those owned by a different customer.",
-        "operationId": "v1_get_webhook_v1_webhooks__subscription_id__get",
+        "operationId": "retrieveWebhookSubscription",
         "parameters": [
           {
             "name": "subscription_id",
@@ -3493,6 +3537,7 @@
             "required": true,
             "schema": {
               "type": "string",
+              "format": "uuid",
               "title": "Subscription Id"
             }
           }
@@ -3519,7 +3564,7 @@
             }
           },
           "404": {
-            "description": "Subscription not found.",
+            "description": "`not_found`: no subscription with this ID on your account.",
             "content": {
               "application/json": {
                 "schema": {
@@ -3545,8 +3590,8 @@
           "Webhooks"
         ],
         "summary": "Revoke a webhook subscription",
-        "description": "Soft-revoke a subscription. After revocation, no further events are delivered to its URL. The row is retained for audit purposes; you can still fetch it with `GET /v1/webhooks/{id}` and see its `revoked_at` timestamp.\n\nRevoking an already-revoked subscription is a no-op that returns `{\"status\": \"already_revoked\"}`.",
-        "operationId": "v1_revoke_webhook_v1_webhooks__subscription_id__delete",
+        "description": "Soft-revoke a subscription. After revocation, no further events are delivered to its URL. The subscription itself is kept: you can still fetch it with `GET /v1/webhooks/{id}` and see its `revoked_at` timestamp.\n\nRevoking an already-revoked subscription is a no-op that returns `{\"status\": \"already_revoked\"}`.",
+        "operationId": "revokeWebhookSubscription",
         "parameters": [
           {
             "name": "subscription_id",
@@ -3554,6 +3599,7 @@
             "required": true,
             "schema": {
               "type": "string",
+              "format": "uuid",
               "title": "Subscription Id"
             }
           }
@@ -3580,7 +3626,7 @@
             }
           },
           "404": {
-            "description": "Subscription not found.",
+            "description": "`not_found`: no subscription with this ID on your account.",
             "content": {
               "application/json": {
                 "schema": {
@@ -3609,7 +3655,7 @@
         ],
         "summary": "Receive an event from a connected app",
         "description": "Receive a webhook from a connected third-party app (for example Recharge) and start any workflow whose **Webhook received** trigger matches it.\n\nThe URL you paste into the sending app carries its own credential, so this endpoint takes no `Authorization` header. Create a source in **Settings \u2192 Inbound events** to get the full URL; the token is shown once.\n\n**Any app (secret URL)** sources need no signature: the URL is the credential, so keep it private. They accept JSON or `application/x-www-form-urlencoded` bodies and at most 60 requests a minute. Beyond that the answer is `429` while a workflow is listening on the source; with none listening, the event is accepted and dropped.\n\n**Signed** sources must sign every request. For Recharge, that is the `X-Recharge-Hmac-Sha256` header computed with your **API Client Secret** \u2014 which is not the same value as your API token. An unsigned or mis-signed request returns `403 invalid_signature`.\n\n**Redeliveries are safe.** Providers resend events, and Recharge's dunning fires one event per charge retry. Each workflow's `event_id_path` identifies the underlying object, so repeat deliveries of the same event fold onto the run that already exists rather than messaging the customer again.\n\nA `200` means the event was accepted, not that it matched anything \u2014 check `runs_started`, and see the source's status in Settings when it is unexpectedly `0`.",
-        "operationId": "receive_event_v1_events__token__post",
+        "operationId": "receiveEvent",
         "parameters": [
           {
             "name": "token",
@@ -3633,7 +3679,7 @@
             }
           },
           "403": {
-            "description": "Signature missing or does not match.",
+            "description": "`invalid_signature`: the signature is missing or does not match.",
             "content": {
               "application/json": {
                 "schema": {
@@ -3643,7 +3689,7 @@
             }
           },
           "404": {
-            "description": "No such source, or it has been revoked.",
+            "description": "`not_found`: no such source, or it has been revoked.",
             "content": {
               "application/json": {
                 "schema": {
@@ -3653,7 +3699,7 @@
             }
           },
           "413": {
-            "description": "Body larger than 256 KiB (262,144 bytes).",
+            "description": "`payload_too_large`: the body is larger than 256 KiB (262,144 bytes).",
             "content": {
               "application/json": {
                 "schema": {
@@ -3663,7 +3709,7 @@
             }
           },
           "429": {
-            "description": "Secret-URL source over its limit of 60 requests a minute, while a workflow is listening on it.",
+            "description": "`rate_limited`: a secret-URL source over its limit of 60 requests a minute, while a workflow is listening on it.",
             "content": {
               "application/json": {
                 "schema": {
@@ -3747,162 +3793,6 @@
         ],
         "title": "ApiErrorDetail"
       },
-      "Contact": {
-        "properties": {
-          "id": {
-            "type": "string",
-            "title": "Id",
-            "description": "Unique contact identifier (UUID)."
-          },
-          "phone": {
-            "type": "string",
-            "title": "Phone",
-            "description": "Contact's phone number as first seen. Usually E.164; a contact first created by an inbound SMS can carry the sender's bare national form (e.g. `4155551234`). Upserting any form of the same number returns this contact."
-          },
-          "first_name": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "First Name"
-          },
-          "last_name": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Last Name"
-          },
-          "email": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Email"
-          },
-          "city": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "City"
-          },
-          "state": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "State"
-          },
-          "timezone": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Timezone",
-            "description": "IANA timezone used for this contact's sending hours, or null if not set yet. When it is null and the number is a US or Canadian one, iBubbl infers the zone from the area code and saves it here when the contact's first message is processed; otherwise your account's timezone is used. Once set, an upsert never replaces it, so pass `timezone` on the first upsert, before you send, or change it with PATCH."
-          },
-          "tags": {
-            "items": {
-              "type": "string"
-            },
-            "type": "array",
-            "title": "Tags",
-            "description": "The contact's tag names, sorted case-insensitively."
-          },
-          "opted_out": {
-            "type": "boolean",
-            "title": "Opted Out",
-            "description": "True if this person has opted out: a STOP reply, a rep in the dashboard, a Do Not Disturb in your connected GoHighLevel account, or `POST /v1/contacts/{id}/opt-out`. When true, every send to this contact returns `422 contact_opted_out`. An opt-out can't be undone, and it belongs to the number: a contact deleted and created again is still opted out."
-          },
-          "opted_out_at": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Opted Out At",
-            "description": "ISO 8601 UTC timestamp of the opt-out, or null."
-          },
-          "blocked": {
-            "type": "boolean",
-            "title": "Blocked",
-            "description": "True if you blocked this contact (dashboard or `POST /v1/contacts/{id}/block`). Sends to them return `422 contact_blocked` until you unblock them. Unlike an opt-out, a block is yours to undo, and it fires no webhook.",
-            "default": false
-          },
-          "blocked_at": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Blocked At",
-            "description": "ISO 8601 UTC timestamp of the block, or null."
-          },
-          "created_at": {
-            "type": "string",
-            "title": "Created At",
-            "description": "ISO 8601 UTC timestamp the contact was created."
-          }
-        },
-        "type": "object",
-        "required": [
-          "id",
-          "phone",
-          "opted_out",
-          "created_at"
-        ],
-        "title": "Contact",
-        "example": {
-          "id": "c8a1f4e2-3b9d-4f7c-a8e5-1d2c3b4a5e6f",
-          "phone": "+14155551234",
-          "first_name": "Sam",
-          "last_name": "Rivera",
-          "email": "sam@example.com",
-          "city": "Brooklyn",
-          "state": "NY",
-          "timezone": "America/Los_Angeles",
-          "tags": [
-            "Spring promo",
-            "VIP"
-          ],
-          "opted_out": false,
-          "opted_out_at": null,
-          "blocked": false,
-          "blocked_at": null,
-          "created_at": "2026-05-17T14:23:45.123Z"
-        }
-      },
       "ContactList": {
         "properties": {
           "data": {
@@ -3930,6 +3820,7 @@
         "properties": {
           "conversation_id": {
             "type": "string",
+            "format": "uuid",
             "title": "Conversation Id",
             "description": "The conversation."
           },
@@ -4014,154 +3905,11 @@
           "runs_started": 1
         }
       },
-      "ImessageLookup": {
-        "properties": {
-          "id": {
-            "type": "string",
-            "title": "Id",
-            "description": "The lookup's id."
-          },
-          "phone": {
-            "type": "string",
-            "title": "Phone",
-            "description": "The number looked up, in E.164.",
-            "examples": [
-              "+14155551234"
-            ]
-          },
-          "contact_id": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Contact Id",
-            "description": "The contact the number belongs to."
-          },
-          "status": {
-            "type": "string",
-            "enum": [
-              "pending",
-              "completed"
-            ],
-            "title": "Status",
-            "description": "`completed` = `result` is final and never changes. `pending` = waiting for Apple's answer, usually seconds and at most about 20 minutes; it arrives by `GET` and by the `imessage_lookup.completed` webhook."
-          },
-          "result": {
-            "anyOf": [
-              {
-                "type": "string",
-                "enum": [
-                  "imessage",
-                  "not_imessage",
-                  "unknown"
-                ]
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Result",
-            "description": "`imessage` = the number can receive iMessages. `not_imessage` = it can't, as far as Apple confirms: Android, a landline, or an iPhone with iMessage turned off. `unknown` = it couldn't be checked (`reason`); this is not a no. Null while `pending`."
-          },
-          "source": {
-            "anyOf": [
-              {
-                "type": "string",
-                "enum": [
-                  "recent_imessage",
-                  "previous_lookup",
-                  "failed_imessage",
-                  "lookup"
-                ]
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Source",
-            "description": "Where the answer came from: `recent_imessage` = an iMessage delivered to the number from your account in the last 30 days; `previous_lookup` = an earlier answer from Apple under 30 days old; `failed_imessage` = an iMessage send to it failed as not on iMessage; `lookup` = Apple was asked for this lookup. Null when `result` is `unknown` or pending."
-          },
-          "reason": {
-            "anyOf": [
-              {
-                "type": "string",
-                "enum": [
-                  "timeout",
-                  "lookup_failed",
-                  "line_unavailable"
-                ]
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Reason",
-            "description": "Why `result` is `unknown`: `timeout` = no line could ask Apple in time (they were busy sending); `lookup_failed` = Apple didn't answer; `line_unavailable` = the line it was queued on stopped serving your account. Look the number up again later. Null otherwise."
-          },
-          "checked_at": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Checked At",
-            "description": "When the answer was obtained, ISO 8601 UTC: the delivery, the failed send or Apple's answer. Older than `created_at` for an answer iBubbl already had. Null when there is no answer.",
-            "examples": [
-              "2026-11-12T18:04:19.118204Z"
-            ]
-          },
-          "completed_at": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Completed At",
-            "description": "When the lookup completed, ISO 8601 UTC. Null while pending."
-          },
-          "created_at": {
-            "type": "string",
-            "title": "Created At",
-            "examples": [
-              "2026-11-12T18:04:11.532901Z"
-            ]
-          }
-        },
-        "type": "object",
-        "required": [
-          "id",
-          "phone",
-          "status",
-          "created_at"
-        ],
-        "title": "ImessageLookup",
-        "example": {
-          "id": "7c1d2e3f-4a5b-4c6d-8e7f-90a1b2c3d4e5",
-          "phone": "+14155551234",
-          "contact_id": "c8a1f4e2-3b9d-4f7c-a8e5-1d2c3b4a5e6f",
-          "status": "completed",
-          "result": "imessage",
-          "source": "lookup",
-          "reason": null,
-          "checked_at": "2026-11-12T18:04:19.118204Z",
-          "completed_at": "2026-11-12T18:04:19.118204Z",
-          "created_at": "2026-11-12T18:04:11.532901Z"
-        }
-      },
       "Line": {
         "properties": {
           "id": {
             "type": "string",
+            "format": "uuid",
             "title": "Id",
             "description": "Unique line identifier (UUID)."
           },
@@ -4197,6 +3945,7 @@
           },
           "created_at": {
             "type": "string",
+            "format": "date-time",
             "title": "Created At",
             "description": "ISO 8601 UTC timestamp, with microseconds and a `Z`, of when the line was set up. Lists sort by it.",
             "examples": [
@@ -4246,7 +3995,8 @@
           "next_slot_at": {
             "anyOf": [
               {
-                "type": "string"
+                "type": "string",
+                "format": "date-time"
               },
               {
                 "type": "null"
@@ -4263,7 +4013,8 @@
         "required": [
           "used",
           "limit",
-          "waiting"
+          "waiting",
+          "next_slot_at"
         ],
         "title": "LineHourlyLimitWindow"
       },
@@ -4282,7 +4033,8 @@
           "resets_at": {
             "anyOf": [
               {
-                "type": "string"
+                "type": "string",
+                "format": "date-time"
               },
               {
                 "type": "null"
@@ -4298,7 +4050,8 @@
         "type": "object",
         "required": [
           "used",
-          "limit"
+          "limit",
+          "resets_at"
         ],
         "title": "LineLimitWindow"
       },
@@ -4360,46 +4113,9 @@
         ],
         "title": "LineList"
       },
-      "Message": {
+      "MessageError": {
         "properties": {
-          "id": {
-            "type": "string",
-            "title": "Id",
-            "description": "Unique message identifier (UUID)."
-          },
-          "direction": {
-            "type": "string",
-            "enum": [
-              "inbound",
-              "outbound"
-            ],
-            "title": "Direction",
-            "description": "`outbound` = sent from your line (through the API, the dashboard or an automation); `inbound` = received from a contact. An inbound message has `status` `delivered`, or `read` once it has been read in the dashboard."
-          },
-          "created_at": {
-            "type": "string",
-            "title": "Created At",
-            "description": "ISO 8601 UTC timestamp, with microseconds and a `Z`, of when iBubbl recorded the message. It never changes, so it is what `GET /v1/messages` sorts and filters by; pass it back as `created_after` / `created_before` unchanged.",
-            "examples": [
-              "2026-05-17T14:23:45.123456Z"
-            ]
-          },
-          "status": {
-            "type": "string",
-            "enum": [
-              "queued",
-              "pending",
-              "sent",
-              "delivered",
-              "read",
-              "failed",
-              "expired",
-              "cancelled"
-            ],
-            "title": "Status",
-            "description": "Lifecycle state. `pending` = accepted and on its way out; it may be waiting for the contact's working hours or the line's hourly limit for new contacts (see `held_until`). `queued` = parked by a capacity hold (`hourly_cap_hit` / `line_offline`), retried automatically. `sent` / `delivered` / `read` = delivery progression. `failed` = the send failed \u2014 see webhook `message.failed` for the reason; it can follow `sent` (or a `read` with no confirmed delivery) when iMessage reports the send failed after accepting it (`failed_reason` `imessage_undeliverable` / `imessage_error:<code>`), and such a message can still move to `delivered` / `read` if Apple later confirms it. `expired` = still queued after an hour, so dropped; it will not send. `cancelled` = stopped before it went out: with `POST /v1/messages/{message_id}/cancel`, by someone on your account in the dashboard, or by iBubbl when an after-hours auto-reply misses its window; it will not send (webhook `message.cancelled`)."
-          },
-          "to": {
+          "code": {
             "anyOf": [
               {
                 "type": "string"
@@ -4408,358 +4124,27 @@
                 "type": "null"
               }
             ],
-            "title": "To",
-            "description": "The contact's phone number (E.164) for 1:1 messages: the destination of an outbound message, and the sender of an inbound one. Null for group messages \u2014 the group is identified by `chat_guid` instead.",
-            "examples": [
-              "+14155551234"
-            ]
+            "title": "Code",
+            "description": "The same value as `failed_reason`."
           },
-          "line_id": {
+          "message": {
             "type": "string",
-            "title": "Line Id",
-            "description": "ID of your line this message was on: the line that sent an outbound message, or received an inbound one. Group messages too. The same `id` as in `GET /v1/lines`.",
-            "examples": [
-              "5f0c2a9e-7d41-4b8a-9e3c-6a1b2c3d4e5f"
-            ]
+            "title": "Message",
+            "description": "A readable sentence about the failure, safe to log."
           },
-          "line_number": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Line Number",
-            "description": "That line's phone number (E.164), the line's `phone_number` in `GET /v1/lines`. Unlike `to`, it is your side of the conversation, in both directions.",
-            "examples": [
-              "+14155550100"
-            ]
-          },
-          "body": {
-            "type": "string",
-            "title": "Body",
-            "description": "The message text as sent."
-          },
-          "contact_id": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Contact Id",
-            "description": "ID of the contact this message was sent to. For groups, this is the 'primary' participant the message was addressed to (the first participant in `participant_phones` on a new group create); the conversation's full participant list is available via the conversation."
-          },
-          "conversation_id": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Conversation Id",
-            "description": "ID of the conversation this message belongs to. Stable for the lifetime of the conversation; use it to fetch the thread or correlate webhook events."
-          },
-          "conversation_kind": {
-            "type": "string",
-            "enum": [
-              "one_to_one",
-              "group"
-            ],
-            "title": "Conversation Kind",
-            "description": "`one_to_one` for sends to a single contact, `group` for iMessage groups (2+ participants in addition to your iBubbl line).",
-            "default": "one_to_one"
-          },
-          "chat_guid": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Chat Guid",
-            "description": "Opaque identifier for the group chat (e.g. `any;+;<hex>`). Returned for `group` messages \u2014 use it to address later messages to the same group via the `chat_guid` request shape. Null for `one_to_one` messages, and for a brand-new group until the group has been created in iMessage (that happens when the first message goes out, which can wait for sending hours); poll `GET /v1/messages/{id}` to see it fill in. It changes when a participant is added to the group.",
-            "examples": [
-              "any;+;00000000000000000000000000000000"
-            ]
-          },
-          "channel": {
-            "anyOf": [
-              {
-                "type": "string",
-                "enum": [
-                  "imessage",
-                  "sms"
-                ]
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Channel",
-            "description": "How the message travelled: `imessage`, or `sms` (a text, including RCS). For an outbound message, how it actually went out (`sms` when the recipient couldn't be reached on iMessage); null until it has been sent. For an inbound message, how it arrived; null when that wasn't recorded."
-          },
-          "sent_at": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Sent At",
-            "description": "ISO 8601 UTC timestamp. Set when the message is accepted, then replaced by the actual send time once it goes out. Use `status` (`sent` / `delivered` / `read`), not `sent_at`, to tell whether it has actually gone out.",
-            "examples": [
-              "2026-05-17T14:23:45.123Z"
-            ]
-          },
-          "held_until": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Held Until",
-            "description": "While a `pending` message is being held, the expected time (ISO 8601 UTC) it will go out: the next opening of the contact's working hours; for `hourly_limit`, an estimate of when a slot frees. Recomputed within about 10 seconds. Null when the message is not held, when `held_reason` is `working_hours` but no sending day is enabled, and when it is `hourly_limit` with no estimate.",
-            "examples": [
-              "2026-10-08T16:00:00+00:00"
-            ]
-          },
-          "held_reason": {
-            "anyOf": [
-              {
-                "type": "string",
-                "enum": [
-                  "working_hours",
-                  "hourly_limit"
-                ]
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Held Reason",
-            "description": "Why a `pending` message is being held right now: `working_hours` (outside the contact's working hours) or `hourly_limit` (the line has started its limit of new contacts for this hour; the message goes out by itself when a slot frees, at about `held_until`). Null when it is not held."
-          },
-          "effect": {
-            "anyOf": [
-              {
-                "type": "string",
-                "enum": [
-                  "slam",
-                  "loud",
-                  "gentle",
-                  "invisible",
-                  "echo",
-                  "spotlight",
-                  "balloons",
-                  "confetti",
-                  "love",
-                  "lasers",
-                  "fireworks",
-                  "celebration",
-                  "shooting_star"
-                ]
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Effect",
-            "description": "The iMessage send effect requested for this message, or null. It shows on the recipient's device only when `channel` is `imessage`."
-          },
-          "link_preview": {
+          "retryable": {
             "type": "boolean",
-            "title": "Link Preview",
-            "description": "`true` when the message asked for a preview card for its link: sent or scheduled through the API with `link_preview: true`, or scheduled in the dashboard with text that ends in exactly one link. A message typed in the dashboard and sent right away gets a card for its link without it, and shows `false`.",
-            "default": false
-          },
-          "reply_to_message_id": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Reply To Message Id",
-            "description": "The ID of the message this one quotes as an inline reply, or null. The quote shows on the recipient's device only when `channel` is `imessage`."
-          },
-          "attachments": {
-            "items": {
-              "$ref": "#/components/schemas/MessageAttachment"
-            },
-            "type": "array",
-            "title": "Attachments",
-            "description": "The files on this message, in the order they were sent: sent with `attachments`, from the dashboard or an automation, or received from the contact. Empty when there are none. File contents and URLs are not returned."
-          },
-          "edited_at": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Edited At",
-            "description": "ISO 8601 UTC timestamp of the latest edit that reached the recipient: one of yours (`POST /v1/messages/{id}/edit`, or the dashboard), or, on an inbound message, the contact's own edit. Null when it was never edited.",
-            "examples": [
-              "2026-05-17T14:25:00.000000Z"
-            ]
-          },
-          "edit_count": {
-            "type": "integer",
-            "maximum": 5.0,
-            "minimum": 0.0,
-            "title": "Edit Count",
-            "description": "How many of your edits reached the recipient. iMessage allows five per message. Always `0` on an inbound message.",
-            "default": 0
-          },
-          "edit_status": {
-            "anyOf": [
-              {
-                "type": "string",
-                "enum": [
-                  "pending",
-                  "edited",
-                  "failed"
-                ]
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Edit Status",
-            "description": "`pending` = your latest edit is on its way (`body` already shows the new text); `failed` = it didn't reach the recipient, and `body` is back to the text they have (webhook `message.edit_failed`); `edited` = the message was edited. Null when it never was."
-          },
-          "unsend_status": {
-            "anyOf": [
-              {
-                "type": "string",
-                "enum": [
-                  "pending",
-                  "unsent",
-                  "partly_unsent",
-                  "failed"
-                ]
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Unsend Status",
-            "description": "`pending` = your Undo Send is on its way; `unsent` = the whole message was unsent (by you, or by the contact on an inbound message) and `body` is empty; `partly_unsent` = part of it was (its text, a link preview or a file); `failed` = your Undo Send didn't happen and the recipient still has the message (webhook `message.unsend_failed`). Null when nothing was unsent."
-          },
-          "unsent_at": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Unsent At",
-            "description": "ISO 8601 UTC timestamp of when the message (or the latest part of it) was unsent. Null unless `unsend_status` is `unsent` or `partly_unsent`.",
-            "examples": [
-              "2026-05-17T14:24:10.000000Z"
-            ]
+            "title": "Retryable",
+            "description": "`true` when sending the message again can work, `false` when it would fail the same way."
           }
         },
         "type": "object",
         "required": [
-          "id",
-          "direction",
-          "created_at",
-          "status",
-          "line_id",
-          "body",
-          "attachments"
+          "code",
+          "message",
+          "retryable"
         ],
-        "title": "Message",
-        "example": {
-          "id": "8b3a4e72-1c2d-4e5f-9a0b-2c3d4e5f6a7b",
-          "direction": "outbound",
-          "created_at": "2026-10-08T11:40:44.770512Z",
-          "status": "pending",
-          "to": "+14155551234",
-          "line_id": "5f0c2a9e-7d41-4b8a-9e3c-6a1b2c3d4e5f",
-          "line_number": "+14155550100",
-          "body": "Hey Sam \u2014 quick check-in about your order.",
-          "contact_id": "c8a1f4e2-3b9d-4f7c-a8e5-1d2c3b4a5e6f",
-          "conversation_id": "3a4b5c6d-7e8f-9a0b-1c2d-3e4f5a6b7c8d",
-          "conversation_kind": "one_to_one",
-          "chat_guid": null,
-          "channel": null,
-          "sent_at": "2026-10-08T11:40:44.770Z",
-          "held_until": "2026-10-08T16:00:00+00:00",
-          "held_reason": "working_hours",
-          "attachments": []
-        }
-      },
-      "MessageAttachment": {
-        "properties": {
-          "kind": {
-            "type": "string",
-            "enum": [
-              "image",
-              "gif",
-              "video",
-              "audio",
-              "file"
-            ],
-            "title": "Kind",
-            "description": "`file` is a PDF (or another document)."
-          },
-          "mime_type": {
-            "type": "string",
-            "title": "Mime Type",
-            "examples": [
-              "image/jpeg"
-            ]
-          },
-          "size_bytes": {
-            "type": "integer",
-            "title": "Size Bytes",
-            "description": "Size in bytes. An inbound file can show `0` for a few seconds, until iBubbl has received it."
-          },
-          "filename": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Filename",
-            "description": "The name the recipient sees: an upload's `filename`, or a URL file's name (its `Content-Disposition`, else the last part of its path). Null for received files, and for files sent before names were kept or without a usable name.",
-            "examples": [
-              "Invoice 1042.pdf"
-            ]
-          }
-        },
-        "type": "object",
-        "required": [
-          "kind",
-          "mime_type",
-          "size_bytes"
-        ],
-        "title": "MessageAttachment"
+        "title": "MessageError"
       },
       "MessageList": {
         "properties": {
@@ -4788,18 +4173,21 @@
         "properties": {
           "id": {
             "type": "string",
+            "format": "uuid",
             "title": "Id",
             "description": "Reaction ID. The `reaction_id` in `message.reaction.*` events."
           },
           "message_id": {
             "type": "string",
+            "format": "uuid",
             "title": "Message Id",
             "description": "The message the tapback is on."
           },
           "conversation_id": {
             "anyOf": [
               {
-                "type": "string"
+                "type": "string",
+                "format": "uuid"
               },
               {
                 "type": "null"
@@ -4848,12 +4236,13 @@
               }
             ],
             "title": "Failed Reason",
-            "description": "Why a `failed` tapback wasn't sent: `sms_target`, `target_not_found`, `bb_rejected`, `messages_error`, `expired`, `retract_rejected`, `target_unsent` or `line_inactive` (its line was suspended or archived before it went out). Null otherwise."
+            "description": "Why a `failed` tapback wasn't sent: `sms_target` (the message went by SMS), `target_not_found` (your line couldn't find the message), `bb_rejected` (your line refused to send it), `messages_error` (Messages reported an error sending it), `expired` (it couldn't go out in time), `retract_rejected` (removing it was refused, so it may still show on the contact's phone), `target_unsent` (the message was unsent) or `line_inactive` (its line was suspended or archived before it went out). Null otherwise."
           },
           "created_at": {
             "anyOf": [
               {
-                "type": "string"
+                "type": "string",
+                "format": "date-time"
               },
               {
                 "type": "null"
@@ -4865,7 +4254,8 @@
           "removed_at": {
             "anyOf": [
               {
-                "type": "string"
+                "type": "string",
+                "format": "date-time"
               },
               {
                 "type": "null"
@@ -4902,248 +4292,6 @@
           "removed_at": null
         }
       },
-      "ScheduledMessage": {
-        "properties": {
-          "id": {
-            "type": "string",
-            "title": "Id",
-            "description": "The scheduled message's id. Not a message id: see `message_id`."
-          },
-          "status": {
-            "type": "string",
-            "enum": [
-              "scheduled",
-              "sending",
-              "fired",
-              "failed",
-              "cancelled"
-            ],
-            "title": "Status",
-            "description": "`scheduled` = waiting for `send_at`; `sending` = being turned into a message right now (seconds); `fired` = the message was created (`message_id`): follow it for sending and delivery, as it may still wait for the contact's sending hours or a line limit; `failed` = it was refused when it fired and no message was created (`failed_reason`); `cancelled` = cancelled before it fired."
-          },
-          "send_at": {
-            "type": "string",
-            "title": "Send At",
-            "description": "When it is due, ISO 8601 UTC.",
-            "examples": [
-              "2026-11-20T14:00:00.000000Z"
-            ]
-          },
-          "to": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "To",
-            "description": "The contact's number.",
-            "examples": [
-              "+14155551234"
-            ]
-          },
-          "contact_id": {
-            "type": "string",
-            "title": "Contact Id"
-          },
-          "conversation_id": {
-            "type": "string",
-            "title": "Conversation Id",
-            "description": "The 1:1 conversation it will be sent in."
-          },
-          "body": {
-            "type": "string",
-            "title": "Body",
-            "description": "The text; empty when only files are scheduled."
-          },
-          "attachments": {
-            "items": {
-              "$ref": "#/components/schemas/ScheduledMessageAttachment"
-            },
-            "type": "array",
-            "title": "Attachments",
-            "description": "The files, in order; empty when there are none."
-          },
-          "effect": {
-            "anyOf": [
-              {
-                "type": "string",
-                "enum": [
-                  "slam",
-                  "loud",
-                  "gentle",
-                  "invisible",
-                  "echo",
-                  "spotlight",
-                  "balloons",
-                  "confetti",
-                  "love",
-                  "lasers",
-                  "fireworks",
-                  "celebration",
-                  "shooting_star"
-                ]
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Effect"
-          },
-          "reply_to_message_id": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Reply To Message Id"
-          },
-          "link_preview": {
-            "type": "boolean",
-            "title": "Link Preview",
-            "description": "Whether it was scheduled through the API with a preview card for its link. A message scheduled in the dashboard shows `false`, and still gets a card when it fires, like a message typed there, if its text ends in exactly one link with no other link in it and it has no files, `effect` or reply."
-          },
-          "message_id": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Message Id",
-            "description": "The id of the message it created, once `fired`; use it with `GET /v1/messages/{message_id}` and to match `message.*` webhooks."
-          },
-          "fired_at": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Fired At",
-            "description": "When it fired, ISO 8601 UTC. Null until then."
-          },
-          "failed_reason": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Failed Reason",
-            "description": "Why it was refused, when `failed`: `contact_opted_out`, `contact_blocked`, `contact_deleted`, `no_eligible_line`, `missed_window` (iBubbl couldn't send for more than 6 hours after `send_at`), or another send refusal code.",
-            "examples": [
-              "contact_opted_out"
-            ]
-          },
-          "created_at": {
-            "type": "string",
-            "title": "Created At",
-            "examples": [
-              "2026-11-12T18:04:11.532901Z"
-            ]
-          },
-          "updated_at": {
-            "type": "string",
-            "title": "Updated At",
-            "examples": [
-              "2026-11-12T18:04:11.532901Z"
-            ]
-          }
-        },
-        "type": "object",
-        "required": [
-          "id",
-          "status",
-          "send_at",
-          "contact_id",
-          "conversation_id",
-          "body",
-          "attachments",
-          "link_preview",
-          "created_at",
-          "updated_at"
-        ],
-        "title": "ScheduledMessage",
-        "example": {
-          "id": "5d1e2f3a-4b5c-4d6e-8f70-81920a1b2c3d",
-          "status": "scheduled",
-          "send_at": "2026-11-20T14:00:00.000000Z",
-          "to": "+14155551234",
-          "contact_id": "c8a1f4e2-3b9d-4f7c-a8e5-1d2c3b4a5e6f",
-          "conversation_id": "2f6b7c8d-9e0f-4a1b-8c2d-3e4f5a6b7c8d",
-          "body": "Hi Sam, a reminder about your appointment tomorrow at 10.",
-          "attachments": [],
-          "effect": null,
-          "reply_to_message_id": null,
-          "link_preview": false,
-          "message_id": null,
-          "fired_at": null,
-          "failed_reason": null,
-          "created_at": "2026-11-12T18:04:11.532901Z",
-          "updated_at": "2026-11-12T18:04:11.532901Z"
-        }
-      },
-      "ScheduledMessageAttachment": {
-        "properties": {
-          "kind": {
-            "type": "string",
-            "enum": [
-              "image",
-              "gif",
-              "video",
-              "audio",
-              "file"
-            ],
-            "title": "Kind",
-            "description": "`file` is a PDF (or another document)."
-          },
-          "mime_type": {
-            "type": "string",
-            "title": "Mime Type",
-            "examples": [
-              "image/jpeg"
-            ]
-          },
-          "size_bytes": {
-            "type": "integer",
-            "title": "Size Bytes"
-          },
-          "filename": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Filename",
-            "description": "The name the recipient will see. Null for files without a usable name, and for messages scheduled in the dashboard.",
-            "examples": [
-              "Invoice 1042.pdf"
-            ]
-          }
-        },
-        "type": "object",
-        "required": [
-          "kind",
-          "mime_type",
-          "size_bytes"
-        ],
-        "title": "ScheduledMessageAttachment"
-      },
       "ScheduledMessageList": {
         "properties": {
           "data": {
@@ -5171,6 +4319,7 @@
         "properties": {
           "conversation_id": {
             "type": "string",
+            "format": "uuid",
             "title": "Conversation Id",
             "description": "The conversation."
           },
@@ -5209,7 +4358,8 @@
           "expires_at": {
             "anyOf": [
               {
-                "type": "string"
+                "type": "string",
+                "format": "date-time"
               },
               {
                 "type": "null"
@@ -5362,7 +4512,7 @@
               }
             ],
             "title": "First Name",
-            "description": "Contact's first name. Only applied if the existing record's `first_name` is null \u2014 rep-edited values are sticky and won't be overwritten by automation. To change it, use `PATCH /v1/contacts/{id}`.",
+            "description": "Contact's first name. Only applied if the existing record's `first_name` is empty: a name someone on your account already set is never overwritten by an upsert. To change it, use `PATCH /v1/contacts/{id}`.",
             "examples": [
               "Sam"
             ]
@@ -5378,7 +4528,7 @@
               }
             ],
             "title": "Last Name",
-            "description": "Contact's last name. Same sticky-update semantics as `first_name`.",
+            "description": "Contact's last name. Only set when the contact has none yet, like `first_name`.",
             "examples": [
               "Rivera"
             ]
@@ -5394,7 +4544,7 @@
               }
             ],
             "title": "Email",
-            "description": "Email address. Must look like one (`name@domain.tld`, no spaces), or the call returns `422 invalid_email`. Same sticky-update semantics as `first_name`.",
+            "description": "Email address. Must look like one (`name@domain.tld`, no spaces), or the call returns `422 invalid_email`. Only set when the contact has none yet, like `first_name`.",
             "examples": [
               "sam@example.com"
             ]
@@ -5410,7 +4560,7 @@
               }
             ],
             "title": "City",
-            "description": "City. Trimmed; blank is treated as not sent. Same sticky-update semantics as `first_name`.",
+            "description": "City. Trimmed; blank is treated as not sent. Only set when the contact has none yet, like `first_name`.",
             "examples": [
               "Brooklyn"
             ]
@@ -5426,7 +4576,7 @@
               }
             ],
             "title": "State",
-            "description": "State, province or region. Trimmed, and a 2-letter code is upper-cased (`ny` \u2192 `NY`). Same sticky-update semantics as `first_name`.",
+            "description": "State, province or region. Trimmed, and a 2-letter code is upper-cased (`ny` \u2192 `NY`). Only set when the contact has none yet, like `first_name`.",
             "examples": [
               "NY"
             ]
@@ -5441,7 +4591,7 @@
               }
             ],
             "title": "Timezone",
-            "description": "IANA timezone for working-hours scheduling. Must be one of the supported allowlist (US/Canada timezones, plus common international). Sends to this contact respect the timezone for outside-hours scheduling. Same sticky-update semantics as names.",
+            "description": "IANA timezone for working-hours scheduling. Must be one of the supported allowlist (US/Canada timezones, plus common international). Sends to this contact respect the timezone for outside-hours scheduling. Only set when the contact has none yet, like `first_name`.",
             "examples": [
               "America/Los_Angeles"
             ]
@@ -5541,6 +4691,7 @@
           },
           "created_at": {
             "type": "string",
+            "format": "date-time",
             "title": "Created At",
             "description": "ISO 8601 UTC timestamp of the upload.",
             "examples": [
@@ -5549,6 +4700,7 @@
           },
           "expires_at": {
             "type": "string",
+            "format": "date-time",
             "title": "Expires At",
             "description": "ISO 8601 UTC timestamp 24 hours after the upload. Until then the file can be sent any number of times; after it, sends naming it return `422 file_expired` and the file is deleted.",
             "examples": [
@@ -5559,6 +4711,7 @@
         "type": "object",
         "required": [
           "id",
+          "filename",
           "kind",
           "mime_type",
           "size_bytes",
@@ -5604,7 +4757,8 @@
           "contact_id": {
             "anyOf": [
               {
-                "type": "string"
+                "type": "string",
+                "format": "uuid"
               },
               {
                 "type": "null"
@@ -5737,7 +4891,8 @@
           "reply_to_message_id": {
             "anyOf": [
               {
-                "type": "string"
+                "type": "string",
+                "format": "uuid"
               },
               {
                 "type": "null"
@@ -5793,7 +4948,7 @@
             "maxLength": 128,
             "minLength": 1,
             "title": "Idempotency Key",
-            "description": "Client-supplied unique key per logical send. Keys never expire: reusing a key with the same payload replays the original message, however long ago it was sent, and the same key with a different payload returns `409 idempotency_conflict`. The one exception is a message that ended `failed` or `expired`: its key is released and the retry is sent as a new message. The payload compared is the routing field exactly as sent (`to`, `contact_id`, `chat_guid`, or the sorted `participant_phones` plus `group_name`), `body`, and `effect`, `reply_to_message_id` and `attachments` when set, so a retry that switches from `to` to the same contact's `contact_id` is a 409. Keys are shared with `POST /v1/scheduled-messages`: a key already used to schedule a message is a 409 here. Must not start with `sched:`. Generate a new UUIDv4 for every distinct message.",
+            "description": "Client-supplied unique key per logical send. Keys never expire: reusing a key with the same payload replays the original message, however long ago it was sent, and the same key with a different payload returns `409 idempotency_conflict`. The one exception is a message that ended `failed` or `expired`: its key is released and the retry is sent as a new message. The payload compared is the routing field exactly as sent (`to`, `contact_id`, `chat_guid`, or the sorted `participant_phones` plus `group_name`), `body`, `effect`, `reply_to_message_id` and `attachments` when set, and `link_preview` when `true`, so a retry that switches from `to` to the same contact's `contact_id` is a 409. Keys are shared with `POST /v1/scheduled-messages`: a key already used to schedule a message is a 409 here. Must not start with `sched:`. Generate a new UUIDv4 for every distinct message.",
             "examples": [
               "a3f2c8d9-e0f1-4b4d-9c5a-7b8e2d1f0c4a"
             ]
@@ -5804,7 +4959,7 @@
           "idempotency_key"
         ],
         "title": "MessageCreate",
-        "description": "Fields not listed here are ignored without an error: the request still succeeds and they are not stored.",
+        "description": "Fields not listed here are ignored today: the request succeeds and they are not stored. From 2026-12-13 they are refused with `422 validation_error`, naming the field.",
         "example": {
           "to": "+14155551234",
           "body": "Hey Sam \u2014 quick check-in about your order.",
@@ -5865,7 +5020,8 @@
           "contact_id": {
             "anyOf": [
               {
-                "type": "string"
+                "type": "string",
+                "format": "uuid"
               },
               {
                 "type": "null"
@@ -5954,7 +5110,8 @@
           "reply_to_message_id": {
             "anyOf": [
               {
-                "type": "string"
+                "type": "string",
+                "format": "uuid"
               },
               {
                 "type": "null"
@@ -6178,10 +5335,1062 @@
           "status": "revoked"
         }
       },
+      "Contact": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id",
+            "description": "Unique contact identifier (UUID)."
+          },
+          "phone": {
+            "type": "string",
+            "title": "Phone",
+            "description": "Contact's phone number as first seen. Usually E.164; a contact first created by an inbound SMS can carry the sender's bare national form (e.g. `4155551234`). Upserting any form of the same number returns this contact."
+          },
+          "first_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "First Name"
+          },
+          "last_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Name"
+          },
+          "email": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Email"
+          },
+          "city": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "City"
+          },
+          "state": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "State"
+          },
+          "timezone": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Timezone",
+            "description": "IANA timezone used for this contact's sending hours, or null if not set yet. When it is null and the number is a US or Canadian one, iBubbl infers the zone from the area code and saves it here when the contact's first message is processed; otherwise your account's timezone is used. Once set, an upsert never replaces it, so pass `timezone` on the first upsert, before you send, or change it with PATCH."
+          },
+          "tags": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Tags",
+            "description": "The contact's tag names, sorted case-insensitively."
+          },
+          "opted_out": {
+            "type": "boolean",
+            "title": "Opted Out",
+            "description": "True if this person has opted out: a STOP reply, a rep in the dashboard, a Do Not Disturb in your connected GoHighLevel account, or `POST /v1/contacts/{id}/opt-out`. When true, every send to this contact returns `422 contact_opted_out`. An opt-out can't be undone, and it belongs to the number: a contact deleted and created again is still opted out."
+          },
+          "opted_out_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Opted Out At",
+            "description": "ISO 8601 UTC timestamp of the opt-out, or null."
+          },
+          "blocked": {
+            "type": "boolean",
+            "title": "Blocked",
+            "description": "True if you blocked this contact (dashboard or `POST /v1/contacts/{id}/block`). Sends to them return `422 contact_blocked` until you unblock them. Unlike an opt-out, a block is yours to undo, and it fires no webhook.",
+            "default": false
+          },
+          "blocked_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Blocked At",
+            "description": "ISO 8601 UTC timestamp of the block, or null."
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At",
+            "description": "ISO 8601 UTC timestamp the contact was created."
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "phone",
+          "first_name",
+          "last_name",
+          "email",
+          "city",
+          "state",
+          "timezone",
+          "tags",
+          "opted_out",
+          "opted_out_at",
+          "blocked",
+          "blocked_at",
+          "created_at"
+        ],
+        "title": "Contact",
+        "example": {
+          "id": "c8a1f4e2-3b9d-4f7c-a8e5-1d2c3b4a5e6f",
+          "phone": "+14155551234",
+          "first_name": "Sam",
+          "last_name": "Rivera",
+          "email": "sam@example.com",
+          "city": "Brooklyn",
+          "state": "NY",
+          "timezone": "America/New_York",
+          "tags": [
+            "Spring promo",
+            "VIP"
+          ],
+          "opted_out": false,
+          "opted_out_at": null,
+          "blocked": false,
+          "blocked_at": null,
+          "created_at": "2026-05-17T14:23:45.123Z"
+        }
+      },
+      "ImessageLookup": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id",
+            "description": "The lookup's id."
+          },
+          "phone": {
+            "type": "string",
+            "title": "Phone",
+            "description": "The number looked up, in E.164.",
+            "examples": [
+              "+14155551234"
+            ]
+          },
+          "contact_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Contact Id",
+            "description": "The contact the number belongs to."
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "pending",
+              "completed"
+            ],
+            "title": "Status",
+            "description": "`completed` = `result` is final and never changes. `pending` = waiting for Apple's answer, usually seconds and at most about 20 minutes; it arrives by `GET` and by the `imessage_lookup.completed` webhook."
+          },
+          "result": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "imessage",
+                  "not_imessage",
+                  "unknown"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Result",
+            "description": "`imessage` = the number can receive iMessages. `not_imessage` = it can't, as far as Apple confirms: Android, a landline, or an iPhone with iMessage turned off. `unknown` = it couldn't be checked (`reason`); this is not a no. Null while `pending`."
+          },
+          "source": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "recent_imessage",
+                  "previous_lookup",
+                  "failed_imessage",
+                  "lookup"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source",
+            "description": "Where the answer came from: `recent_imessage` = an iMessage delivered to the number from your account in the last 30 days; `previous_lookup` = an earlier answer from Apple under 30 days old; `failed_imessage` = an iMessage send to it failed as not on iMessage; `lookup` = Apple was asked for this lookup. Null when `result` is `unknown` or pending."
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "timeout",
+                  "lookup_failed",
+                  "line_unavailable"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason",
+            "description": "Why `result` is `unknown`: `timeout` = no line could ask Apple in time (they were busy sending); `lookup_failed` = Apple didn't answer; `line_unavailable` = the line it was queued on stopped serving your account. Look the number up again later. Null otherwise."
+          },
+          "checked_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Checked At",
+            "description": "When the answer was obtained, ISO 8601 UTC: the delivery, the failed send or Apple's answer. Older than `created_at` for an answer iBubbl already had. Null when there is no answer.",
+            "examples": [
+              "2026-11-12T18:04:19.118204Z"
+            ]
+          },
+          "completed_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Completed At",
+            "description": "When the lookup completed, ISO 8601 UTC. Null while pending."
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At",
+            "examples": [
+              "2026-11-12T18:04:11.532901Z"
+            ]
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "phone",
+          "contact_id",
+          "status",
+          "result",
+          "source",
+          "reason",
+          "checked_at",
+          "completed_at",
+          "created_at"
+        ],
+        "title": "ImessageLookup",
+        "example": {
+          "id": "7c1d2e3f-4a5b-4c6d-8e7f-90a1b2c3d4e5",
+          "phone": "+14155551234",
+          "contact_id": "c8a1f4e2-3b9d-4f7c-a8e5-1d2c3b4a5e6f",
+          "status": "completed",
+          "result": "imessage",
+          "source": "lookup",
+          "reason": null,
+          "checked_at": "2026-11-12T18:04:19.118204Z",
+          "completed_at": "2026-11-12T18:04:19.118204Z",
+          "created_at": "2026-11-12T18:04:11.532901Z"
+        }
+      },
+      "Message": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id",
+            "description": "Unique message identifier (UUID)."
+          },
+          "direction": {
+            "type": "string",
+            "enum": [
+              "inbound",
+              "outbound"
+            ],
+            "title": "Direction",
+            "description": "`outbound` = sent from your line (through the API, the dashboard or an automation); `inbound` = received from a contact. An inbound message has `status` `delivered`, or `read` once it has been read in the dashboard."
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At",
+            "description": "ISO 8601 UTC timestamp, with microseconds and a `Z`, of when iBubbl recorded the message. It never changes, so it is what `GET /v1/messages` sorts and filters by; pass it back as `created_after` / `created_before` unchanged.",
+            "examples": [
+              "2026-05-17T14:23:45.123456Z"
+            ]
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "queued",
+              "pending",
+              "sent",
+              "delivered",
+              "read",
+              "failed",
+              "expired",
+              "cancelled"
+            ],
+            "title": "Status",
+            "description": "Lifecycle state. `pending` = accepted and on its way out; it may be waiting for the contact's working hours or the line's hourly limit for new contacts (see `held_until`). `queued` = your line is offline; the message waits and goes out by itself when the line is back (the reason, `line_offline`, is on the `message.queued` webhook). `sent` / `delivered` / `read` = delivery progression. `failed` = the send failed \u2014 `failed_reason` and `error` say why (as on webhook `message.failed`); it can follow `sent` (or a `read` with no confirmed delivery) when iMessage reports the send failed after accepting it (`failed_reason` `imessage_undeliverable` / `imessage_error:<code>`), and such a message can still move to `delivered` / `read` if Apple later confirms it. `expired` = still queued after an hour, so dropped; it will not send (`failed_reason` `queue_expired`). `cancelled` = stopped before it went out: with `POST /v1/messages/{message_id}/cancel`, by someone on your account in the dashboard, or by iBubbl when an after-hours auto-reply misses its window; it will not send (webhook `message.cancelled`)."
+          },
+          "to": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "To",
+            "description": "The contact's phone number (E.164) for 1:1 messages: the destination of an outbound message, and the sender of an inbound one. Null for group messages \u2014 the group is identified by `chat_guid` instead.",
+            "examples": [
+              "+14155551234"
+            ]
+          },
+          "line_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Line Id",
+            "description": "ID of your line this message was on: the line that sent an outbound message, or received an inbound one. Group messages too. The same `id` as in `GET /v1/lines`.",
+            "examples": [
+              "5f0c2a9e-7d41-4b8a-9e3c-6a1b2c3d4e5f"
+            ]
+          },
+          "line_number": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Line Number",
+            "description": "That line's phone number (E.164), the line's `phone_number` in `GET /v1/lines`. Unlike `to`, it is your side of the conversation, in both directions.",
+            "examples": [
+              "+14155550100"
+            ]
+          },
+          "body": {
+            "type": "string",
+            "title": "Body",
+            "description": "The message text as sent."
+          },
+          "contact_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Contact Id",
+            "description": "ID of the contact this message was sent to. For groups, this is the 'primary' participant the message was addressed to (the first participant in `participant_phones` on a new group create). A group's other participants aren't listed here; `chat_guid` addresses the whole group."
+          },
+          "conversation_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Conversation Id",
+            "description": "ID of the conversation this message belongs to. Stable for the lifetime of the conversation; pass it to `GET /v1/messages?conversation_id=` to list the thread, or use it to correlate webhook events."
+          },
+          "conversation_kind": {
+            "type": "string",
+            "enum": [
+              "one_to_one",
+              "group"
+            ],
+            "title": "Conversation Kind",
+            "description": "`one_to_one` for sends to a single contact, `group` for iMessage groups (2+ participants in addition to your iBubbl line).",
+            "default": "one_to_one"
+          },
+          "chat_guid": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Chat Guid",
+            "description": "Opaque identifier for the group chat (e.g. `any;+;<hex>`). Returned for `group` messages \u2014 use it to address later messages to the same group via the `chat_guid` request shape. Null for `one_to_one` messages, and for a brand-new group until the group has been created in iMessage (that happens when the first message goes out, which can wait for sending hours); poll `GET /v1/messages/{id}` to see it fill in. It changes when a participant is added to the group.",
+            "examples": [
+              "any;+;00000000000000000000000000000000"
+            ]
+          },
+          "channel": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "imessage",
+                  "sms"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Channel",
+            "description": "How the message travelled: `imessage`, or `sms` (a text, including RCS). For an outbound message, how it actually went out (`sms` when the recipient couldn't be reached on iMessage); null until it has been sent. For an inbound message, how it arrived; null when that wasn't recorded."
+          },
+          "sent_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sent At",
+            "description": "ISO 8601 UTC timestamp. Set when the message is accepted, then replaced by the actual send time once it goes out. Use `status` (`sent` / `delivered` / `read`), not `sent_at`, to tell whether it has actually gone out.",
+            "examples": [
+              "2026-05-17T14:23:45.123Z"
+            ]
+          },
+          "held_until": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Held Until",
+            "description": "While a `pending` message is being held, the expected time (ISO 8601 UTC) it will go out: the next opening of the contact's working hours; for `hourly_limit`, an estimate of when a slot frees. Recomputed within about 10 seconds. Null when the message is not held, when `held_reason` is `working_hours` but no sending day is enabled, and when it is `hourly_limit` with no estimate.",
+            "examples": [
+              "2026-10-08T16:00:00.000000Z"
+            ]
+          },
+          "held_reason": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "working_hours",
+                  "hourly_limit"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Held Reason",
+            "description": "Why a `pending` message is being held right now: `working_hours` (outside the contact's working hours) or `hourly_limit` (the line has started its limit of new contacts for this hour; the message goes out by itself when a slot frees, at about `held_until`). Null when it is not held."
+          },
+          "effect": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "slam",
+                  "loud",
+                  "gentle",
+                  "invisible",
+                  "echo",
+                  "spotlight",
+                  "balloons",
+                  "confetti",
+                  "love",
+                  "lasers",
+                  "fireworks",
+                  "celebration",
+                  "shooting_star"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Effect",
+            "description": "The iMessage send effect requested for this message, or null. It shows on the recipient's device only when `channel` is `imessage`."
+          },
+          "link_preview": {
+            "type": "boolean",
+            "title": "Link Preview",
+            "description": "`true` when the message asked for a preview card for its link: sent or scheduled through the API with `link_preview: true`, or scheduled in the dashboard with text that ends in exactly one link. A message typed in the dashboard and sent right away gets a card for its link without it, and shows `false`.",
+            "default": false
+          },
+          "reply_to_message_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reply To Message Id",
+            "description": "The ID of the message this one quotes as an inline reply, or null. The quote shows on the recipient's device only when `channel` is `imessage`."
+          },
+          "attachments": {
+            "items": {
+              "$ref": "#/components/schemas/MessageAttachment"
+            },
+            "type": "array",
+            "title": "Attachments",
+            "description": "The files on this message, in the order they were sent: sent with `attachments`, from the dashboard or an automation, or received from the contact. Empty when there are none. File contents and URLs are not returned."
+          },
+          "edited_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Edited At",
+            "description": "ISO 8601 UTC timestamp of the latest edit that reached the recipient: one of yours (`POST /v1/messages/{id}/edit`, or the dashboard), or, on an inbound message, the contact's own edit. Null when it was never edited.",
+            "examples": [
+              "2026-05-17T14:25:00.000000Z"
+            ]
+          },
+          "edit_count": {
+            "type": "integer",
+            "maximum": 5.0,
+            "minimum": 0.0,
+            "title": "Edit Count",
+            "description": "How many of your edits reached the recipient. iMessage allows five per message. Always `0` on an inbound message.",
+            "default": 0
+          },
+          "edit_status": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "pending",
+                  "edited",
+                  "failed"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Edit Status",
+            "description": "`pending` = your latest edit is on its way (`body` already shows the new text); `failed` = it didn't reach the recipient, and `body` is back to the text they have (webhook `message.edit_failed`); `edited` = the message was edited. Null when it never was."
+          },
+          "unsend_status": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "pending",
+                  "unsent",
+                  "partly_unsent",
+                  "failed"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Unsend Status",
+            "description": "`pending` = your Undo Send is on its way; `unsent` = the whole message was unsent (by you, or by the contact on an inbound message) and `body` is empty; `partly_unsent` = part of it was (its text, a link preview or a file); `failed` = your Undo Send didn't happen and the recipient still has the message (webhook `message.unsend_failed`). Null when nothing was unsent."
+          },
+          "unsent_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Unsent At",
+            "description": "ISO 8601 UTC timestamp of when the message (or the latest part of it) was unsent. Null unless `unsend_status` is `unsent` or `partly_unsent`.",
+            "examples": [
+              "2026-05-17T14:24:10.000000Z"
+            ]
+          },
+          "failed_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Failed Reason",
+            "description": "Why a `failed` or `expired` message didn't go out: the same stable code as `failed_reason` on its `message.failed` webhook, for example `imessage_undeliverable`, `imessage_error:<code>`, `mac_send_failed`, `agent_offline`, `line_inactive` or `queue_expired`. Treat it as opaque; new values may be added. Null for every other status, including `queued` (its reason comes on the `message.queued` webhook) and a failed message that Apple later confirmed.",
+            "examples": [
+              "imessage_undeliverable"
+            ]
+          },
+          "error": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/MessageError"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The failure as an object, as on `message.failed`: `code` (the same as `failed_reason`), a readable `message` and `retryable`. Null unless `status` is `failed` or `expired`."
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "direction",
+          "created_at",
+          "status",
+          "to",
+          "line_id",
+          "line_number",
+          "body",
+          "contact_id",
+          "conversation_id",
+          "conversation_kind",
+          "chat_guid",
+          "channel",
+          "sent_at",
+          "held_until",
+          "held_reason",
+          "effect",
+          "link_preview",
+          "reply_to_message_id",
+          "attachments",
+          "edited_at",
+          "edit_count",
+          "edit_status",
+          "unsend_status",
+          "unsent_at",
+          "failed_reason",
+          "error"
+        ],
+        "title": "Message",
+        "example": {
+          "id": "8b3a4e72-1c2d-4e5f-9a0b-2c3d4e5f6a7b",
+          "direction": "outbound",
+          "created_at": "2026-10-08T11:40:44.770512Z",
+          "status": "pending",
+          "to": "+14155551234",
+          "line_id": "5f0c2a9e-7d41-4b8a-9e3c-6a1b2c3d4e5f",
+          "line_number": "+14155550100",
+          "body": "Hey Sam \u2014 quick check-in about your order.",
+          "contact_id": "c8a1f4e2-3b9d-4f7c-a8e5-1d2c3b4a5e6f",
+          "conversation_id": "3a4b5c6d-7e8f-9a0b-1c2d-3e4f5a6b7c8d",
+          "conversation_kind": "one_to_one",
+          "chat_guid": null,
+          "channel": null,
+          "sent_at": "2026-10-08T11:40:44.770512Z",
+          "held_until": null,
+          "held_reason": null,
+          "effect": null,
+          "link_preview": false,
+          "reply_to_message_id": null,
+          "attachments": [],
+          "edited_at": null,
+          "edit_count": 0,
+          "edit_status": null,
+          "unsend_status": null,
+          "unsent_at": null,
+          "failed_reason": null,
+          "error": null
+        }
+      },
+      "MessageAttachment": {
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": [
+              "image",
+              "gif",
+              "video",
+              "audio",
+              "file"
+            ],
+            "title": "Kind",
+            "description": "`file` is a PDF (or another document)."
+          },
+          "mime_type": {
+            "type": "string",
+            "title": "Mime Type",
+            "examples": [
+              "image/jpeg"
+            ]
+          },
+          "size_bytes": {
+            "type": "integer",
+            "title": "Size Bytes",
+            "description": "Size in bytes. An inbound file can show `0` for a few seconds, until iBubbl has received it."
+          },
+          "filename": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Filename",
+            "description": "The name the recipient sees: an upload's `filename`, or a URL file's name (its `Content-Disposition`, else the last part of its path). Null for received files, and for files sent before names were kept or without a usable name.",
+            "examples": [
+              "Invoice 1042.pdf"
+            ]
+          }
+        },
+        "type": "object",
+        "required": [
+          "kind",
+          "mime_type",
+          "size_bytes",
+          "filename"
+        ],
+        "title": "MessageAttachment"
+      },
+      "ScheduledMessage": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id",
+            "description": "The scheduled message's id. Not a message id: see `message_id`."
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "scheduled",
+              "sending",
+              "fired",
+              "failed",
+              "cancelled"
+            ],
+            "title": "Status",
+            "description": "`scheduled` = waiting for `send_at`; `sending` = being turned into a message right now (seconds); `fired` = the message was created (`message_id`): follow it for sending and delivery, as it may still wait for the contact's sending hours or a line limit; `failed` = it was refused when it fired and no message was created (`failed_reason`); `cancelled` = cancelled before it fired."
+          },
+          "send_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Send At",
+            "description": "When it is due, ISO 8601 UTC.",
+            "examples": [
+              "2026-11-20T14:00:00.000000Z"
+            ]
+          },
+          "to": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "To",
+            "description": "The contact's number.",
+            "examples": [
+              "+14155551234"
+            ]
+          },
+          "contact_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Contact Id"
+          },
+          "conversation_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Conversation Id",
+            "description": "The 1:1 conversation it will be sent in."
+          },
+          "body": {
+            "type": "string",
+            "title": "Body",
+            "description": "The text; empty when only files are scheduled."
+          },
+          "attachments": {
+            "items": {
+              "$ref": "#/components/schemas/ScheduledMessageAttachment"
+            },
+            "type": "array",
+            "title": "Attachments",
+            "description": "The files, in order; empty when there are none."
+          },
+          "effect": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "slam",
+                  "loud",
+                  "gentle",
+                  "invisible",
+                  "echo",
+                  "spotlight",
+                  "balloons",
+                  "confetti",
+                  "love",
+                  "lasers",
+                  "fireworks",
+                  "celebration",
+                  "shooting_star"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Effect"
+          },
+          "reply_to_message_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reply To Message Id"
+          },
+          "link_preview": {
+            "type": "boolean",
+            "title": "Link Preview",
+            "description": "Whether it was scheduled through the API with a preview card for its link. A message scheduled in the dashboard shows `false`, and still gets a card when it fires, like a message typed there, if its text ends in exactly one link with no other link in it and it has no files, `effect` or reply."
+          },
+          "message_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Message Id",
+            "description": "The id of the message it created, once `fired`; use it with `GET /v1/messages/{message_id}` and to match `message.*` webhooks."
+          },
+          "fired_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fired At",
+            "description": "When it fired, ISO 8601 UTC. Null until then."
+          },
+          "failed_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Failed Reason",
+            "description": "Why it was refused, when `failed`: `contact_opted_out`, `contact_blocked`, `contact_deleted`, `no_eligible_line`, `missed_window` (iBubbl couldn't send for more than 6 hours after `send_at`), or another send refusal code.",
+            "examples": [
+              "contact_opted_out"
+            ]
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At",
+            "examples": [
+              "2026-11-12T18:04:11.532901Z"
+            ]
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated At",
+            "examples": [
+              "2026-11-12T18:04:11.532901Z"
+            ]
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "status",
+          "send_at",
+          "to",
+          "contact_id",
+          "conversation_id",
+          "body",
+          "attachments",
+          "effect",
+          "reply_to_message_id",
+          "link_preview",
+          "message_id",
+          "fired_at",
+          "failed_reason",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "ScheduledMessage",
+        "example": {
+          "id": "5d1e2f3a-4b5c-4d6e-8f70-81920a1b2c3d",
+          "status": "scheduled",
+          "send_at": "2026-11-20T14:00:00.000000Z",
+          "to": "+14155551234",
+          "contact_id": "c8a1f4e2-3b9d-4f7c-a8e5-1d2c3b4a5e6f",
+          "conversation_id": "2f6b7c8d-9e0f-4a1b-8c2d-3e4f5a6b7c8d",
+          "body": "Hi Sam, a reminder about your appointment tomorrow at 10.",
+          "attachments": [],
+          "effect": null,
+          "reply_to_message_id": null,
+          "link_preview": false,
+          "message_id": null,
+          "fired_at": null,
+          "failed_reason": null,
+          "created_at": "2026-11-12T18:04:11.532901Z",
+          "updated_at": "2026-11-12T18:04:11.532901Z"
+        }
+      },
+      "ScheduledMessageAttachment": {
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": [
+              "image",
+              "gif",
+              "video",
+              "audio",
+              "file"
+            ],
+            "title": "Kind",
+            "description": "`file` is a PDF (or another document)."
+          },
+          "mime_type": {
+            "type": "string",
+            "title": "Mime Type",
+            "examples": [
+              "image/jpeg"
+            ]
+          },
+          "size_bytes": {
+            "type": "integer",
+            "title": "Size Bytes"
+          },
+          "filename": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Filename",
+            "description": "The name the recipient will see. Null for files without a usable name, and for messages scheduled in the dashboard.",
+            "examples": [
+              "Invoice 1042.pdf"
+            ]
+          }
+        },
+        "type": "object",
+        "required": [
+          "kind",
+          "mime_type",
+          "size_bytes",
+          "filename"
+        ],
+        "title": "ScheduledMessageAttachment"
+      },
       "WebhookSubscription": {
         "properties": {
           "id": {
             "type": "string",
+            "format": "uuid",
             "title": "Id",
             "description": "Unique subscription identifier (UUID)."
           },
@@ -6215,13 +6424,15 @@
           },
           "created_at": {
             "type": "string",
+            "format": "date-time",
             "title": "Created At",
             "description": "ISO 8601 UTC timestamp."
           },
           "last_delivered_at": {
             "anyOf": [
               {
-                "type": "string"
+                "type": "string",
+                "format": "date-time"
               },
               {
                 "type": "null"
@@ -6233,7 +6444,8 @@
           "revoked_at": {
             "anyOf": [
               {
-                "type": "string"
+                "type": "string",
+                "format": "date-time"
               },
               {
                 "type": "null"
@@ -6248,7 +6460,10 @@
           "id",
           "url",
           "secret_prefix",
-          "created_at"
+          "event_types",
+          "created_at",
+          "last_delivered_at",
+          "revoked_at"
         ],
         "title": "WebhookSubscription",
         "example": {
@@ -6268,6 +6483,7 @@
         "properties": {
           "id": {
             "type": "string",
+            "format": "uuid",
             "title": "Id",
             "description": "Unique subscription identifier (UUID)."
           },
@@ -6301,13 +6517,15 @@
           },
           "created_at": {
             "type": "string",
+            "format": "date-time",
             "title": "Created At",
             "description": "ISO 8601 UTC timestamp."
           },
           "last_delivered_at": {
             "anyOf": [
               {
-                "type": "string"
+                "type": "string",
+                "format": "date-time"
               },
               {
                 "type": "null"
@@ -6319,7 +6537,8 @@
           "revoked_at": {
             "anyOf": [
               {
-                "type": "string"
+                "type": "string",
+                "format": "date-time"
               },
               {
                 "type": "null"
@@ -6347,7 +6566,10 @@
           "id",
           "url",
           "secret_prefix",
+          "event_types",
           "created_at",
+          "last_delivered_at",
+          "revoked_at",
           "secret",
           "warning"
         ],

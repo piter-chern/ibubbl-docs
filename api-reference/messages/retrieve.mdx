@@ -84,7 +84,9 @@ print(data["status"], data["channel"])
   "edit_count": 0,
   "edit_status": null,
   "unsend_status": null,
-  "unsent_at": null
+  "unsent_at": null,
+  "failed_reason": null,
+  "error": null
 }
 ```
 
@@ -127,10 +129,12 @@ print(data["status"], data["channel"])
   "edit_count": 0,
   "edit_status": null,
   "unsend_status": null,
-  "unsent_at": null
+  "unsent_at": null,
+  "failed_reason": null,
+  "error": null
 }
 ```
-`direction` is `outbound` or `inbound`: an inbound message (for example the `message_id` of a `message.inbound` event) can be retrieved too, and then `status` is `delivered`, or `read` once it has been read in the dashboard, and `to` is the contact who sent it. `line_id` and `line_number` name the line the message was on (the one that sent it, or received it): the `id` and `phone_number` in [List lines](/api-reference/lines/list). `created_at` is when iBubbl recorded the message (UTC, microseconds, never changes). `status` is one of `queued`, `pending`, `sent`, `delivered`, `read`, `failed`, `expired`, `cancelled`. `channel` is how it went out (`imessage` or `sms`), or `null` before it is sent. For an inbound message, it is how the message arrived (`null` for messages received before iBubbl recorded it). `attachments` lists the message's files in order, each as `kind` (`image`, `gif`, `video`, `audio` or `file`), `mime_type`, `size_bytes` and `filename` (the name your contact saw, or `null` for a received file or one sent before names were kept; see [File names](/guides/attachments#file-names)), for files you sent and files the contact sent you; it's `[]` when there are none. File contents and URLs aren't returned. An inbound file can show `size_bytes: 0` for a few seconds, until iBubbl has received it. `edit_status`, `edit_count` and `edited_at` say whether the message was [edited](/api-reference/messages/edit) and how often (your edits, or the contact's on an inbound message); `unsend_status` and `unsent_at` whether it was [unsent](/api-reference/messages/unsend), whole (`unsent`, and `body` is then `""`) or in part (`partly_unsent`). `status` doesn't change when a message is edited or unsent. `link_preview` is `true` for a message that asked for a preview card: sent or scheduled through the API with [`link_preview: true`](/guides/send-messages#send-a-link-with-a-preview-card), or scheduled in the dashboard with text that ends in exactly one link. A message typed in the dashboard and sent right away gets a card for its link without it, and shows `false`. See [Where it stands](/guides/editing-and-unsending#where-it-stands).
+`direction` is `outbound` or `inbound`: an inbound message (for example the `message_id` of a `message.inbound` event) can be retrieved too, and then `status` is `delivered`, or `read` once it has been read in the dashboard, and `to` is the contact who sent it. `line_id` and `line_number` name the line the message was on (the one that sent it, or received it): the `id` and `phone_number` in [List lines](/api-reference/lines/list). `created_at` is when iBubbl recorded the message (UTC, microseconds, never changes). `status` is one of `queued`, `pending`, `sent`, `delivered`, `read`, `failed`, `expired`, `cancelled`. `channel` is how it went out (`imessage` or `sms`), or `null` before it is sent. For an inbound message, it is how the message arrived (`null` for messages received before iBubbl recorded it). `attachments` lists the message's files in order, each as `kind` (`image`, `gif`, `video`, `audio` or `file`), `mime_type`, `size_bytes` and `filename` (the name your contact saw, or `null` for a received file or one sent before names were kept; see [File names](/guides/attachments#file-names)), for files you sent and files the contact sent you; it's `[]` when there are none. File contents and URLs aren't returned. An inbound file can show `size_bytes: 0` for a few seconds, until iBubbl has received it. `edit_status`, `edit_count` and `edited_at` say whether the message was [edited](/api-reference/messages/edit) and how often (your edits, or the contact's on an inbound message); `unsend_status` and `unsent_at` whether it was [unsent](/api-reference/messages/unsend), whole (`unsent`, and `body` is then `""`) or in part (`partly_unsent`). `status` doesn't change when a message is edited or unsent. `failed_reason` and `error` say why a `failed` or `expired` message didn't go out: the same code and `{code, message, retryable}` object as its [`message.failed`](/webhooks/events#message-failed) webhook. Both are `null` for every other status, including `queued`. `link_preview` is `true` for a message that asked for a preview card: sent or scheduled through the API with [`link_preview: true`](/guides/send-messages#send-a-link-with-a-preview-card), or scheduled in the dashboard with text that ends in exactly one link. A message typed in the dashboard and sent right away gets a card for its link without it, and shows `false`. See [Where it stands](/guides/editing-and-unsending#where-it-stands).
 
 **401 Unauthorized**
 ```json
