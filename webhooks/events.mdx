@@ -65,7 +65,7 @@ Every `message.*` event carries `line_id`: the line that sent the message, or re
 <AccordionGroup>
 
 <Accordion title="message.queued" icon="hourglass-start">
-Fired when a one-to-one message is accepted. That covers every accepted one-to-one send: `status: "pending"` with `failed_reason: null` when it is on its way (including one waiting for the contact's [sending hours](/concepts/working-hours)), or `status: "queued"` when it is parked by a capacity hold. Group sends do not fire this event.
+Fired when a one-to-one message is accepted. That covers every accepted one-to-one send: `status: "pending"` with `failed_reason: null` when it is on its way (including one waiting for the contact's [sending hours](/concepts/working-hours)), or `status: "queued"` when it is parked by a capacity hold (`failed_reason: "line_offline"`, the same value [`GET /v1/messages/{id}`](/api-reference/messages/retrieve) shows while it is queued). Group sends do not fire this event.
 
 ```json
 {
@@ -225,6 +225,11 @@ A failed message can also move back. If Apple later confirms delivery or a read 
 - `line_inactive` — the line was suspended or retired before the message went out
 - `queue_expired` — the message was still `queued` 60–65 minutes after it was accepted, so it was dropped. This one arrives with `status: "expired"`, not `"failed"`, and `channel: null`. Its `idempotency_key` is released, so send it again if it still matters.
 - `no_eligible_line` — a queued message lost the line it was waiting for, so it can't go out
+- `contact_opted_out` — the contact opted out after the message was accepted and before it went out, so it was withdrawn. Never resend it.
+- `new_chat_needs_text` — the first message to this contact had no text (only files or a voice memo). A new conversation has to start with text: send a text first, then the files.
+- `sms_no_handle` — the message had to go by SMS, but your line couldn't open an SMS conversation with this number. Nothing was sent.
+- `voice_memo_prep_failed` — the voice memo couldn't be prepared for sending (it couldn't be converted, or came out too large for SMS). Nothing was sent.
+- `bulk_send_canceled` — legacy: only on old messages from a bulk-send feature that no longer exists.
 - `cold_cap_exhausted`, `followup_cap_exhausted`, `daily_cap_exhausted`, `unresponsive_contact` — legacy codes: a queued message failed a limit re-check on a line in the old limits mode. No current line uses that mode (see [Limits and queues](/concepts/limits)).
 
 See the [Error Reference](/errors) for the full catalog.

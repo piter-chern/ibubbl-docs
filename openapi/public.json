@@ -66,7 +66,7 @@
             }
           },
           "422": {
-            "description": "Request rejected; see `detail.error`. `validation_error` (bad request shape), `contact_opted_out`, `contact_blocked`, `no_eligible_line`, `unresponsive_contact`, `cold_cap_exhausted`, `followup_cap_exhausted`, `daily_cap_exhausted`, `group_outbound_blocked_suppression`, `insufficient_participants`, `reply_target_not_found`, `reply_target_unsent`, `reply_target_partly_unsent`, `first_message_needs_text`, `attachment_fetch_failed`, `attachment_too_large`, `unsupported_attachment`, `attachment_combination_not_supported`, `file_expired`, or `sms_attachment_refused` (a calendar file, `.ics`, to a contact who can only take SMS).",
+            "description": "Request rejected; see `detail.error`. `validation_error` (bad request shape), `contact_opted_out`, `contact_blocked`, `no_eligible_line`, `unresponsive_contact`, `cold_cap_exhausted`, `followup_cap_exhausted`, `daily_cap_exhausted`, `group_outbound_blocked_suppression`, `insufficient_participants`, `reply_target_not_found`, `reply_target_unsent`, `reply_target_partly_unsent`, `first_message_needs_text`, `attachment_fetch_failed`, `attachment_too_large`, `unsupported_attachment`, `attachment_combination_not_supported`, `file_expired`, `sms_attachment_refused` (a calendar file, `.ics`, to a contact who can only take SMS), or `account_setup_incomplete` (your account has no active manager in the dashboard; add or reactivate one, then retry).",
             "content": {
               "application/json": {
                 "schema": {
@@ -94,7 +94,7 @@
             }
           },
           "500": {
-            "description": "`internal_error`: retry with the same `idempotency_key`. `no_owner_rep`: your account's setup is incomplete, so nothing can be sent until iBubbl support fixes it; retrying won't help.",
+            "description": "`internal_error`: retry with the same `idempotency_key`.",
             "content": {
               "application/json": {
                 "schema": {
@@ -518,7 +518,7 @@
             }
           },
           "422": {
-            "description": "`validation_error` (bad body, unknown `type`), `invalid_target` (a message you sent), `contact_blocked`, `contact_opted_out`, `sms_not_supported` (the message came in by SMS, or the conversation is going out by SMS), `target_unsent` or `target_partly_unsent` (the contact unsent the message, or part of it), `no_eligible_line` (the line it came in on is no longer active on your account; don't retry).",
+            "description": "`validation_error` (bad body, unknown `type`), `invalid_target` (a message you sent), `contact_blocked`, `contact_opted_out`, `sms_not_supported` (the message came in by SMS, or the conversation is going out by SMS), `target_unsent` or `target_partly_unsent` (the contact unsent the message, or part of it), `no_eligible_line` (the line it came in on is no longer active on your account; don't retry), `account_setup_incomplete` (your account has no active manager in the dashboard; add or reactivate one, then retry).",
             "content": {
               "application/json": {
                 "schema": {
@@ -528,7 +528,7 @@
             }
           },
           "500": {
-            "description": "`no_owner_rep`: your account's setup is incomplete, so no tapback can be sent until iBubbl support fixes it; retrying won't help. `internal_error`: retry.",
+            "description": "`internal_error`: retry.",
             "content": {
               "application/json": {
                 "schema": {
@@ -1078,7 +1078,7 @@
             }
           },
           "422": {
-            "description": "`validation_error` (the body's shape, including a `send_at` without a time zone), `scheduled_group_unsupported` (`chat_guid`, `participant_phones` or `group_name`: groups can't be scheduled yet), `send_at_too_soon`, `send_at_too_far`, `scheduled_limit_reached`, `contact_opted_out`, `contact_blocked`, `reply_target_not_found`, `reply_target_unsent`, `reply_target_partly_unsent`, `first_message_needs_text`, `attachment_fetch_failed`, `attachment_too_large`, `unsupported_attachment`, `attachment_combination_not_supported` or `file_expired`.",
+            "description": "`validation_error` (the body's shape, including a `send_at` without a time zone), `scheduled_group_unsupported` (`chat_guid`, `participant_phones` or `group_name`: groups can't be scheduled yet), `send_at_too_soon`, `send_at_too_far`, `scheduled_limit_reached`, `contact_opted_out`, `contact_blocked`, `reply_target_not_found`, `reply_target_unsent`, `reply_target_partly_unsent`, `first_message_needs_text`, `attachment_fetch_failed`, `attachment_too_large`, `unsupported_attachment`, `attachment_combination_not_supported`, `file_expired` or `account_setup_incomplete` (your account has no active manager in the dashboard; add or reactivate one, then retry).",
             "content": {
               "application/json": {
                 "schema": {
@@ -1088,7 +1088,7 @@
             }
           },
           "500": {
-            "description": "`internal_error`: retry with the same `idempotency_key`. `no_owner_rep`: your account's setup is incomplete, so nothing can be scheduled until iBubbl support fixes it; retrying won't help.",
+            "description": "`internal_error`: retry with the same `idempotency_key`.",
             "content": {
               "application/json": {
                 "schema": {
@@ -3281,8 +3281,8 @@
               }
             }
           },
-          "404": {
-            "description": "`feature_disabled`: iMessage lookups aren't enabled for your account.",
+          "403": {
+            "description": "`forbidden`: your iBubbl account is suspended or cancelled. `feature_disabled`: iMessage lookups aren't enabled for your account; contact support to turn them on.",
             "content": {
               "application/json": {
                 "schema": {
@@ -3321,16 +3321,6 @@
           },
           "503": {
             "description": "`no_active_line`: your account has no active line. `line_offline`: none of your lines can look numbers up right now; try again in a few minutes. `lookup_unavailable`: the lookup couldn't be started; try again shortly. Nothing is queued in any of these cases.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ApiError"
-                }
-              }
-            }
-          },
-          "403": {
-            "description": "`forbidden`: your iBubbl account is suspended or cancelled.",
             "content": {
               "application/json": {
                 "schema": {
@@ -3383,8 +3373,8 @@
               }
             }
           },
-          "404": {
-            "description": "`not_found`: no lookup with that ID on your account. `feature_disabled`: iMessage lookups aren't enabled for your account.",
+          "403": {
+            "description": "`forbidden`: your iBubbl account is suspended or cancelled. `feature_disabled`: iMessage lookups aren't enabled for your account; contact support to turn them on.",
             "content": {
               "application/json": {
                 "schema": {
@@ -3393,8 +3383,8 @@
               }
             }
           },
-          "403": {
-            "description": "`forbidden`: your iBubbl account is suspended or cancelled.",
+          "404": {
+            "description": "`not_found`: no lookup with that ID on your account.",
             "content": {
               "application/json": {
                 "schema": {
@@ -5699,7 +5689,7 @@
               "cancelled"
             ],
             "title": "Status",
-            "description": "Lifecycle state. `pending` = accepted and on its way out; it may be waiting for the contact's working hours or the line's hourly limit for new contacts (see `held_until`). `queued` = your line is offline; the message waits and goes out by itself when the line is back (the reason, `line_offline`, is on the `message.queued` webhook). `sent` / `delivered` / `read` = delivery progression. `failed` = the send failed \u2014 `failed_reason` and `error` say why (as on webhook `message.failed`); it can follow `sent` (or a `read` with no confirmed delivery) when iMessage reports the send failed after accepting it (`failed_reason` `imessage_undeliverable` / `imessage_error:<code>`), and such a message can still move to `delivered` / `read` if Apple later confirms it. `expired` = still queued after an hour, so dropped; it will not send (`failed_reason` `queue_expired`). `cancelled` = stopped before it went out: with `POST /v1/messages/{message_id}/cancel`, by someone on your account in the dashboard, or by iBubbl when an after-hours auto-reply misses its window; it will not send (webhook `message.cancelled`)."
+            "description": "Lifecycle state. `pending` = accepted and on its way out; it may be waiting for the contact's working hours or the line's hourly limit for new contacts (see `held_until`). `queued` = your line is offline; the message waits and goes out by itself when the line is back (`failed_reason` `line_offline`, as on the `message.queued` webhook). `sent` / `delivered` / `read` = delivery progression. `failed` = the send failed \u2014 `failed_reason` and `error` say why (as on webhook `message.failed`); it can follow `sent` (or a `read` with no confirmed delivery) when iMessage reports the send failed after accepting it (`failed_reason` `imessage_undeliverable` / `imessage_error:<code>`), and such a message can still move to `delivered` / `read` if Apple later confirms it. `expired` = still queued after an hour, so dropped; it will not send (`failed_reason` `queue_expired`). `cancelled` = stopped before it went out: with `POST /v1/messages/{message_id}/cancel`, by someone on your account in the dashboard, or by iBubbl when an after-hours auto-reply misses its window; it will not send (webhook `message.cancelled`)."
           },
           "to": {
             "anyOf": [
@@ -5999,7 +5989,7 @@
               }
             ],
             "title": "Failed Reason",
-            "description": "Why a `failed` or `expired` message didn't go out: the same stable code as `failed_reason` on its `message.failed` webhook, for example `imessage_undeliverable`, `imessage_error:<code>`, `mac_send_failed`, `agent_offline`, `line_inactive` or `queue_expired`. Treat it as opaque; new values may be added. Null for every other status, including `queued` (its reason comes on the `message.queued` webhook) and a failed message that Apple later confirmed.",
+            "description": "Why a `failed` or `expired` message didn't go out: the same stable code as `failed_reason` on its `message.failed` webhook, for example `imessage_undeliverable`, `imessage_error:<code>`, `mac_send_failed`, `agent_offline`, `line_inactive` or `queue_expired`. On a `queued` message, why it waits: `line_offline`, as on its `message.queued` webhook. Treat it as opaque; new values may be added. Null for every other status, including a failed message that Apple later confirmed.",
             "examples": [
               "imessage_undeliverable"
             ]

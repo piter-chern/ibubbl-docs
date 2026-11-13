@@ -327,8 +327,8 @@ if not res.ok:
   One known cause: two `POST /v1/messages` requests with the same `idempotency_key` arriving at the same moment. Only one message is created, and the other request gets this `500`. Retrying it with the same key returns the `202` replay. See [Duplicates and retries](/concepts/message-lifecycle#duplicates-and-retries).
 </ResponseField>
 
-<ResponseField name="no_owner_rep" type="500">
-  Your account's setup is incomplete, so nothing can be sent: [Send a message](/api-reference/messages/send), [Schedule a message](/api-reference/scheduled-messages/create) and [Add a tapback](/api-reference/messages/react) all answer this. Retrying won't help; email [support@ibubbl.com](mailto:support@ibubbl.com).
+<ResponseField name="account_setup_incomplete" type="422">
+  Your account has no active manager in the dashboard, so nothing can be sent: [Send a message](/api-reference/messages/send), [Schedule a message](/api-reference/scheduled-messages/create) and [Add a tapback](/api-reference/messages/react) all answer this. Add a manager, or reactivate one, in the dashboard, then send the same request again. Nothing was sent, so the `idempotency_key` is still unused. Before 2026-11-13 this was `500 no_owner_rep`.
 </ResponseField>
 
 <ResponseField name="invalid_url" type="422">
@@ -343,8 +343,8 @@ if not res.ok:
   An [inbound event](/inbound-events/overview) body exceeded 256 KiB (262,144 bytes).
 </ResponseField>
 
-<ResponseField name="feature_disabled" type="404">
-  [Look up a number](/api-reference/imessage-lookups/create) and [Retrieve a lookup](/api-reference/imessage-lookups/retrieve): iMessage lookups have been turned off for your account. They are on for every account unless support turns them off; email [support@ibubbl.com](mailto:support@ibubbl.com).
+<ResponseField name="feature_disabled" type="403">
+  [Look up a number](/api-reference/imessage-lookups/create) and [Retrieve a lookup](/api-reference/imessage-lookups/retrieve): iMessage lookups have been turned off for your account (a `404` before 2026-11-13). They are on for every account unless support turns them off; email [support@ibubbl.com](mailto:support@ibubbl.com).
 </ResponseField>
 
 <ResponseField name="invalid_phone" type="422">
@@ -424,12 +424,12 @@ if not res.ok:
 | `no_eligible_line` | 422 | ⚠️ A send: send again once your line is back online. ❌ Edit, unsend, tapbacks, typing: the message's line is no longer on your account; don't retry. |
 | `rate_limited` | 429 | ✅ Lists, conversation actions, uploads, lookups and attachment sends: send the same request again (same `idempotency_key`) after `Retry-After` seconds. `/v1/events`: after about a minute. |
 | `lookup_budget_exhausted` | 429 | ✅ After `Retry-After` seconds, when one of your lines frees a lookup slot. |
-| `feature_disabled` | 404 | ❌ Lookups are turned off for your account; email support. |
+| `feature_disabled` | 403 | ❌ Lookups are turned off for your account; email support. |
 | `invalid_phone` | 422 | ❌ Fix the number. |
+| `account_setup_incomplete` | 422 | ⚠️ Add or reactivate a manager in the dashboard, then send the same request again. |
 | `lookup_unavailable` | 503 | ✅ Retry after a short backoff. |
 | `invalid_signature` | 403 | ❌ Fix the signing secret. |
 | `payload_too_large` | 413 | ❌ Fix the payload size. |
-| `no_owner_rep` | 500 | ❌ Your account's setup is incomplete; email [support@ibubbl.com](mailto:support@ibubbl.com). |
 | `internal_error` | 500 | ✅ Retry with the same idempotency key after a short backoff. |
 | `opt_out_check_unavailable` | 503 | ✅ Retry after a short backoff. |
 | `limits_unavailable` | 503 | ✅ Retry after a few seconds. |
@@ -443,13 +443,13 @@ The general rule: **don't retry 4xx**. Most 4xxes are payload-level problems tha
 | ------ | ---- |
 | `200` / `201` / `202` / `204` | Success. `202` for accepted-but-queued sends, edits and unsends; `201` for created resources, including an [upload](/api-reference/files/upload) and a [scheduled message](/api-reference/scheduled-messages/create) (`200` for its retry); `204` (no body) for [Delete a contact](/api-reference/contacts/delete) and [Delete a file](/api-reference/files/delete); `200` everywhere else. |
 | `401` | Auth failure. |
-| `403` | Account suspended or cancelled (`forbidden`), or an inbound event's signature failed (`invalid_signature`). |
-| `404` | Resource not found (or hidden across tenants), `group_not_found`, `line_not_found`, `file_not_found`, or `feature_disabled` (iMessage lookups are turned off for your account). |
+| `403` | Account suspended or cancelled (`forbidden`), iMessage lookups turned off for your account (`feature_disabled`), or an inbound event's signature failed (`invalid_signature`). |
+| `404` | Resource not found (or hidden across tenants), `group_not_found`, `line_not_found` or `file_not_found`. |
 | `409` | Idempotency conflict, or a message in a state another request holds: `edit_in_flight`, `already_unsent`, `message_dispatching`, `scheduled_message_sending`, `scheduled_message_changed`. |
 | `408` | `upload_timeout`: an upload that took too long to arrive. |
 | `413` | Inbound event body over 256 KiB. |
 | `422` | Validation, routing or send-limit failure. |
 | `429` | `rate_limited`: too many list requests, conversation actions, uploads or lookups from your account, or attachment downloads busy (all with `Retry-After`), or too many inbound events for one source on `/v1/events`. `lookup_budget_exhausted`: your lines' Apple lookup budget is used up (with `Retry-After`). |
-| `500` | Your account's setup is incomplete (`no_owner_rep`), or an unexpected iBubbl error (`internal_error`). |
+| `500` | An unexpected iBubbl error (`internal_error`). |
 | `503` | `opt_out_check_unavailable` on a tapback, edit or typing call, `limits_unavailable` on a lines read (retry after a short backoff), or `no_active_line` when scheduling to a contact you have no conversation with yet while no line of yours is active (send the same request again, same `idempotency_key`, once one is). On an [iMessage lookup](/api-reference/imessage-lookups/create): `line_offline`, `no_active_line` or `lookup_unavailable`, with nothing queued. |
 | `502` / `503` without a `detail.error` | The network edge during a deployment blip, not iBubbl itself. Retry with the same idempotency key after a short backoff. |

@@ -37,7 +37,7 @@ Solid arrows are the normal path. Dashed arrows are the [moves that go backwards
 
 | Status | Description | Is final? | Webhook emitted |
 | ------ | ----------- | --------- | --------------- |
-| `queued` | Accepted, but parked by a capacity hold. Today that means your line's Mac is offline (`line_offline`). One-to-one messages only. iBubbl retries every 30 seconds. | No | `message.queued` with `status: "queued"`, at acceptance |
+| `queued` | Accepted, but parked by a capacity hold. Today that means your line's Mac is offline: `failed_reason` is `line_offline` on the message and on its `message.queued` event. One-to-one messages only. iBubbl retries every 30 seconds. | No | `message.queued` with `status: "queued"`, at acceptance |
 | `pending` | Accepted and waiting for your line's Mac to send it. This includes a message being [held](#held-messages) for the contact's sending hours or the hourly new-contact limit. | No | `message.queued` with `status: "pending"`, at acceptance (one-to-one only) |
 | `sent` | Your line sent it. | No | `message.sent` |
 | `delivered` | The recipient's device confirmed delivery. | No | `message.delivered` |

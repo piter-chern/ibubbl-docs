@@ -132,10 +132,6 @@ iBubbl doesn't know yet, so one of your lines is asking Apple: `status: "pending
 Other `message` values: `Authorization Bearer token required`, `API key required (use Authorization: Bearer ib_pk_…)`, `Invalid API key format`, `Customer account not found`.
 
 **403 Forbidden**
-
-`forbidden`: your iBubbl account is suspended or cancelled.
-
-**404 Not Found**
 ```json
 {
   "detail": {
@@ -144,7 +140,7 @@ Other `message` values: `Authorization Bearer token required`, `API key required
   }
 }
 ```
-Lookups are on for every account. This answer means they have been turned off for yours; email [support@ibubbl.com](mailto:support@ibubbl.com).
+`feature_disabled`: lookups are on for every account, so this means they have been turned off for yours; email [support@ibubbl.com](mailto:support@ibubbl.com). `forbidden`: your iBubbl account is suspended or cancelled.
 
 **422 Unprocessable Entity**
 ```json

@@ -331,7 +331,7 @@ The same answer, with `message` naming `POST /v1/scheduled-messages`, when the k
   }
 }
 ```
-Other `error` values: `contact_opted_out`, `contact_blocked`, `no_eligible_line`, `unresponsive_contact`, `cold_cap_exhausted`, `daily_cap_exhausted`, `followup_cap_exhausted`, `group_outbound_blocked_suppression` (with a `blocked_phones` list), `insufficient_participants`, `reply_target_not_found`, `reply_target_unsent`, `reply_target_partly_unsent`, and for attachments `first_message_needs_text`, `attachment_fetch_failed`, `attachment_too_large`, `unsupported_attachment`, `attachment_combination_not_supported` and `file_expired` (an uploaded file past its `expires_at`). See [Errors](/errors).
+Other `error` values: `contact_opted_out`, `contact_blocked`, `no_eligible_line`, `unresponsive_contact`, `cold_cap_exhausted`, `daily_cap_exhausted`, `followup_cap_exhausted`, `group_outbound_blocked_suppression` (with a `blocked_phones` list), `insufficient_participants`, `reply_target_not_found`, `reply_target_unsent`, `reply_target_partly_unsent`, and for attachments `first_message_needs_text`, `attachment_fetch_failed`, `attachment_too_large`, `unsupported_attachment`, `attachment_combination_not_supported` and `file_expired` (an uploaded file past its `expires_at`), and `account_setup_incomplete` (your account has no active manager in the dashboard: add or reactivate one, then send again). See [Errors](/errors).
 
 **429 Too Many Requests**
 ```json
@@ -353,4 +353,4 @@ Sends with attachment URLs only, and rarely: iBubbl is already downloading as ma
   }
 }
 ```
-Retry with the same `idempotency_key`. The other `error` value, `no_owner_rep`, means your account's setup is incomplete: retrying won't help; email [support@ibubbl.com](mailto:support@ibubbl.com).
+Retry with the same `idempotency_key`.

@@ -630,9 +630,10 @@ A refused send creates no message, so its `idempotency_key` stays unused and you
 | `reply_target_not_found` | 422 | `reply_to_message_id` isn't a message in this conversation. Check the ID, and that you're sending to the same contact or group. |
 | `reply_target_unsent` / `reply_target_partly_unsent` | 422 | The contact unsent the message (or part of it). Send without `reply_to_message_id`. |
 | `first_message_needs_text`, `attachment_fetch_failed`, `attachment_too_large`, `unsupported_attachment`, `attachment_combination_not_supported` | 422 | A problem with `attachments`. See [Send attachments](/guides/attachments#errors). |
+| `account_setup_incomplete` | 422 | Your account has no active manager in the dashboard. Add or reactivate one, then send again. |
 | `internal_error` | 500 | Retry with the **same** `idempotency_key` and payload, with backoff. |
 
-`401`, `403` and `500 no_owner_rep` are account problems, not send problems; see [Errors](/errors).
+`401`, `403` and `422 account_setup_incomplete` are account problems, not send problems; see [Errors](/errors).
 
 ## Next
 

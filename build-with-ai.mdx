@@ -345,7 +345,7 @@ https://docs.ibubbl.com/guides/check-imessage-availability)
   GoHighLevel checks); over it, 429 lookup_budget_exhausted with Retry-After,
   nothing queued. 60 requests a minute per account (429 rate_limited). Never
   bulk-look-up a whole list; look up only numbers you are about to message.
-- 404 feature_disabled = lookups are turned off for the account; don't
+- 403 feature_disabled = lookups are turned off for the account; don't
   retry.
 
 RETRIES AND ERRORS
@@ -354,7 +354,7 @@ RETRIES AND ERRORS
   support@ibubbl.com.
 - Network error, timeout or 5xx: retry with the SAME idempotency_key and
   the same payload, with exponential backoff (1 s, 2 s, 4 s) and a small cap
-  on attempts. Exception: 500 no_owner_rep will not succeed on retry.
+  on attempts.
 - Never retry a 4xx automatically. Fix the request instead. The one
   exception: 429 rate_limited (a list, a tapback/read/typing call, a
   scheduled-message write, an upload, or an attachment send); wait Retry-After seconds, then repeat the same
