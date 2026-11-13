@@ -177,7 +177,7 @@ When a contact reads a message, iMessage implies they've read your earlier messa
 </Accordion>
 
 <Accordion title="message.failed" icon="circle-xmark">
-Fired when a send fails. `failed_reason` carries a stable failure code; `error_message` is a free-form diagnostic for your logs — don't parse it or show it to end users. `error` carries the same code with a readable `message` (one sentence per code, safe to log) and `retryable`: `true` when sending the message again can work, `false` when it would fail the same way.
+Fired when a send fails. `failed_reason` carries a stable failure code. `error` carries the same code with a readable `message` (one sentence per code, safe to log or show) and `retryable`: `true` when sending the message again can work, `false` when it would fail the same way. `error_message` is the same sentence as `error.message`, kept for integrations that already read it; use `error.message` in new code.
 
 It also fires when a `queued` message expires: then `status` is `"expired"` (the message's status in [`GET /v1/messages/{id}`](/api-reference/messages/retrieve)) and `failed_reason` is `queue_expired`. Both are final; branch on `failed_reason`, not on `status`.
 
@@ -202,7 +202,7 @@ A failed message can also move back. If Apple later confirms delivery or a read 
     "reply_to_message_id": null,
     "channel": "imessage",
     "failed_reason": "mac_send_failed",
-    "error_message": "Message failed to send",
+    "error_message": "Your line couldn't send it, or it wasn't confirmed sent within 10 minutes.",
     "error": {
       "code": "mac_send_failed",
       "message": "Your line couldn't send it, or it wasn't confirmed sent within 10 minutes.",
@@ -220,7 +220,7 @@ A failed message can also move back. If Apple later confirms delivery or a read 
 - `imessage_error:<code>` — iMessage reported another failure; `<code>` is its error number
 - `sms_attachment_refused` — the message was a calendar invite (`.ics`) to a contact who texts by plain SMS, which can't carry one. Resending fails the same way (`retryable: false`). On [`message.part_failed`](#message-part-failed) the same code also covers a PDF.
 - `mac_send_failed` — your line couldn't send it, or it wasn't confirmed sent within 10 minutes
-- `bluebubbles_unreachable` — your line couldn't be reached at send time
+- `line_unreachable` — your line couldn't be reached at send time (was `bluebubbles_unreachable` before 2026-11-13)
 - `agent_offline` — your line was offline for over an hour, so the message was failed rather than sent late
 - `line_inactive` — the line was suspended or retired before the message went out
 - `queue_expired` — the message was still `queued` 60–65 minutes after it was accepted, so it was dropped. This one arrives with `status: "expired"`, not `"failed"`, and `channel: null`. Its `idempotency_key` is released, so send it again if it still matters.

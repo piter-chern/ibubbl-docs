@@ -91,7 +91,7 @@ Most messages only move forward. The exceptions:
 
 - **`sent`, `delivered` or `read` → `failed`.** Messages.app can report an iMessage error after the message left your line: for example, the number isn't on iMessage. The message becomes `failed` with `failed_reason` `imessage_undeliverable` or `imessage_error:<code>`. This happens only when no delivery receipt was recorded.
 - **`failed` → `delivered` or `read`.** If a message that failed with an `imessage_*` reason is later confirmed by Apple, it moves to `delivered` or `read`.
-- **`failed` → `sent`.** A message failed as `line_inactive` or `agent_offline`, or as `mac_send_failed` / `bluebubbles_unreachable` within 30 minutes, moves to `sent` if the Mac reports that it did send it after all. `message.sent` fires.
+- **`failed` → `sent`.** A message failed as `line_inactive` or `agent_offline`, or as `mac_send_failed` / `line_unreachable` within 30 minutes, moves to `sent` if your line reports that it did send it after all. `message.sent` fires.
 - **`cancelled` → `sent`.** The Mac had already sent it when the cancel arrived. `message.sent` fires.
 
 Order events by the envelope's `created_at`, and when in doubt treat `GET /v1/messages/{id}` as the truth. See [ordering and duplicates](/webhooks/events#ordering-and-duplicates).
