@@ -218,7 +218,7 @@ A failed message can also move back. If Apple later confirms delivery or a read 
 
 - `imessage_undeliverable` — iMessage couldn't deliver it to this number: the number isn't reachable on iMessage. Resending fails the same way; reach the contact another way.
 - `imessage_error:<code>` — iMessage reported another failure; `<code>` is its error number
-- `sms_attachment_refused` — the message was a calendar invite (`.ics`) to a contact who texts by plain SMS, which can't carry one. Resending fails the same way (`retryable: false`).
+- `sms_attachment_refused` — the message was a calendar invite (`.ics`) to a contact who texts by plain SMS, which can't carry one. Resending fails the same way (`retryable: false`). On [`message.part_failed`](#message-part-failed) the same code also covers a PDF.
 - `mac_send_failed` — your line couldn't send it, or it wasn't confirmed sent within 10 minutes
 - `bluebubbles_unreachable` — your line couldn't be reached at send time
 - `agent_offline` — your line was offline for over an hour, so the message was failed rather than sent late
@@ -237,6 +237,8 @@ See the [Error Reference](/errors) for the full catalog.
 
 <Accordion title="message.part_failed" icon="file-circle-xmark">
 Fired when a message's text went out but its files didn't. The message keeps the text's outcome, so `status` is `sent`, `delivered` or `read` and [`message.failed`](#message-failed) doesn't fire. It happens when a file meets a contact who texts by plain SMS, which can't carry it: a PDF, or a calendar invite (`.ics`). iBubbl doesn't send an `.ics` to a contact it already knows texts by plain SMS. It fires once per message.
+
+A PDF or `.ics` that plain SMS refused has `files_failed_reason`, `error.code` and its part's `failed_reason` set to `sms_attachment_refused`, which is never retryable. Any other failure of the files carries one of the iMessage codes listed under [`message.failed`](#message-failed): `imessage_undeliverable` or `imessage_error:<code>`.
 
 ```json
 {
@@ -258,7 +260,7 @@ Fired when a message's text went out but its files didn't. The message keeps the
     "files_failed_reason": "sms_attachment_refused",
     "error": {
       "code": "sms_attachment_refused",
-      "message": "Recipient's route is SMS; .ics files can't be delivered.",
+      "message": "Recipient's route is SMS; this file type can't be delivered.",
       "retryable": false
     },
     "parts": [
