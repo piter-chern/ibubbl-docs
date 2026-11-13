@@ -544,7 +544,7 @@ print(data["id"], data["link_preview"])  # True
 </CodeGroup>
 
 <Warning>
-**Your line opens the link when it sends the message.** To build the card, your line's Mac fetches the page at send time to read its title and image. That counts as a visit in the site's analytics and as a click on a tracked link, before the contact has seen the message. Never set `link_preview` on one-time links: a login or password-reset link, a single-use invitation or a one-time coupon may be used up by that fetch. A site that blocks automated visitors, or answers slowly, gives a plainer card; the send never waits for the page.
+**Your line opens the link when it sends the message.** To build the card, your line fetches the page at send time to read its title and image. That counts as a visit in the site's analytics and as a click on a tracked link, before the contact has seen the message. Never set `link_preview` on one-time links: a login or password-reset link, a single-use invitation or a one-time coupon may be used up by that fetch. A site that blocks automated visitors, or answers slowly, gives a plainer card; the send never waits for the page.
 </Warning>
 
 The rules:
@@ -596,7 +596,7 @@ Add `attachments`, a list of up to 10 `https` URLs, to send photos, GIFs, videos
 | `pending` | `null` | On its way: your line sends it shortly. |
 | `pending` | `working_hours` | Waiting for the contact's [sending hours](/concepts/working-hours). `held_until` says when it goes out. |
 | `pending` | `hourly_limit` | Waiting for the line's hourly limit on new contacts. `held_until` is an estimate. See [Limits and queues](/concepts/limits). |
-| `queued` | `null` | One-to-one only: the line's Mac is offline. It goes out when the Mac reconnects, or expires after about an hour, which fires `message.failed` with `status: "expired"`. See [Offline lines](/concepts/limits#offline-lines). |
+| `queued` | `null` | One-to-one only: the line is offline. It goes out when the line reconnects, or expires after about an hour, which fires `message.failed` with `status: "expired"`. See [Offline lines](/concepts/limits#offline-lines). |
 
 A waiting message is not an error, so don't resend it: a new key would send a second message once the first goes out. For a group send, `to` is `null` and `conversation_kind` is `"group"`. `channel` stays `null` until the message is sent.
 
@@ -624,7 +624,7 @@ A refused send creates no message, so its `idempotency_key` stays unused and you
 | `unresponsive_contact` | 422 | 6 messages in a row without a reply. Wait until the contact replies. |
 | `cold_cap_exhausted` | 422 | The line reached 50 new contacts today. Try again after midnight ET. |
 | `daily_cap_exhausted` | 422 | The line reached 1,000 messages today. Try again after midnight ET. |
-| `no_eligible_line` | 422 | No line can take a new contact right now (for example, its Mac is offline). |
+| `no_eligible_line` | 422 | No line can take a new contact right now (for example, your line is offline). |
 | `group_outbound_blocked_suppression` | 422 | Someone in the group has opted out; a new-group send also lists them in `blocked_phones`. |
 | `insufficient_participants` | 422 | The new group names fewer than 2 different people. |
 | `reply_target_not_found` | 422 | `reply_to_message_id` isn't a message in this conversation. Check the ID, and that you're sending to the same contact or group. |

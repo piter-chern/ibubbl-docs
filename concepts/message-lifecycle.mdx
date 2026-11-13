@@ -3,7 +3,7 @@ title: 'Message lifecycle'
 description: 'Every status an outbound message can have, which ones are final, which webhook fires for each, and how duplicates and retries behave.'
 ---
 
-A message you send with [`POST /v1/messages`](/api-reference/messages/send) moves through a small set of statuses. The `202 Accepted` response only means iBubbl has the message. It goes out later, from the Mac that runs your line, and its status keeps changing after that.
+A message you send with [`POST /v1/messages`](/api-reference/messages/send) moves through a small set of statuses. The `202 Accepted` response only means iBubbl has the message. It goes out later, from your line, and its status keeps changing after that.
 
 Read the current status at any time with [`GET /v1/messages/{id}`](/api-reference/messages/retrieve), or follow it with [webhooks](/webhooks/events).
 
@@ -37,12 +37,12 @@ Solid arrows are the normal path. Dashed arrows are the [moves that go backwards
 
 | Status | Description | Is final? | Webhook emitted |
 | ------ | ----------- | --------- | --------------- |
-| `queued` | Accepted, but parked by a capacity hold. Today that means your line's Mac is offline: `failed_reason` is `line_offline` on the message and on its `message.queued` event. One-to-one messages only. iBubbl retries every 30 seconds. | No | `message.queued` with `status: "queued"`, at acceptance |
-| `pending` | Accepted and waiting for your line's Mac to send it. This includes a message being [held](#held-messages) for the contact's sending hours or the hourly new-contact limit. | No | `message.queued` with `status: "pending"`, at acceptance (one-to-one only) |
+| `queued` | Accepted, but parked by a capacity hold. Today that means your line is offline: `failed_reason` is `line_offline` on the message and on its `message.queued` event. One-to-one messages only. iBubbl retries every 30 seconds. | No | `message.queued` with `status: "queued"`, at acceptance |
+| `pending` | Accepted and waiting for your line to send it. This includes a message being [held](#held-messages) for the contact's sending hours or the hourly new-contact limit. | No | `message.queued` with `status: "pending"`, at acceptance (one-to-one only) |
 | `sent` | Your line sent it. | No | `message.sent` |
 | `delivered` | The recipient's device confirmed delivery. | No | `message.delivered` |
 | `read` | The recipient read it. A read is reported only when the recipient has read receipts on, and a plain SMS never reports one. | **No.** A late iMessage error can still turn it into `failed`, if no delivery receipt was recorded. | `message.read` |
-| `failed` | It didn't go out, or iMessage reported it undeliverable. `failed_reason` says why. That includes a `queued` message the queue's retry fails. | **Usually.** A failure with an `imessage_*` reason moves to `delivered` or `read` if Apple later confirms the message. A few connection failures can move to `sent` if the Mac confirms the send late (see below). | `message.failed`, with `failed_reason` |
+| `failed` | It didn't go out, or iMessage reported it undeliverable. `failed_reason` says why. That includes a `queued` message the queue's retry fails. | **Usually.** A failure with an `imessage_*` reason moves to `delivered` or `read` if Apple later confirms the message. A few connection failures can move to `sent` if your line confirms the send late (see below). | `message.failed`, with `failed_reason` |
 | `expired` | It was still `queued` about an hour after it was accepted, so iBubbl dropped it (`failed_reason: "queue_expired"`). | **Yes** | `message.failed`, with `status: "expired"` and `failed_reason: "queue_expired"` |
 | `cancelled` | Stopped before it went out: with [Cancel a message](/api-reference/messages/cancel), by someone on your account in the dashboard, or by iBubbl when an [after-hours auto-reply](/concepts/after-hours-reply) misses its window. | **Almost.** It moves to `sent` only if your line had already sent it when the cancel arrived. | `message.cancelled` (it carries no reason) |
 
@@ -83,7 +83,7 @@ These changes happen without a webhook. If you need to know about them, poll `GE
 
 A `queued` message that ends without going out always fires `message.failed`. One still `queued` 60–65 minutes after it was accepted expires: the event carries `status: "expired"` and `failed_reason: "queue_expired"`, and its `idempotency_key` is released, so send it again if it still matters. One the queue's retry fails carries `status: "failed"` and the reason.
 
-A `pending` message never becomes `expired`. If its line's Mac has been offline for more than an hour, it moves to `failed` with `failed_reason: "agent_offline"`, and `message.failed` fires.
+A `pending` message never becomes `expired`. If its line has been offline for more than an hour, it moves to `failed` with `failed_reason: "agent_offline"`, and `message.failed` fires.
 
 ## Statuses that move backwards
 
@@ -92,7 +92,7 @@ Most messages only move forward. The exceptions:
 - **`sent`, `delivered` or `read` → `failed`.** Messages.app can report an iMessage error after the message left your line: for example, the number isn't on iMessage. The message becomes `failed` with `failed_reason` `imessage_undeliverable` or `imessage_error:<code>`. This happens only when no delivery receipt was recorded.
 - **`failed` → `delivered` or `read`.** If a message that failed with an `imessage_*` reason is later confirmed by Apple, it moves to `delivered` or `read`.
 - **`failed` → `sent`.** A message failed as `line_inactive` or `agent_offline`, or as `mac_send_failed` / `line_unreachable` within 30 minutes, moves to `sent` if your line reports that it did send it after all. `message.sent` fires.
-- **`cancelled` → `sent`.** The Mac had already sent it when the cancel arrived. `message.sent` fires.
+- **`cancelled` → `sent`.** Your line had already sent it when the cancel arrived. `message.sent` fires.
 
 Order events by the envelope's `created_at`, and when in doubt treat `GET /v1/messages/{id}` as the truth. See [ordering and duplicates](/webhooks/events#ordering-and-duplicates).
 
@@ -110,7 +110,7 @@ Every send carries a required `idempotency_key`. Keys are scoped to your iBubbl 
 
 ### There is no content deduplication
 
-iBubbl never compares message bodies. Nothing in the API, the queue or the Mac drops a message because an identical one was sent a moment ago. **A new `idempotency_key` with an identical body sends a second, real message, even milliseconds after the first.** The idempotency key is the only thing that prevents duplicates.
+iBubbl never compares message bodies. Nothing in the API, the queue or your line drops a message because an identical one was sent a moment ago. **A new `idempotency_key` with an identical body sends a second, real message, even milliseconds after the first.** The idempotency key is the only thing that prevents duplicates.
 
 ### Avoid retry storms
 

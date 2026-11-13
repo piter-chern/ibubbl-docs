@@ -37,7 +37,7 @@ Fields not listed above are ignored today: the request still succeeds, and they 
 With `link_preview: true`, a message whose body is only a link arrives as one preview card. Text before the link arrives as its own bubble, followed by the card: two bubbles. [Edit](/api-reference/messages/edit) changes the text bubble and keeps the card; [Unsend](/api-reference/messages/unsend) takes back both. The card is built when the message goes out over iMessage, or over SMS or RCS where your line supports it. `link_preview` counts toward the idempotency payload when it's `true`, and the response echoes it.
 
 <Warning>
-**Your line opens the link when it sends the message.** To build the card, your line's Mac fetches the page at send time to read its title and image. That request counts as a visit and as a click on a tracked link. Don't set `link_preview` on one-time links: a login or password-reset link, a single-use invitation or a one-time coupon may be used up before the contact taps it.
+**Your line opens the link when it sends the message.** To build the card, your line fetches the page at send time to read its title and image. That request counts as a visit and as a click on a tracked link. Don't set `link_preview` on one-time links: a login or password-reset link, a single-use invitation or a one-time coupon may be used up before the contact taps it.
 </Warning>
 
 <CodeGroup>

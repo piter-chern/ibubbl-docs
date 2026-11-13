@@ -220,7 +220,7 @@ A failed message can also move back. If Apple later confirms delivery or a read 
 - `imessage_error:<code>` — iMessage reported another failure; `<code>` is its error number
 - `sms_attachment_refused` — the message was a calendar invite (`.ics`) to a contact who texts by plain SMS, which can't carry one. Resending fails the same way (`retryable: false`). On [`message.part_failed`](#message-part-failed) the same code also covers a PDF.
 - `mac_send_failed` — your line couldn't send it, or it wasn't confirmed sent within 10 minutes
-- `line_unreachable` — your line couldn't be reached at send time (was `bluebubbles_unreachable` before 2026-11-13)
+- `line_unreachable` — your line couldn't be reached at send time
 - `agent_offline` — your line was offline for over an hour, so the message was failed rather than sent late
 - `line_inactive` — the line was suspended or retired before the message went out
 - `queue_expired` — the message was still `queued` 60–65 minutes after it was accepted, so it was dropped. This one arrives with `status: "expired"`, not `"failed"`, and `channel: null`. Its `idempotency_key` is released, so send it again if it still matters.

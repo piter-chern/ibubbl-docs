@@ -3,7 +3,7 @@ title: 'Lines and routing'
 description: 'Which of your lines sends to a contact, and how iBubbl decides between iMessage and SMS.'
 ---
 
-A **line** is a phone number iBubbl runs for you on a dedicated Mac. Your account can have one line or several. This page explains which line a message goes out on, and whether it goes as an iMessage or a text. To see your lines, whether each is online, and how much of its [limits](/concepts/limits) it has used today, call [`GET /v1/lines`](/api-reference/lines/list).
+A **line** is a dedicated phone number that iBubbl runs for you. Your account can have one line or several. This page explains which line a message goes out on, and whether it goes as an iMessage or a text. To see your lines, whether each is online, and how much of its [limits](/concepts/limits) it has used today, call [`GET /v1/lines`](/api-reference/lines/list).
 
 ## Each contact sticks to one line
 
@@ -14,11 +14,11 @@ It changes in only two cases:
 - **The line can no longer be used** (paused, retired or moved to another account). The next message to the contact moves them to another of your lines. See [When a conversation's line is no longer yours](#when-a-conversations-line-is-no-longer-yours).
 - **The contact texts one of your other lines.** Their next message from you comes from the line they texted. Messages in a group don't move anyone.
 
-A line whose Mac is temporarily offline keeps its contacts. Their messages wait as `queued` until it is back. See [Limits and queues](/concepts/limits#offline-lines).
+A line that is temporarily offline keeps its contacts. Their messages wait as `queued` until it is back. See [Limits and queues](/concepts/limits#offline-lines).
 
 ### How a new contact gets a line
 
-For a contact with no line yet, iBubbl picks among your lines that are active and whose Mac is online. It prefers a line that still has room for new contacts today, then the one that has messaged the fewest new contacts this hour, then today. If none of your lines' Macs is online, the send gets `422 no_eligible_line`.
+For a contact with no line yet, iBubbl picks among your lines that are active and online. It prefers a line that still has room for new contacts today, then the one that has messaged the fewest new contacts this hour, then today. If none of your lines is online, the send gets `422 no_eligible_line`.
 
 ### You can't choose the line
 
@@ -58,7 +58,7 @@ For each one-to-one message to a US or Canadian number (`+1`), with or without f
 1. **The number recently failed on iMessage.** An earlier message to this number failed with iMessage error 22 (not reachable on iMessage) in the last 30 days, and no iMessage to the number has been delivered since. **→ SMS.**
 2. **An iMessage reached the number recently.** An iMessage from your account to this contact was delivered in the last 30 days. **→ iMessage.**
 3. **Apple answered recently.** iBubbl asked Apple whether the number uses iMessage less than 30 days ago. **→ That answer.**
-4. **Ask Apple now.** Your line's Mac asks Apple whether the number uses iMessage. Yes **→ iMessage.** No, or no answer within 5 seconds **→ SMS.**
+4. **Ask Apple now.** Your line asks Apple whether the number uses iMessage. Yes **→ iMessage.** No, or no answer within 5 seconds **→ SMS.**
 
 To know the answer before you send, for something that only works over iMessage, use [Check iMessage availability](/guides/check-imessage-availability). It reads the same evidence, and the answers it gets from Apple are the ones routing uses next.
 

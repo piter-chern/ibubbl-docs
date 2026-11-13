@@ -3,7 +3,7 @@ title: 'Limits and queues'
 description: 'The exact send limits on every iBubbl line, what happens when you reach them, and how fast a line can send.'
 ---
 
-Every iBubbl line is a real phone number on a real Mac. Carriers and Apple flag numbers that message too many strangers too quickly, so iBubbl enforces a few limits per line. They protect your number. This page gives the exact numbers.
+Every iBubbl line is a real phone number with its own Apple ID. Carriers and Apple flag numbers that message too many strangers too quickly, so iBubbl enforces a few limits per line. They protect your number. This page gives the exact numbers.
 
 Two kinds of limit apply:
 
@@ -47,7 +47,7 @@ Once one message to them goes out, they stop being new, and replies and follow-u
 | ------------ | --- | ----------------- |
 | `202`, `status: "pending"`, `held_reason: "working_hours"` | Outside the contact's [sending hours](/concepts/working-hours) | Goes out when the window opens |
 | `202`, `status: "pending"`, `held_reason: "hourly_limit"` | The line has messaged 30 new contacts in the last 60 minutes | Goes out when a slot frees |
-| `202`, `status: "queued"` | Your line's Mac is offline (`line_offline` in the [`message.queued`](/webhooks/events) webhook) | Goes out when the Mac reconnects, or [expires](#offline-lines) after an hour |
+| `202`, `status: "queued"` | Your line is offline (`line_offline` in the [`message.queued`](/webhooks/events) webhook) | Goes out when the line reconnects, or [expires](#offline-lines) after an hour |
 | `422 cold_cap_exhausted` | 50 new contacts today | Send to new contacts again after midnight ET |
 | `422 daily_cap_exhausted` | 1,000 messages today | Send again after midnight ET |
 | `422 unresponsive_contact` | 6 unanswered messages to this contact | Wait for the contact to reply |
@@ -56,12 +56,12 @@ Once one message to them goes out, they stop being new, and replies and follow-u
 
 ## Offline lines
 
-Your line sends from a Mac. If that Mac hasn't checked in for 2 minutes, it counts as offline:
+If your line hasn't checked in with iBubbl for 2 minutes, it counts as offline:
 
-- **A contact your line has messaged before** is accepted as `202` with `status: "queued"`. It goes out when the Mac is back. A message still `queued` 60–65 minutes after it was accepted becomes `expired`, and [`message.failed`](/webhooks/events#message-failed) fires with `status: "expired"` and `failed_reason: "queue_expired"`. Send it again if it still matters: its `idempotency_key` is released.
-- **A contact with no line yet** (someone your account has never messaged) gets `422 no_eligible_line`, because iBubbl only gives new contacts to a line whose Mac is online. Nothing is created. Send again once the line is back.
+- **A contact your line has messaged before** is accepted as `202` with `status: "queued"`. It goes out when the line is back. A message still `queued` 60–65 minutes after it was accepted becomes `expired`, and [`message.failed`](/webhooks/events#message-failed) fires with `status: "expired"` and `failed_reason: "queue_expired"`. Send it again if it still matters: its `idempotency_key` is released.
+- **A contact with no line yet** (someone your account has never messaged) gets `422 no_eligible_line`, because iBubbl only gives new contacts to a line that is online. Nothing is created. Send again once the line is back.
 
-A message that is already `pending` when the Mac goes offline waits for it. If the Mac stays offline for more than an hour, the message becomes `failed` with `failed_reason: "agent_offline"`, and `message.failed` fires.
+A message that is already `pending` when its line goes offline waits for it. If the line stays offline for more than an hour, the message becomes `failed` with `failed_reason: "agent_offline"`, and `message.failed` fires.
 
 ## Rate limits
 
@@ -76,10 +76,10 @@ A message that is already `pending` when the Mac goes offline waits for it. If t
 
 ## Throughput and pacing
 
-No rate limit on text sends doesn't mean unlimited speed. Each line is one Mac, and it sends **one message at a time**:
+No rate limit on text sends doesn't mean unlimited speed. Each line sends **one message at a time**:
 
-- The Mac checks for new messages every 2 seconds, then sends them in order with a 1-second pause after each one. So one line sends **at most about one message per second**.
-- Before the first text to a new US or Canadian number, the Mac asks Apple whether the number uses iMessage (see [Lines and routing](/concepts/lines-and-routing)). These checks are spaced 5 to 10 seconds apart.
+- The line checks for new messages every 2 seconds, then sends them in order with a 1-second pause after each one. So one line sends **at most about one message per second**.
+- Before the first text to a new US or Canadian number, the line asks Apple whether the number uses iMessage (see [Lines and routing](/concepts/lines-and-routing)). These checks are spaced 5 to 10 seconds apart.
 - The hourly and daily limits above apply on top.
 
 So a burst gains nothing. If you send 500 messages in one second, iBubbl accepts them all quickly, and then they wait as `pending` in your line's queue and go out one by one. New contacts past 30 wait an hour or more, and past 50 or 1,000 the sends are refused with `422`.
