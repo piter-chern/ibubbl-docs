@@ -10,10 +10,6 @@ description: 'Find out whether a number can receive iMessages before you send so
 - a flow that relies on [editing or unsending](/guides/editing-and-unsending) the message later, which SMS can't do;
 - choosing between an iMessage-only step and a text-message step in your own workflow.
 
-<Note>
-Lookups are available on request. If they aren't on for your account, the endpoints answer `404 feature_disabled`: email [support@ibubbl.com](mailto:support@ibubbl.com).
-</Note>
-
 ## How it works
 
 1. **You ask.** `POST /v1/imessage-lookups` with `{"phone": "+14155551234"}`.

@@ -340,8 +340,8 @@ https://docs.ibubbl.com/guides/check-imessage-availability)
   GoHighLevel checks); over it, 429 lookup_budget_exhausted with Retry-After,
   nothing queued. 60 requests a minute per account (429 rate_limited). Never
   bulk-look-up a whole list; look up only numbers you are about to message.
-- 404 feature_disabled = lookups aren't on for the account (support turns
-  them on); don't retry.
+- 404 feature_disabled = lookups are turned off for the account; don't
+  retry.
 
 RETRIES AND ERRORS
 - Branch on detail.error (the stable code), never on detail.message.

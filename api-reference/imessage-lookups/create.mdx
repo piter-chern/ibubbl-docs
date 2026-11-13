@@ -11,8 +11,6 @@ openapi: 'POST /v1/imessage-lookups'
 
 **Authentication:** API key in the `Authorization` header: `Authorization: Bearer ib_pk_<64 hex>`. Create keys in the dashboard under **Settings → API access**.
 
-**Availability:** on request. If lookups aren't on for your account, both lookup endpoints answer `404 feature_disabled`; email [support@ibubbl.com](mailto:support@ibubbl.com) to turn them on.
-
 **Rate limit:** 60 requests per 60 seconds per account, across all your API keys (a budget of its own). Asking Apple also uses your line's lookup budget: 50 an hour and 100 a day per line. Over either, you get `429` with a `Retry-After` header; see [Limits](/guides/check-imessage-availability#limits).
 
 #### Request Body
@@ -146,7 +144,7 @@ Other `message` values: `Authorization Bearer token required`, `API key required
   }
 }
 ```
-Lookups aren't on for your account. Email [support@ibubbl.com](mailto:support@ibubbl.com).
+Lookups are on for every account. This answer means they have been turned off for yours; email [support@ibubbl.com](mailto:support@ibubbl.com).
 
 **422 Unprocessable Entity**
 ```json
