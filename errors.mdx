@@ -321,6 +321,26 @@ if not res.ok:
   Not an API error: it appears as `failed_reason` (and `error.code`) on a failed message, in [Retrieve a message](/api-reference/messages/retrieve) and its [`message.failed`](/webhooks/events) webhook. iMessage couldn't deliver the message to this number because the number isn't reachable on iMessage. Resending fails the same way, so reach the contact another way. Other iMessage failures appear as `imessage_error:<code>`.
 </ResponseField>
 
+<ResponseField name="international_sms_not_enabled" type="message.failed">
+  Not an API error: it appears as `failed_reason` (and `error.code`) on a failed message, in [Retrieve a message](/api-reference/messages/retrieve) and its [`message.failed`](/webhooks/events#message-failed) webhook. The recipient's number is outside the US and Canada and isn't on iMessage, and international SMS isn't turned on for your account, so the message wasn't sent. Resending fails the same way (`retryable: false`). To text such numbers by SMS, email [support@ibubbl.com](mailto:support@ibubbl.com). See [Numbers outside the US and Canada](/concepts/lines-and-routing#numbers-outside-the-us-and-canada).
+</ResponseField>
+
+<ResponseField name="international_sms_country_unsupported" type="message.failed">
+  Not an API error: it appears as `failed_reason` (and `error.code`) on a failed message, in [Retrieve a message](/api-reference/messages/retrieve) and its [`message.failed`](/webhooks/events#message-failed) webhook. The recipient isn't on iMessage, and SMS to their country isn't supported, so the message wasn't sent. It is also the code for a number whose country can't be told from it. Resending fails the same way (`retryable: false`); reach the contact another way. See [Numbers outside the US and Canada](/concepts/lines-and-routing#numbers-outside-the-us-and-canada).
+</ResponseField>
+
+<ResponseField name="international_sms_line_unsupported" type="message.failed">
+  Not an API error: it appears as `failed_reason` (and `error.code`) on a failed message, in [Retrieve a message](/api-reference/messages/retrieve) and its [`message.failed`](/webhooks/events#message-failed) webhook. The recipient isn't on iMessage, and the line the message was on can't send international SMS, so it wasn't sent. Resending from the same line fails the same way (`retryable: false`). Send from another of your lines, or email [support@ibubbl.com](mailto:support@ibubbl.com). See [Numbers outside the US and Canada](/concepts/lines-and-routing#numbers-outside-the-us-and-canada).
+</ResponseField>
+
+<ResponseField name="international_mms_unsupported" type="message.failed">
+  Not an API error: it appears as `failed_reason` (and `error.code`) on a failed message, in [Retrieve a message](/api-reference/messages/retrieve) and its [`message.failed`](/webhooks/events#message-failed) webhook. The recipient isn't on iMessage, and the message's files can't go to their number by SMS: their country takes text messages only, or the files are of a kind or size iBubbl doesn't send by SMS (a PDF, for example). The message wasn't sent. Resending fails the same way (`retryable: false`); send the text without the files. See [Numbers outside the US and Canada](/concepts/lines-and-routing#numbers-outside-the-us-and-canada).
+</ResponseField>
+
+<ResponseField name="routing_check_failed" type="message.failed">
+  Not an API error: it appears as `failed_reason` (and `error.code`) on a failed message, in [Retrieve a message](/api-reference/messages/retrieve) and its [`message.failed`](/webhooks/events#message-failed) webhook. The recipient's number is outside the US and Canada, and iBubbl couldn't finish checking whether it's on iMessage (Apple didn't answer, or your line's check failed). Since the message may not go by SMS, it wasn't sent. Send it again (`retryable: true`): the next try may get its answer. Such a message shows `routing_check_failed`, not `line_unreachable` or `line_send_failed`. See [Numbers outside the US and Canada](/concepts/lines-and-routing#numbers-outside-the-us-and-canada).
+</ResponseField>
+
 <ResponseField name="internal_error" type="500">
   An unexpected error on iBubbl's side. These are paired with our error-tracking system; we get paged when they happen. If you see a sustained pattern, email [support@ibubbl.com](mailto:support@ibubbl.com) with the response's [`X-Request-Id`](#request-ids) header.
 
@@ -418,6 +438,11 @@ if not res.ok:
 | `invalid_url` | 422 | ❌ Use an `https://` URL. |
 | `invalid_timezone` | 422 | ❌ Fix the timezone. |
 | `invalid_email` / `invalid_tag` / `duplicate_tag` | 422 | ❌ Fix the value. |
+| `international_sms_not_enabled` | — (`message.failed`) | ❌ Not sent. International SMS isn't turned on for your account; email support. |
+| `international_sms_country_unsupported` | — (`message.failed`) | ❌ Not sent. SMS to this country isn't supported; reach the contact another way. |
+| `international_sms_line_unsupported` | — (`message.failed`) | ❌ Not sent. Send from another line, or email support. |
+| `international_mms_unsupported` | — (`message.failed`) | ❌ Not sent. Send the text without the files. |
+| `routing_check_failed` | — (`message.failed`) | ✅ Not sent. Send it again. |
 | `line_offline` | — (`202`, `queued`) | ⚠️ Not an error: iBubbl queues and retries for up to an hour. Don't resend. |
 | `daily_cap_exhausted` / `cold_cap_exhausted` | 422 | ⚠️ Not queued. Send again after the limit resets (midnight ET). |
 | `hourly_cap_hit` / `followup_cap_exhausted` | — | Legacy: not used on any current line. |
