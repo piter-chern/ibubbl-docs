@@ -5,7 +5,7 @@ description: 'Find out whether a number can receive iMessages before you send so
 
 [Look up a number](/api-reference/imessage-lookups/create) tells you whether a phone number can receive iMessages.
 
-**You don't need it for ordinary texts.** For one-to-one messages to US and Canadian numbers, iBubbl already decides between iMessage and SMS on every send, and falls back to SMS by itself (see [Lines and routing](/concepts/lines-and-routing#imessage-or-sms)). Look a number up when what you are about to do only works over iMessage:
+**You don't need it for ordinary texts.** For one-to-one messages to US and Canadian numbers, iBubbl already decides between iMessage and SMS on every send, and falls back to SMS by itself (see [Lines and routing](/concepts/lines-and-routing#imessage-or-sms)). Numbers elsewhere fall back to SMS only when international SMS is turned on for your account (see [Numbers outside the US and Canada](/concepts/lines-and-routing#numbers-outside-the-us-and-canada)). Look a number up when what you are about to do only works over iMessage:
 - a message [effect](/api-reference/messages/send), which goes out plain over SMS;
 - a flow that relies on [editing or unsending](/guides/editing-and-unsending) the message later, which SMS can't do;
 - choosing between an iMessage-only step and a text-message step in your own workflow.

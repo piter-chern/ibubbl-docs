@@ -53,7 +53,7 @@ In the dashboard, such a conversation shows a notice in place of the reply box, 
 
 ## iMessage or SMS
 
-For each one-to-one message to a US or Canadian number (`+1`), with or without files, iBubbl decides whether to send it as an iMessage or as a text message (SMS). It goes down this list and stops at the first step that gives an answer:
+For each one-to-one message to a US or Canadian number, with or without files, iBubbl decides whether to send it as an iMessage or as a text message (SMS). It goes down this list and stops at the first step that gives an answer:
 
 1. **The number recently failed on iMessage.** An earlier message to this number failed with iMessage error 22 (not reachable on iMessage) in the last 30 days, and no iMessage to the number has been delivered since. **→ SMS.**
 2. **An iMessage reached the number recently.** An iMessage from your account to this contact was delivered in the last 30 days. **→ iMessage.**
@@ -66,12 +66,34 @@ The message that failed with error 22 is not resent automatically: it stays `fai
 
 A message with [files](/guides/attachments) gets the same answer as a text. Over SMS, its files go as one MMS or as separate messages, and an Android phone with RCS gets one file per message. A PDF can't go over plain SMS, so it fails there. [Send attachments](/guides/attachments#what-your-contact-sees) shows how each kind arrives.
 
+### Numbers outside the US and Canada
+
+A one-to-one message to a number outside the US and Canada starts the same way: iBubbl checks whether the number is on iMessage, using the steps above. If it is, the message goes as an iMessage, whatever the country.
+
+If it isn't, the message goes by SMS (with files, by MMS) only when every check below passes. Otherwise it isn't sent, and fails with the code of the first check that doesn't:
+
+| Check | Fails with |
+| ----- | ---------- |
+| International SMS is turned on for your account. It's off unless you ask [support@ibubbl.com](mailto:support@ibubbl.com) to turn it on. | `international_sms_not_enabled` |
+| SMS to the recipient's country is supported, and the country can be told from the number. | `international_sms_country_unsupported` |
+| The message's line can send international SMS. | `international_sms_line_unsupported` |
+| A message with files: the country takes picture and video messages, and the files are ones iBubbl sends by SMS (never a PDF). | `international_mms_unsupported` |
+
+These four are final: resending fails the same way. If iBubbl can't finish the iMessage check for a message that may not go by SMS (Apple doesn't answer), the message isn't sent either, and fails with `routing_check_failed`. That one you can send again. Each code is in the [Error catalog](/errors#error-catalog).
+
+`+1` numbers outside the US and Canada, such as Jamaica, the Bahamas or Barbados, count as international here. Puerto Rico, Guam, the US Virgin Islands, American Samoa and the Northern Mariana Islands count as the US.
+
+What to expect from SMS abroad:
+
+- **Pictures and video may arrive as a link** instead of in the message, depending on the recipient's phone and network.
+- **A plain SMS usually stays `sent`.** Delivery is rarely confirmed for SMS abroad, so don't wait for `delivered`. Only iMessage and RCS report delivery and reads reliably.
+
 ### What isn't routed
 
-- **Numbers outside `+1`** always go as iMessage. If the recipient isn't on iMessage, the message fails with `imessage_undeliverable`; iBubbl never falls back to SMS for them.
 - **Group messages** always go as iMessage.
+- **Email addresses and short codes** are sent as they are, without these checks.
 
-Routing is on for every line, for one-to-one messages to `+1` numbers with or without files, as of 2026-11-11.
+Routing is on for every line, for one-to-one messages to `+1` numbers with or without files, as of 2026-11-11. The checks for [numbers outside the US and Canada](#numbers-outside-the-us-and-canada) apply from the date in the [Changelog](/changelog).
 
 ## Which channel a message used
 
