@@ -185,6 +185,8 @@ It also fires when a `queued` message expires: then `status` is `"expired"` (the
 
 A failed message can also move back. If Apple later confirms delivery or a read for a message that failed with an `imessage_*` reason, it moves to `delivered` or `read` and you receive that event.
 
+A message to a number outside the US and Canada can fail before anything is sent, when the recipient isn't on iMessage and the message may not go by SMS: then no `message.sent` comes before `message.failed`. Its `failed_reason` is one of the four `international_*` codes below (`retryable: false`; they never move back), or `routing_check_failed` when iBubbl couldn't finish checking iMessage (`retryable: true`). See [Numbers outside the US and Canada](/concepts/lines-and-routing#numbers-outside-the-us-and-canada).
+
 ```json
 {
   "id": "evt_8b3a4e72-1c2d-4e5f-9a0b-2c3d4e5f6a7b",
@@ -227,6 +229,11 @@ A failed message can also move back. If Apple later confirms delivery or a read 
 - `no_eligible_line` — a queued message lost the line it was waiting for, so it can't go out
 - `contact_opted_out` — the contact opted out after the message was accepted and before it went out, so it was withdrawn. Never resend it.
 - `new_chat_needs_text` — the first message to this contact had no text (only files or a voice memo). A new conversation has to start with text: send a text first, then the files.
+- `international_sms_not_enabled` — the number is outside the US and Canada and isn't on iMessage, and international SMS isn't turned on for your account. Nothing was sent. Resending fails the same way (`retryable: false`).
+- `international_sms_country_unsupported` — the recipient isn't on iMessage, and SMS to their country isn't supported (or the country can't be told from the number). Nothing was sent (`retryable: false`).
+- `international_sms_line_unsupported` — the recipient isn't on iMessage, and the message's line can't send international SMS. Nothing was sent (`retryable: false`); send from another line.
+- `international_mms_unsupported` — the recipient isn't on iMessage, and the files can't go to their number by SMS (a text-only country, or a kind or size of file iBubbl doesn't send by SMS). Nothing was sent (`retryable: false`); send the text without the files.
+- `routing_check_failed` — the number is outside the US and Canada, and iBubbl couldn't finish checking whether it's on iMessage. Nothing was sent. Send it again (`retryable: true`).
 - `sms_no_handle` — the message had to go by SMS, but your line couldn't open an SMS conversation with this number. Nothing was sent.
 - `voice_memo_prep_failed` — the voice memo couldn't be prepared for sending (it couldn't be converted, or came out too large for SMS). Nothing was sent.
 - `bulk_send_canceled` — legacy: only on old messages from a bulk-send feature that no longer exists.
