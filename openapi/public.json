@@ -3232,6 +3232,191 @@
         }
       }
     },
+    "/v1/sending-hours": {
+      "get": {
+        "tags": [
+          "Sending hours"
+        ],
+        "summary": "Retrieve sending hours",
+        "description": "Your account's weekly sending hours: the days and times messages go out. They are applied **in each contact's own timezone**, not your account's, so `09:00` means 9 AM where the contact is. A message created outside them waits as `pending` (with `held_reason: working_hours` and `held_until`) and goes out when the contact's window opens. To check one contact right now, use [Check a sending window](/api-reference/sending-hours/window). You change sending hours in the dashboard (**Settings \u2192 Sending Hours**).\n\nAllows 120 requests a minute per account, shared with the sending-window check. Over that, the answer is `429 rate_limited` with a `Retry-After` header in seconds.",
+        "operationId": "retrieveSendingHours",
+        "responses": {
+          "200": {
+            "description": "The account's sending hours.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SendingHours"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid API key.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "`rate_limited`: more than 120 sending-hours requests in 60 seconds from your account (all keys, and both sending-hours endpoints, count together; other requests have their own budgets). Wait `Retry-After` seconds, then send the same request again.",
+            "headers": {
+              "Retry-After": {
+                "description": "Seconds to wait before retrying.",
+                "schema": {
+                  "type": "integer"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "`forbidden`: your iBubbl account is suspended or cancelled.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/sending-window": {
+      "get": {
+        "tags": [
+          "Sending hours"
+        ],
+        "summary": "Check a sending window",
+        "description": "Whether a message to one contact would go out right now as far as sending hours go, in which timezone, and when that changes. Pass exactly one of `contact_id` or `to`, as you would to send. With `to`, a number that matches a contact answers for that contact; one that doesn't answers as a send would treat a new contact, and no contact is created.\n\nWhen closed, `next_open_at` is exactly the `held_until` a message sent now would show. `open_now: true` covers sending hours only: the line's hourly limit for new contacts (`held_reason: hourly_limit`, see [Lines](/api-reference/lines/list)), an offline line, opt-outs and blocks still apply. For one-to-one messages; group chats aren't covered.\n\nURL-encode the `+` in `to` (`%2B`). Prefer `contact_id` when you have it, which keeps phone numbers out of URLs.\n\nAllows 120 requests a minute per account, shared with Retrieve sending hours. Over that, the answer is `429 rate_limited` with a `Retry-After` header in seconds.",
+        "operationId": "retrieveSendingWindow",
+        "parameters": [
+          {
+            "name": "contact_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "The contact to check. Exactly one of `contact_id` or `to`.",
+              "examples": [
+                "c8a1f4e2-3b9d-4f7c-a8e5-1d2c3b4a5e6f"
+              ],
+              "title": "Contact Id"
+            },
+            "description": "The contact to check. Exactly one of `contact_id` or `to`."
+          },
+          {
+            "name": "to",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "An E.164 phone number (URL-encoded: `%2B14155551234`). Exactly one of `contact_id` or `to`.",
+              "examples": [
+                "+14155551234"
+              ],
+              "title": "To"
+            },
+            "description": "An E.164 phone number (URL-encoded: `%2B14155551234`). Exactly one of `contact_id` or `to`."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The contact's sending window right now.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SendingWindow"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid API key.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "`not_found`: no contact with this ID on your account.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "`validation_error`: both or neither of `contact_id` and `to`, an unknown or repeated query parameter, or a `to` that isn't E.164 (when the number has a standard form, it is in `suggested`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "`rate_limited`: more than 120 sending-hours requests in 60 seconds from your account (all keys, and both sending-hours endpoints, count together; other requests have their own budgets). Wait `Retry-After` seconds, then send the same request again.",
+            "headers": {
+              "Retry-After": {
+                "description": "Seconds to wait before retrying.",
+                "schema": {
+                  "type": "integer"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "`forbidden`: your iBubbl account is suspended or cancelled.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/v1/imessage-lookups": {
       "post": {
         "tags": [
@@ -4304,6 +4489,258 @@
           "has_more"
         ],
         "title": "ScheduledMessageList"
+      },
+      "SendingHours": {
+        "properties": {
+          "fallback_timezone": {
+            "type": "string",
+            "title": "Fallback Timezone",
+            "description": "The IANA timezone used for a contact with no timezone of their own and no area-code match: your account timezone (dashboard **Settings \u2192 Notifications**), else `America/New_York`.",
+            "examples": [
+              "America/New_York"
+            ]
+          },
+          "schedule": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/SendingHoursSchedule"
+              }
+            ],
+            "description": "All seven days. A day that is off, or whose times can't be read, has `enabled: false` and null times."
+          }
+        },
+        "type": "object",
+        "required": [
+          "fallback_timezone",
+          "schedule"
+        ],
+        "title": "SendingHours",
+        "description": "Your account's weekly sending hours. Each contact's messages go out only inside these hours **in that contact's own timezone**, not your account's: 09:00 means 9 AM where the contact is.",
+        "example": {
+          "fallback_timezone": "America/New_York",
+          "schedule": {
+            "monday": {
+              "enabled": true,
+              "start": "09:00",
+              "end": "20:00"
+            },
+            "tuesday": {
+              "enabled": true,
+              "start": "09:00",
+              "end": "20:00"
+            },
+            "wednesday": {
+              "enabled": true,
+              "start": "09:00",
+              "end": "20:00"
+            },
+            "thursday": {
+              "enabled": true,
+              "start": "09:00",
+              "end": "20:00"
+            },
+            "friday": {
+              "enabled": true,
+              "start": "09:00",
+              "end": "20:00"
+            },
+            "saturday": {
+              "enabled": true,
+              "start": "09:00",
+              "end": "20:00"
+            },
+            "sunday": {
+              "enabled": false,
+              "start": null,
+              "end": null
+            }
+          }
+        }
+      },
+      "SendingHoursDay": {
+        "properties": {
+          "enabled": {
+            "type": "boolean",
+            "title": "Enabled",
+            "description": "Whether messages go out on this day at all."
+          },
+          "start": {
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^\\d{2}:\\d{2}$"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Start",
+            "description": "When sending opens, `HH:MM` (24-hour), in the contact's own timezone. Null on a day that is off.",
+            "examples": [
+              "09:00"
+            ]
+          },
+          "end": {
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^\\d{2}:\\d{2}$"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "End",
+            "description": "When sending stops, `HH:MM` (24-hour), in the contact's own timezone. Exclusive: with `20:00` the last message goes out at 19:59. Null on a day that is off.",
+            "examples": [
+              "20:00"
+            ]
+          }
+        },
+        "type": "object",
+        "required": [
+          "enabled",
+          "start",
+          "end"
+        ],
+        "title": "SendingHoursDay"
+      },
+      "SendingHoursSchedule": {
+        "properties": {
+          "monday": {
+            "$ref": "#/components/schemas/SendingHoursDay"
+          },
+          "tuesday": {
+            "$ref": "#/components/schemas/SendingHoursDay"
+          },
+          "wednesday": {
+            "$ref": "#/components/schemas/SendingHoursDay"
+          },
+          "thursday": {
+            "$ref": "#/components/schemas/SendingHoursDay"
+          },
+          "friday": {
+            "$ref": "#/components/schemas/SendingHoursDay"
+          },
+          "saturday": {
+            "$ref": "#/components/schemas/SendingHoursDay"
+          },
+          "sunday": {
+            "$ref": "#/components/schemas/SendingHoursDay"
+          }
+        },
+        "type": "object",
+        "required": [
+          "monday",
+          "tuesday",
+          "wednesday",
+          "thursday",
+          "friday",
+          "saturday",
+          "sunday"
+        ],
+        "title": "SendingHoursSchedule"
+      },
+      "SendingWindow": {
+        "properties": {
+          "contact_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Contact Id",
+            "description": "The contact checked. Null when you passed `to` and no contact has that number yet (none is created)."
+          },
+          "phone": {
+            "type": "string",
+            "title": "Phone",
+            "description": "The contact's phone number, or the `to` you passed."
+          },
+          "timezone": {
+            "type": "string",
+            "title": "Timezone",
+            "description": "The IANA timezone this contact's sending hours are applied in.",
+            "examples": [
+              "America/Los_Angeles"
+            ]
+          },
+          "timezone_source": {
+            "type": "string",
+            "enum": [
+              "contact",
+              "area_code",
+              "account",
+              "default"
+            ],
+            "title": "Timezone Source",
+            "description": "Where `timezone` comes from, in the order iBubbl tries: `contact` (saved on the contact: set by you or in the dashboard, or saved from an earlier area-code guess), `area_code` (guessed from the number; saved on the contact when a message to them is first processed, not by this request), `account` (your account timezone), `default` (`America/New_York`, also used when a saved timezone isn't a valid one)."
+          },
+          "open_now": {
+            "type": "boolean",
+            "title": "Open Now",
+            "description": "Whether it is inside this contact's sending hours right now, so sending hours wouldn't hold a message sent now."
+          },
+          "closes_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Closes At",
+            "description": "When open: when the current window closes. Null when closed."
+          },
+          "next_open_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Open At",
+            "description": "When the next window opens. When closed, this is exactly the `held_until` a message sent now would show; when open, the opening after `closes_at`. Null when no day in the next eight opens (every day is off)."
+          },
+          "checked_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Checked At",
+            "description": "When this answer was worked out."
+          }
+        },
+        "type": "object",
+        "required": [
+          "contact_id",
+          "phone",
+          "timezone",
+          "timezone_source",
+          "open_now",
+          "closes_at",
+          "next_open_at",
+          "checked_at"
+        ],
+        "title": "SendingWindow",
+        "description": "Whether a message to this contact would go out right now as far as sending hours go, and when that changes. A snapshot as of `checked_at`. Other holds are separate: the line's hourly limit for new contacts, an offline line, opt-outs and blocks.",
+        "example": {
+          "contact_id": "c8a1f4e2-3b9d-4f7c-a8e5-1d2c3b4a5e6f",
+          "phone": "+14155551234",
+          "timezone": "America/Los_Angeles",
+          "timezone_source": "area_code",
+          "open_now": false,
+          "closes_at": null,
+          "next_open_at": "2026-11-16T17:00:00.000000Z",
+          "checked_at": "2026-11-16T06:12:03.418220Z"
+        }
       },
       "TypingStatus": {
         "properties": {
@@ -6610,6 +7047,9 @@
     },
     {
       "name": "Lines"
+    },
+    {
+      "name": "Sending hours"
     },
     {
       "name": "iMessage lookups"

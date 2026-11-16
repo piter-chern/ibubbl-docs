@@ -598,7 +598,7 @@ Add `attachments`, a list of up to 10 `https` URLs, to send photos, GIFs, videos
 | `pending` | `hourly_limit` | Waiting for the line's hourly limit on new contacts. `held_until` is an estimate. See [Limits and queues](/concepts/limits). |
 | `queued` | `null` | One-to-one only: the line is offline. It goes out when the line reconnects, or expires after about an hour, which fires `message.failed` with `status: "expired"`. See [Offline lines](/concepts/limits#offline-lines). |
 
-A waiting message is not an error, so don't resend it: a new key would send a second message once the first goes out. For a group send, `to` is `null` and `conversation_kind` is `"group"`. `channel` stays `null` until the message is sent.
+A waiting message is not an error, so don't resend it: a new key would send a second message once the first goes out. To know before you send whether a contact is inside their sending hours, and when they open, use [Check a sending window](/api-reference/sending-hours/window). For a group send, `to` is `null` and `conversation_kind` is `"group"`. `channel` stays `null` until the message is sent.
 
 ## Track the message
 

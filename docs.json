@@ -151,6 +151,13 @@
             ]
           },
           {
+            "group": "Sending hours",
+            "pages": [
+              "api-reference/sending-hours/retrieve",
+              "api-reference/sending-hours/window"
+            ]
+          },
+          {
             "group": "iMessage lookups",
             "pages": [
               "api-reference/imessage-lookups/create",

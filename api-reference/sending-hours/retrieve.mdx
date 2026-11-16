@@ -1,0 +1,134 @@
+---
+title: 'Retrieve sending hours'
+openapi: 'GET /v1/sending-hours'
+---
+
+### Retrieve sending hours
+
+**Method:** `GET` | **Endpoint:** `/v1/sending-hours`
+
+**Description:** Your account's weekly sending hours: the days and times messages go out. They are applied **in each contact's own timezone**, not your account's, so `09:00` means 9 AM where the contact is. A message created outside them waits as `pending` and goes out when the contact's window opens (see [Working hours](/concepts/working-hours)). To check one contact right now, use [Check a sending window](/api-reference/sending-hours/window).
+
+You change sending hours in the dashboard, under **Settings → Sending Hours**. The API reads them; it can't change them.
+
+**Authentication:** API key in the `Authorization` header: `Authorization: Bearer ib_pk_<64 hex>`. Create keys in the dashboard under **Settings → API access**.
+
+**Rate limit:** 120 requests per 60 seconds per account, shared with [Check a sending window](/api-reference/sending-hours/window) and across all your API keys. Over that, you get `429 rate_limited` with a `Retry-After` header; see [Rate limits](/concepts/limits#rate-limits).
+
+#### Request Body
+None.
+
+<RequestExample>
+
+```bash cURL
+curl https://api.ibubbl.com/v1/sending-hours \
+  -H "Authorization: Bearer $IBUBBL_API_KEY"
+```
+
+```typescript TypeScript
+const res = await fetch("https://api.ibubbl.com/v1/sending-hours", {
+  headers: { Authorization: `Bearer ${process.env.IBUBBL_API_KEY}` },
+  signal: AbortSignal.timeout(10_000),
+});
+
+const data = await res.json();
+if (!res.ok) throw new Error(`${res.status} ${data.detail?.error}`);
+console.log(data.fallback_timezone, data.schedule.monday);
+```
+
+```python Python
+import os
+
+import requests
+
+API_KEY = os.environ["IBUBBL_API_KEY"]
+
+res = requests.get(
+    "https://api.ibubbl.com/v1/sending-hours",
+    headers={"Authorization": f"Bearer {API_KEY}"},
+    timeout=10,
+)
+data = res.json()
+if not res.ok:
+    raise RuntimeError(f"{res.status_code} {data['detail']['error']}")
+print(data["fallback_timezone"], data["schedule"]["monday"])
+```
+
+</RequestExample>
+
+<ResponseExample>
+
+```json 200 OK
+{
+  "fallback_timezone": "America/New_York",
+  "schedule": {
+    "monday": { "enabled": true, "start": "09:00", "end": "20:00" },
+    "tuesday": { "enabled": true, "start": "09:00", "end": "20:00" },
+    "wednesday": { "enabled": true, "start": "09:00", "end": "20:00" },
+    "thursday": { "enabled": true, "start": "09:00", "end": "20:00" },
+    "friday": { "enabled": true, "start": "09:00", "end": "20:00" },
+    "saturday": { "enabled": true, "start": "09:00", "end": "20:00" },
+    "sunday": { "enabled": false, "start": null, "end": null }
+  }
+}
+```
+
+```json 401 Unauthorized
+{
+  "detail": {
+    "error": "unauthorized",
+    "message": "Invalid or revoked API key"
+  }
+}
+```
+
+</ResponseExample>
+
+#### Responses
+**200 OK**
+
+| Field | Type | Description |
+| ----- | ---- | ----------- |
+| `fallback_timezone` | string | The IANA timezone used for a contact who has no timezone of their own and whose number doesn't place them: your account timezone (dashboard **Settings → Notifications**), else `America/New_York`. |
+| `schedule` | object | All seven days, `monday` to `sunday`, each `{enabled, start, end}`. |
+| `schedule.<day>.enabled` | boolean | Whether messages go out on that day at all. |
+| `schedule.<day>.start` | string or null | When sending opens, `HH:MM` (24-hour) in the contact's timezone. `null` on a day that is off. |
+| `schedule.<day>.end` | string or null | When sending stops, `HH:MM`, in the contact's timezone. Exclusive: with `20:00` the last message goes out at 19:59. `null` on a day that is off. |
+
+The times apply in each **contact's** timezone. For a contact in Los Angeles and one in New York, Monday `09:00` is two different moments. [Check a sending window](/api-reference/sending-hours/window) gives the exact times for one contact.
+
+**401 Unauthorized**
+```json
+{
+  "detail": {
+    "error": "unauthorized",
+    "message": "Invalid or revoked API key"
+  }
+}
+```
+Other `message` values: `Authorization Bearer token required`, `API key required (use Authorization: Bearer ib_pk_…)`, `Invalid API key format`, `Customer account not found`.
+
+**403 Forbidden**
+```json
+{
+  "detail": {
+    "error": "forbidden",
+    "message": "Account is suspended"
+  }
+}
+```
+Your iBubbl account is suspended or cancelled (`message` is then `Account is cancelled`). Every API-key endpoint returns this.
+
+**429 Too Many Requests**
+```text
+Retry-After: 18
+```
+```json
+{
+  "detail": {
+    "error": "rate_limited",
+    "message": "Too many sending-hours requests; wait 18s (limit 120 a minute per account)."
+  }
+}
+```
+Your account made more than 120 sending-hours requests (this endpoint and [Check a sending window](/api-reference/sending-hours/window) together) in the last 60 seconds. Wait `Retry-After` seconds, then send the same request again; the refused request didn't count.

@@ -77,6 +77,15 @@ SENDING (POST /v1/messages)
 - 202 means accepted, not delivered. Track the outcome with webhooks or
   GET /v1/messages/{id}. A message outside the contact's sending hours stays
   "pending" with held_reason and held_until set; that is normal, not an error.
+- Check the sending window before scheduling or sending anything
+  time-sensitive: GET /v1/sending-window?contact_id=<id> (or ?to=<E.164>,
+  URL-encoded, %2B for +). It answers open_now, closes_at, next_open_at
+  (when closed, the held_until a send now would get), timezone and
+  timezone_source. Sending hours apply in the CONTACT's timezone, not yours;
+  GET /v1/sending-hours returns the weekly schedule. Both are read-only (the
+  hours change only in the dashboard) and share 120 requests a minute.
+  open_now covers sending hours only: the hourly new-contact limit, an
+  offline line, opt-outs and blocks still apply.
 - The request has no field for the sending line. Unknown fields such as from
   or line_id are ignored until 2026-12-13 and refused (422
   validation_error) from then on: send only documented fields. Each

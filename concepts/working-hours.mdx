@@ -30,7 +30,7 @@ The end time is exclusive: with the default window, sends pause at 8:00 PM. The 
 
 These are only your **sending** hours. When people can book meetings with you is a separate setting, **Settings → Booking Hours**, in your own time zone.
 
-You can configure different windows per day of the week, or close specific days entirely. The dashboard is the only way to manage these settings — there's no API surface for them today.
+You can configure different windows per day of the week, or close specific days entirely. You change them only in the dashboard; the API can read them with [Retrieve sending hours](/api-reference/sending-hours/retrieve).
 
 ## Per-contact timezone
 
@@ -101,6 +101,60 @@ print(data["id"], data["timezone"])
 Once a contact has a timezone, an upsert never changes it. That includes the inferred one: the area-code guess is saved on the contact when their first message is processed, so a `timezone` sent on a later upsert is ignored. Upsert first, then send.
 
 The `timezone` must be one of the supported zones (US, Canada, and a few international ones); anything else returns `422 invalid_timezone`.
+
+## Check the window before you send
+
+To know before you send whether a message to one contact would go out now, and if not when, call [Check a sending window](/api-reference/sending-hours/window) with the same `contact_id` or `to` you would send to:
+
+<CodeGroup>
+
+```bash cURL
+curl -G https://api.ibubbl.com/v1/sending-window \
+  -H "Authorization: Bearer $IBUBBL_API_KEY" \
+  --data-urlencode "contact_id=c8a1f4e2-3b9d-4f7c-a8e5-1d2c3b4a5e6f"
+```
+
+```typescript TypeScript
+const params = new URLSearchParams({ contact_id: "c8a1f4e2-3b9d-4f7c-a8e5-1d2c3b4a5e6f" });
+
+const res = await fetch(`https://api.ibubbl.com/v1/sending-window?${params}`, {
+  headers: { Authorization: `Bearer ${process.env.IBUBBL_API_KEY}` },
+  signal: AbortSignal.timeout(10_000),
+});
+
+const data = await res.json();
+if (!res.ok) throw new Error(`${res.status} ${data.detail?.error}`);
+console.log(data.timezone, data.open_now, data.next_open_at);
+```
+
+```python Python
+import os
+
+import requests
+
+API_KEY = os.environ["IBUBBL_API_KEY"]
+
+res = requests.get(
+    "https://api.ibubbl.com/v1/sending-window",
+    params={"contact_id": "c8a1f4e2-3b9d-4f7c-a8e5-1d2c3b4a5e6f"},
+    headers={"Authorization": f"Bearer {API_KEY}"},
+    timeout=10,
+)
+data = res.json()
+if not res.ok:
+    raise RuntimeError(f"{res.status_code} {data['detail']['error']}")
+print(data["timezone"], data["open_now"], data["next_open_at"])
+```
+
+</CodeGroup>
+
+- **`open_now`** says whether the contact is inside your sending hours right now, in **their** timezone (`timezone`, and `timezone_source` says how iBubbl got it, in the order above).
+- **`next_open_at`**: when closed, the exact `held_until` a message sent now would show (see below). When open, `closes_at` says when the window closes and `next_open_at` when it opens after that.
+- It only reads: no contact is created for a new number and no timezone is saved.
+- It covers sending hours only. The hourly limit for new contacts, an offline line, opt-outs and blocks are separate (see [Limits and queues](/concepts/limits)), and group chats aren't covered.
+- It's a snapshot: a send you make later is judged at that moment.
+
+You don't have to check: a message sent outside the window simply waits. Check when the timing matters to you, for example before you [schedule](/guides/schedule-messages) a message for a contact in another timezone, or to show your users when a message will go out. [Retrieve sending hours](/api-reference/sending-hours/retrieve) returns the whole weekly schedule.
 
 ## Detecting a held send
 

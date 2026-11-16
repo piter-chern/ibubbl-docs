@@ -1,0 +1,238 @@
+---
+title: 'Check a sending window'
+openapi: 'GET /v1/sending-window'
+---
+
+### Check a sending window
+
+**Method:** `GET` | **Endpoint:** `/v1/sending-window`
+
+**Description:** Whether a message to one contact would go out right now as far as [sending hours](/concepts/working-hours) go, which timezone they're judged in, and when that changes. Use it before you send or schedule something time-sensitive, or to tell your users when a message will actually go out.
+
+When the window is closed, `next_open_at` is exactly the `held_until` a message sent now would show. The check only reads: it never creates a contact and never saves a timezone.
+
+**Authentication:** API key in the `Authorization` header: `Authorization: Bearer ib_pk_<64 hex>`. Create keys in the dashboard under **Settings → API access**.
+
+**Rate limit:** 120 requests per 60 seconds per account, shared with [Retrieve sending hours](/api-reference/sending-hours/retrieve) and across all your API keys. Over that, you get `429 rate_limited` with a `Retry-After` header; see [Rate limits](/concepts/limits#rate-limits).
+
+#### Query parameters
+Pass exactly **one** of these, the same way you address a [send](/api-reference/messages/send):
+
+| Parameter | Description |
+| --------- | ----------- |
+| `contact_id` | The contact's ID (a UUID). |
+| `to` | A phone number in E.164 form, URL-encoded (`%2B14155551234`). A number that matches one of your contacts answers for that contact. One that doesn't answers the way a send would treat a new contact, and no contact is created. |
+
+Prefer `contact_id` when you have it: it keeps phone numbers out of URLs and your logs.
+
+<RequestExample>
+
+```bash cURL
+curl -G https://api.ibubbl.com/v1/sending-window \
+  -H "Authorization: Bearer $IBUBBL_API_KEY" \
+  --data-urlencode "contact_id=c8a1f4e2-3b9d-4f7c-a8e5-1d2c3b4a5e6f"
+```
+
+```typescript TypeScript
+const params = new URLSearchParams({ contact_id: "c8a1f4e2-3b9d-4f7c-a8e5-1d2c3b4a5e6f" });
+
+const res = await fetch(`https://api.ibubbl.com/v1/sending-window?${params}`, {
+  headers: { Authorization: `Bearer ${process.env.IBUBBL_API_KEY}` },
+  signal: AbortSignal.timeout(10_000),
+});
+
+const data = await res.json();
+if (!res.ok) throw new Error(`${res.status} ${data.detail?.error}`);
+console.log(data.open_now ? `open until ${data.closes_at}` : `opens ${data.next_open_at}`);
+```
+
+```python Python
+import os
+
+import requests
+
+API_KEY = os.environ["IBUBBL_API_KEY"]
+
+res = requests.get(
+    "https://api.ibubbl.com/v1/sending-window",
+    params={"contact_id": "c8a1f4e2-3b9d-4f7c-a8e5-1d2c3b4a5e6f"},
+    headers={"Authorization": f"Bearer {API_KEY}"},
+    timeout=10,
+)
+data = res.json()
+if not res.ok:
+    raise RuntimeError(f"{res.status_code} {data['detail']['error']}")
+print(f"open until {data['closes_at']}" if data["open_now"] else f"opens {data['next_open_at']}")
+```
+
+</RequestExample>
+
+<ResponseExample>
+
+```json 200 OK
+{
+  "contact_id": "c8a1f4e2-3b9d-4f7c-a8e5-1d2c3b4a5e6f",
+  "phone": "+14155551234",
+  "timezone": "America/Los_Angeles",
+  "timezone_source": "area_code",
+  "open_now": false,
+  "closes_at": null,
+  "next_open_at": "2026-11-16T17:00:00.000000Z",
+  "checked_at": "2026-11-16T06:12:03.418220Z"
+}
+```
+
+```json 422 Unprocessable Entity
+{
+  "detail": {
+    "error": "validation_error",
+    "message": "Pass exactly one of contact_id or to."
+  }
+}
+```
+
+</ResponseExample>
+
+#### Check a number
+
+With `to`, encode the `+` (`%2B`): an unencoded `+` in a URL means a space. `--data-urlencode`, `URLSearchParams` and `requests`' `params` all encode it for you.
+
+<CodeGroup>
+
+```bash cURL
+# Sent as ?to=%2B14155551234
+curl -G https://api.ibubbl.com/v1/sending-window \
+  -H "Authorization: Bearer $IBUBBL_API_KEY" \
+  --data-urlencode "to=+14155551234"
+```
+
+```typescript TypeScript
+const params = new URLSearchParams({ to: "+14155551234" });
+
+const res = await fetch(`https://api.ibubbl.com/v1/sending-window?${params}`, {
+  headers: { Authorization: `Bearer ${process.env.IBUBBL_API_KEY}` },
+  signal: AbortSignal.timeout(10_000),
+});
+
+const data = await res.json();
+if (!res.ok) throw new Error(`${res.status} ${data.detail?.error}`);
+console.log(data.contact_id, data.timezone, data.timezone_source);
+```
+
+```python Python
+import os
+
+import requests
+
+API_KEY = os.environ["IBUBBL_API_KEY"]
+
+res = requests.get(
+    "https://api.ibubbl.com/v1/sending-window",
+    params={"to": "+14155551234"},
+    headers={"Authorization": f"Bearer {API_KEY}"},
+    timeout=10,
+)
+data = res.json()
+if not res.ok:
+    raise RuntimeError(f"{res.status_code} {data['detail']['error']}")
+print(data["contact_id"], data["timezone"], data["timezone_source"])
+```
+
+</CodeGroup>
+
+#### Responses
+**200 OK**
+
+| Field | Type | Description |
+| ----- | ---- | ----------- |
+| `contact_id` | string or null | The contact checked. `null` when you passed `to` and no contact has that number yet. |
+| `phone` | string | The contact's phone number, or the `to` you passed. |
+| `timezone` | string | The IANA timezone this contact's sending hours are applied in. |
+| `timezone_source` | string | Where `timezone` comes from, in the order iBubbl tries: `contact`, `area_code`, `account` or `default` (see below). |
+| `open_now` | boolean | Whether it is inside this contact's sending hours right now. |
+| `closes_at` | string or null | When open: when the current window closes. `null` when closed. |
+| `next_open_at` | string or null | When the next window opens. When closed, this is exactly the `held_until` a message sent now would show. When open, it's the opening after `closes_at`. `null` when no day in the next eight opens (every day is off). |
+| `checked_at` | string | When this answer was worked out. |
+
+Timestamps are UTC in the form `2026-11-16T17:00:00.000000Z`.
+
+**`timezone_source`**, in the order iBubbl tries:
+
+- `contact`: a timezone saved on the contact. You set it with [Create or update a contact](/api-reference/contacts/upsert), or someone set it in the dashboard, or it's a guess from the number that was saved earlier.
+- `area_code`: guessed from the phone number (the area code for US and Canadian numbers). This check doesn't save it. It's saved on the contact when a message to them is first processed, so a later check says `contact`, with the same timezone.
+- `account`: your account timezone (dashboard **Settings → Notifications**), for a contact whose number doesn't place them.
+- `default`: `America/New_York`, when none of those apply, or when a saved timezone isn't a valid one.
+
+**What `open_now` doesn't cover.** It answers for sending hours only, so `open_now: true` doesn't promise the message goes out at once:
+
+- On a line's hourly limit for new contacts, a first message to a new contact can still wait (`held_reason: "hourly_limit"`). Read the line's room left with [List lines](/api-reference/lines/list).
+- If your line is offline, a send is accepted as `queued`.
+- An opted-out or blocked contact's send is refused.
+- The answer is for one-to-one messages; group chats aren't covered.
+- An [after-hours auto-reply](/concepts/after-hours-reply) from a workflow can go out up to 20 minutes after an inbound message even when closed. API sends never can.
+
+The answer is a snapshot as of `checked_at`. If your hours or the contact's timezone change afterwards, a message that is already waiting picks up the change within about 10 seconds (its `held_until` moves).
+
+**401 Unauthorized**
+```json
+{
+  "detail": {
+    "error": "unauthorized",
+    "message": "Invalid or revoked API key"
+  }
+}
+```
+Other `message` values: `Authorization Bearer token required`, `API key required (use Authorization: Bearer ib_pk_…)`, `Invalid API key format`, `Customer account not found`.
+
+**403 Forbidden**
+```json
+{
+  "detail": {
+    "error": "forbidden",
+    "message": "Account is suspended"
+  }
+}
+```
+Your iBubbl account is suspended or cancelled (`message` is then `Account is cancelled`). Every API-key endpoint returns this.
+
+**404 Not Found**
+```json
+{
+  "detail": {
+    "error": "not_found",
+    "message": "Contact not found"
+  }
+}
+```
+No contact with this `contact_id` on your account. It's also returned for a malformed ID, a deleted contact and another account's contact.
+
+**422 Unprocessable Entity**
+```json
+{
+  "detail": {
+    "error": "validation_error",
+    "message": "to: not in standard E.164 form; use the suggested number",
+    "suggested": "+447911123456"
+  }
+}
+```
+Returned when:
+- you pass both `contact_id` and `to`, or neither;
+- you pass an unknown or repeated query parameter;
+- `to` isn't an E.164 number.
+
+When the number has a standard form (for example, a trunk `0` left in), it's in `suggested`. Other `message` values: `Pass exactly one of contact_id or to.`, `to: must be E.164 format (e.g. +14155551234)`.
+
+**429 Too Many Requests**
+```text
+Retry-After: 18
+```
+```json
+{
+  "detail": {
+    "error": "rate_limited",
+    "message": "Too many sending-hours requests; wait 18s (limit 120 a minute per account)."
+  }
+}
+```
+Your account made more than 120 sending-hours requests (this endpoint and [Retrieve sending hours](/api-reference/sending-hours/retrieve) together) in the last 60 seconds. Wait `Retry-After` seconds, then send the same request again; the refused request didn't count. Checking every contact of a large batch one after another can reach it: pace the checks, or check only the sends where timing matters.
