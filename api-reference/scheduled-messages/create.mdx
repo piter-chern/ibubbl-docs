@@ -23,7 +23,7 @@ openapi: 'POST /v1/scheduled-messages'
 | `attachments` | array of 1–10 strings: `https` URLs or file IDs | No | Files to send, with the same types, sizes and errors as [Send attachments](/guides/attachments#supported-files-and-limits). iBubbl downloads each URL and copies each upload **when you schedule** and keeps the copies until the message is sent or cancelled, so an upload can expire, or be deleted, before `send_at` without affecting it. Not with `effect` or `reply_to_message_id`. |
 | `reply_to_message_id` | string (UUID) | No | Send as an inline reply quoting an earlier message in this contact's one-to-one conversation (`422 reply_target_not_found` otherwise). iMessage only. |
 | `effect` | string | No | An iMessage effect, as on [Send a message](/api-reference/messages/send). iMessage only. |
-| `link_preview` | boolean | No | Send the link with a preview card, as on [Send a message](/api-reference/messages/send#link-preview-cards). The body must end in exactly one `http(s)` link, with no other link in it; not with `attachments`, `effect` or `reply_to_message_id`. See [Link preview cards](#link-preview-cards). Default `false`. |
+| `link_preview` | boolean | No | Send the link with a preview card, as on [Send a message](/api-reference/messages/send#link-preview-cards). The body must end in exactly one `http(s)` link, with no other link in it and nothing after it, not even a period or an emoji; not with `attachments`, `effect` or `reply_to_message_id`. See [Link preview cards](#link-preview-cards). Default `false`. |
 | `idempotency_key` | string, 1–128 characters | Yes | Your unique key for this scheduled message; a UUIDv4 is recommended. Keys are shared with `POST /v1/messages`, and must not start with `sched:`. See [Idempotency](#idempotency) below. |
 
 Any other field is refused with `422 validation_error`. `chat_guid`, `participant_phones` and `group_name` are refused with `422 scheduled_group_unsupported`: groups can't be scheduled yet.
@@ -35,6 +35,7 @@ With `"link_preview": true`, the link at the end of `body` goes out as a preview
 - **The rules are checked when you schedule**, and again on every [update](/api-reference/scheduled-messages/update): a body that doesn't end in exactly one `http(s)` link, or a message with `attachments`, an `effect` or a reply, is `422 validation_error`. So a scheduled message never goes out plain while it says `link_preview: true`.
 - **Your line opens the page when the message is sent**, not when you schedule it. A click-tracked link counts a click then, and a one-time link (a login or reset link, a single-use coupon) may be used up: don't set it for those.
 - **It is part of the payload** for idempotency when `true`: a retry with the same key must repeat it.
+- **A contact who doesn't know your number may not see the card at first**, as on [Send a message](/api-reference/messages/send#link-preview-cards): until they reply or save your number, their iPhone may show **Tap to Load Preview** or the plain link.
 
 <Warning>Don't set `link_preview` on one-time or click-tracked links: the page is opened to build the card.</Warning>
 

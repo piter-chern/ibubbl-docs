@@ -549,9 +549,10 @@ print(data["id"], data["link_preview"])  # True
 
 The rules:
 
-- **The body must end in exactly one link.** `http` or `https`, last, with no other link (or email address) in the text before it. A link in the middle, two links, or none gets `422 validation_error`, and nothing is sent.
+- **The body must end in exactly one link.** `http` or `https`, last, with no other link (or email address) in the text before it and nothing after it, not even a period or an emoji. A link in the middle, two links, anything after the link, or no link gets `422 validation_error`, and nothing is sent.
 - **One-to-one only, on its own.** Not with `chat_guid` or `participant_phones`, `attachments`, `effect` or `reply_to_message_id` (`422 validation_error`).
 - **Where the card shows.** Over iMessage, and over SMS or RCS where your line supports it. `channel` on the message says how it went out.
+- **A contact who doesn't know your number may not see the card at first.** Until they reply or save your number, their iPhone may show **Tap to Load Preview** or the plain link in place of the card. The message is delivered either way.
 - **Editing and unsending.** The two bubbles are changed together: [Edit](/api-reference/messages/edit) rewrites the text bubble and keeps the card (keep the link exactly as sent, or you get `422 link_changed`), and [Unsend](/api-reference/messages/unsend) takes back both. See [Edit, Undo Send, and Cancel](/guides/editing-and-unsending).
 - **Idempotency.** `link_preview: true` is part of the request: a retry with the same `idempotency_key` must send it too, or it returns `409 idempotency_conflict`. The response, [Retrieve](/api-reference/messages/retrieve) and [List](/api-reference/messages/list) echo it as `link_preview`.
 
