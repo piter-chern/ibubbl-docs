@@ -76,7 +76,7 @@ What to know:
   - [`message.reaction.added`](/webhooks/events) fires with `direction: "outbound"` once it's on the contact's phone;
   - or [`message.reaction.failed`](/webhooks/events) fires with a `failed_reason` if it can't be sent. A tapback not sent within 10 minutes fails as `expired`.
 - **Not over SMS.** Tapbacks go out over iMessage, and over RCS to Android contacts. If the message came in by SMS, or the conversation is going out by SMS, the answer is `422 sms_not_supported`. When iBubbl can't tell up front, the line refuses it later with `failed_reason: "sms_target"`.
-- **Same rules as a send.** In a one-to-one conversation, a [blocked](/api-reference/contacts/block) contact gets `422 contact_blocked`, an opted-out one `422 contact_opted_out`. Group conversations aren't checked for blocks or opt-outs.
+- **Same rules as a send.** In a one-to-one conversation, a [blocked](/api-reference/contacts/block) contact gets `422 contact_blocked`, an opted-out one `422 contact_opted_out`. In a group conversation, a tapback is refused with `422 contact_opted_out` when anyone in the group has opted out, as a send to the group is, and with `422 sms_not_supported` when the group goes by SMS or RCS. Blocks are one-to-one only.
 
 To take a tapback back, [remove it](/api-reference/messages/remove-reaction) with its `id`. `message.reaction.removed` fires when it's gone from the phone.
 
