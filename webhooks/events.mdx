@@ -236,7 +236,7 @@ A message to a number outside the US and Canada can fail before anything is sent
 - `routing_check_failed` — the number is outside the US and Canada, and iBubbl couldn't finish checking whether it's on iMessage. Nothing was sent. Send it again (`retryable: true`).
 - `sms_no_handle` — the message had to go by SMS, but your line couldn't open an SMS conversation with this number. Nothing was sent.
 - `voice_memo_prep_failed` — the voice memo couldn't be prepared for sending (it couldn't be converted, or came out too large for SMS). Nothing was sent.
-- `group_chat_missing` — a message to a group conversation: the group's chat is no longer on your line, so the message wasn't sent, and iBubbl didn't make a new group on its own. The group's next message (or one already waiting to go out) starts the group again with the same people; replies in the old chat still arrive in the same conversation. Not retryable (`retryable: false`): send a new message to the group.
+- `group_chat_missing` — a message to a group conversation: the group's chat is no longer on your line, so the message wasn't sent, and iBubbl didn't make a new group on its own. The next message to the group starts a new group chat for the same participants; replies in the old chat still arrive in the same conversation. Not retryable (`retryable: false`): send a new message to the group.
 - `bulk_send_canceled` — legacy: only on old messages from a bulk-send feature that no longer exists.
 - `cold_cap_exhausted`, `followup_cap_exhausted`, `daily_cap_exhausted`, `unresponsive_contact` — legacy codes: a queued message failed a limit re-check on a line in the old limits mode. No current line uses that mode (see [Limits and queues](/concepts/limits)).
 

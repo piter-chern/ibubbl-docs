@@ -342,7 +342,7 @@ if not res.ok:
 </ResponseField>
 
 <ResponseField name="group_chat_missing" type="message.failed">
-  Not an API error: it appears as `failed_reason` (and `error.code`) on a failed message, in [Retrieve a message](/api-reference/messages/retrieve) and its [`message.failed`](/webhooks/events#message-failed) webhook. The message was to a group conversation, and the group's chat is no longer on your line (for example, it was deleted there), so the message wasn't sent, and iBubbl didn't make a new group on its own. The group's next message (or one already waiting to go out) starts the group again with the same people, as a new group chat; replies in the old chat still arrive in the same conversation. Resending this message isn't offered (`retryable: false`); send a new message to the group. See [Group conversations](/concepts/group-conversations).
+  Not an API error: it appears as `failed_reason` (and `error.code`) on a failed message, in [Retrieve a message](/api-reference/messages/retrieve) and its [`message.failed`](/webhooks/events#message-failed) webhook. The message was to a group conversation, and the group's chat is no longer on your line (for example, it was deleted there), so the message wasn't sent, and iBubbl didn't make a new group on its own. The next message to the group starts a new group chat for the same participants; replies in the old chat still arrive in the same conversation. Resending this message isn't offered (`retryable: false`); send a new message to the group. See [Group conversations](/concepts/group-conversations).
 </ResponseField>
 
 <ResponseField name="internal_error" type="500">
