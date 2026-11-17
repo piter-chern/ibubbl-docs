@@ -220,7 +220,7 @@ if not res.ok:
 </ResponseField>
 
 <ResponseField name="sms_not_supported" type="422">
-  [Add a tapback](/api-reference/messages/react): the message came in by SMS, or the conversation's latest messages are going out by SMS, and tapbacks can't be sent over SMS. They work over iMessage and RCS. See [Tapbacks, read receipts and typing](/guides/reactions-read-receipts-typing#tapbacks). [Edit](/api-reference/messages/edit) and [Unsend](/api-reference/messages/unsend): the message went out by SMS (RCS included), where messages can't be edited or unsent; only iMessage messages can. Nothing was sent or changed.
+  [Add a tapback](/api-reference/messages/react): the message came in by SMS, or the conversation's latest messages are going out by SMS, and tapbacks can't be sent over SMS. They work over iMessage and RCS, except in a group conversation, where a group that goes by SMS or RCS gets none. See [Tapbacks, read receipts and typing](/guides/reactions-read-receipts-typing#tapbacks). [Edit](/api-reference/messages/edit) and [Unsend](/api-reference/messages/unsend): the message went out by SMS (RCS included), where messages can't be edited or unsent; only iMessage messages can. Nothing was sent or changed.
 </ResponseField>
 
 <ResponseField name="not_sent_yet" type="422">
@@ -341,6 +341,10 @@ if not res.ok:
   Not an API error: it appears as `failed_reason` (and `error.code`) on a failed message, in [Retrieve a message](/api-reference/messages/retrieve) and its [`message.failed`](/webhooks/events#message-failed) webhook. The recipient's number is outside the US and Canada, and iBubbl couldn't finish checking whether it's on iMessage (Apple didn't answer, or your line's check failed). Since the message may not go by SMS, it wasn't sent. Send it again (`retryable: true`): the next try may get its answer. Such a message shows `routing_check_failed`, not `line_unreachable` or `line_send_failed`. See [Numbers outside the US and Canada](/concepts/lines-and-routing#numbers-outside-the-us-and-canada).
 </ResponseField>
 
+<ResponseField name="group_chat_missing" type="message.failed">
+  Not an API error: it appears as `failed_reason` (and `error.code`) on a failed message, in [Retrieve a message](/api-reference/messages/retrieve) and its [`message.failed`](/webhooks/events#message-failed) webhook. The message was to a group conversation, and the group's chat is no longer on your line (for example, it was deleted there), so the message wasn't sent, and iBubbl didn't make a new group on its own. The next message to the group starts a new group chat for the same participants; replies in the old chat still arrive in the same conversation. Resending this message isn't offered (`retryable: false`); send a new message to the group. See [Group conversations](/concepts/group-conversations).
+</ResponseField>
+
 <ResponseField name="internal_error" type="500">
   An unexpected error on iBubbl's side. These are paired with our error-tracking system; we get paged when they happen. If you see a sustained pattern, email [support@ibubbl.com](mailto:support@ibubbl.com) with the response's [`X-Request-Id`](#request-ids) header.
 
@@ -443,6 +447,7 @@ if not res.ok:
 | `international_sms_line_unsupported` | — (`message.failed`) | ❌ Not sent. Send from another line, or email support. |
 | `international_mms_unsupported` | — (`message.failed`) | ❌ Not sent. Send the text without the files. |
 | `routing_check_failed` | — (`message.failed`) | ✅ Not sent. Send it again. |
+| `group_chat_missing` | — (`message.failed`) | ❌ Not sent. Send a new message to the group: it starts the group again. |
 | `line_offline` | — (`202`, `queued`) | ⚠️ Not an error: iBubbl queues and retries for up to an hour. Don't resend. |
 | `daily_cap_exhausted` / `cold_cap_exhausted` | 422 | ⚠️ Not queued. Send again after the limit resets (midnight ET). |
 | `hourly_cap_hit` / `followup_cap_exhausted` | — | Legacy: not used on any current line. |
