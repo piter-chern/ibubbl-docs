@@ -342,9 +342,11 @@ On iMessage, your read receipt shows even if the contact turned off read receipt
 | Event | Fires when |
 |---|---|
 | [`message.inbound`](/webhooks/events) | A contact messages you. Carries the `message_id` and `conversation_id` the three actions take. |
-| [`message.reaction.added`](/webhooks/events) | Your tapback reached the contact's phone (`direction: "outbound"`), or a contact reacted to one of your messages (`"inbound"`). |
+| [`message.reaction.added`](/webhooks/events) | Your tapback reached the contact's phone (`direction: "outbound"`), or a contact reacted to one of your messages (`"inbound"`). A tapback on one photo or file carries [`attachment_id` and `target_part`](/webhooks/events#tapbacks-on-one-file). |
 | [`message.reaction.removed`](/webhooks/events) | A tapback was removed: you took it back, a newer one of yours replaced it, or the contact took theirs back. |
 | [`message.reaction.failed`](/webhooks/events) | Your tapback, or its removal, couldn't be sent. `action` says which, `failed_reason` why. |
+
+Your team can also, from the dashboard, put a tapback on a message your line sent or on one file of a message; those fire the same events, with `direction: "outbound"`. One person keeps one tapback on each part of a message, so track tapbacks by `reaction_id`, not by message.
 
 Marking a conversation read and typing fire no events. Every event above carries `conversation_id`. Your own tapbacks are events about your own actions: never send a message because of one (see [An auto-reply that cannot loop](/guides/receive-messages#an-auto-reply-that-cannot-loop)).
 

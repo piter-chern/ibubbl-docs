@@ -53,6 +53,36 @@ Every `message.*`, `message.reaction.*` and `scheduled_message.*` event carries 
 
 Every `message.*` event carries `line_id`: the line that sent the message, or received it. It's the same value as `line_id` on the [message object](/api-reference/messages/retrieve) and `id` in [List lines](/api-reference/lines/list), so you can tell your numbers apart without a lookup. The line's number is in the payload too: `from_number` on the outbound events, `to_number` on `message.inbound`. The `message.reaction.*` events don't carry `line_id`; read it from the message they point to. Nor do the `scheduled_message.*` events: the line is chosen when a scheduled message fires, and its message's own events carry it. [`conversation.line_changed`](#conversation-line-changed) carries a conversation's previous and new line. See [Which line a message was on](/concepts/lines-and-routing#which-line-a-message-was-on).
 
+### Tapbacks on one file
+
+A message with photos or files is several bubbles on the phone, and a tapback can be on one of them. Then `message.reaction.added`, `message.reaction.removed` and `message.reaction.failed` also carry:
+
+- `attachment_id`: the file the tapback is on, as in the message's attachments;
+- `target_part`: the file's position in the message as iMessage numbers it (the text is 0, so it's 1 or more).
+
+Both are optional. Neither is present for a tapback on the whole message or on its text. Either can be present without the other: a file sent as a message of its own usually has no `target_part`, and a tapback whose file iBubbl can't tell has `target_part` alone. Use `attachment_id` to place a tapback when it's there.
+
+```json
+{
+  "type": "message.reaction.added",
+  "data": {
+    "reaction_id": "7a8b9c0d-1e2f-3a4b-5c6d-7e8f9a0b1c2d",
+    "target_message_id": "4a5b6c7d-8e9f-0a1b-2c3d-4e5f6a7b8c9d",
+    "conversation_id": "3a4b5c6d-7e8f-9a0b-1c2d-3e4f5a6b7c8d",
+    "from_number": "+14155551234",
+    "reaction_type": "love",
+    "emoji": "❤️",
+    "direction": "inbound",
+    "attachment_id": "9b8c7d6e-5f4a-3b2c-1d0e-9f8a7b6c5d4e",
+    "target_part": 2
+  }
+}
+```
+
+One person keeps one tapback on each part, so the same contact can have a tapback on the text and a different one on each photo, all active at once. Track tapbacks by `reaction_id`.
+
+Over RCS, a tapback on a photo you sent reaches the Android phone as a text such as "Loved …" rather than as a reaction, an Apple limitation; iBubbl still reports it as added. The other way round, an Android contact's reaction to a photo you sent arrives as an ordinary [`message.inbound`](#message-inbound) text, such as "❤️ to a photo", and no `message.reaction.added` fires.
+
 ### Ordering and duplicates
 
 - **Events can arrive out of order.** Retries, and events that fire close together, mean `message.read` can reach you before `message.delivered`. Order by the envelope's `created_at` (and treat `status` transitions as described below), not by arrival time.
@@ -529,13 +559,13 @@ Fired when a tapback reaction is added to a message. Most commonly this is a con
 
 `emoji` carries the rendered Unicode character — useful if you're displaying reactions in your own UI without maintaining a tapback-to-emoji mapping.
 
-`from_number` is the contact who reacted. Outbound reactions (`direction: "outbound"`) have no `from_number`. `target_message_id` is the message being reacted to, and `conversation_id` its conversation.
+`from_number` is the contact who reacted. Outbound reactions (`direction: "outbound"`) have no `from_number`. `target_message_id` is the message being reacted to, and `conversation_id` its conversation. An outbound tapback is usually on a message the contact sent; one your team put on a message your line sent, from the dashboard, has that message as `target_message_id`. A tapback on one photo or file also carries `attachment_id` and `target_part`: see [Tapbacks on one file](#tapbacks-on-one-file).
 
 `reaction_id` is the reaction's `id` from [Add a tapback](/api-reference/messages/react) for one you sent.
 </Accordion>
 
 <Accordion title="message.reaction.removed" icon="heart-crack">
-Fired when a previously-added reaction is removed: the reactor un-tapped it, or replaced it with a different tapback (iMessage keeps one per person per message). For your own tapbacks, that's [Remove a tapback](/api-reference/messages/remove-reaction) (once the phone confirms), or a newer tapback of yours on the same message replacing one that had been sent. Same payload shape as `message.reaction.added`.
+Fired when a previously-added reaction is removed: the reactor un-tapped it, or replaced it with a different tapback (iMessage keeps one per person on each part of a message: the text, and each photo or file). For your own tapbacks, that's [Remove a tapback](/api-reference/messages/remove-reaction) (once the phone confirms), or a newer tapback of yours on the same message (or the same file of it) replacing one that had been sent. Same payload shape as `message.reaction.added`.
 
 ```json
 {
@@ -554,7 +584,7 @@ Fired when a previously-added reaction is removed: the reactor un-tapped it, or 
 }
 ```
 
-The `reaction_id` matches the original `.added` event so you can update or delete the reaction in your own store.
+The `reaction_id` matches the original `.added` event so you can update or delete the reaction in your own store. A tapback on one file carries the same `attachment_id` and `target_part` as its `.added` (see [Tapbacks on one file](#tapbacks-on-one-file)).
 </Accordion>
 
 <Accordion title="message.reaction.failed" icon="triangle-exclamation">
@@ -577,6 +607,8 @@ Fired when a tapback you sent, from the dashboard or with [Add a tapback](/api-r
   }
 }
 ```
+
+A tapback on one file also carries `attachment_id` and `target_part` (see [Tapbacks on one file](#tapbacks-on-one-file)).
 
 `action` is `add` when the tapback never reached the contact (no `message.reaction.added` fired for it), or `remove` when taking it back failed and it may still show on their phone.
 
