@@ -71,6 +71,7 @@ print(data["id"], data["status"])  # keep data["id"] to remove it later
 What to know:
 
 - **Only on messages you received.** A tapback on a message you sent is `422 invalid_target`. Custom emoji tapbacks can't be sent.
+- **On a contact's text and photos, it goes on the text.** An iPhone message with text and photos is one message; a tapback lands on its text, as it does on an iPhone (before 2026-11-23 it landed on the first photo).
 - **One per message.** A different type replaces your previous tapback on that message, as on an iPhone. The same type again answers `200` and sends nothing, so a retry is safe. Tapbacks a teammate added in the dashboard count as yours.
 - **Accepted, then sent.** The answer is `201` with `status: "pending"`. Your line sends it within seconds, and then:
   - [`message.reaction.added`](/webhooks/events) fires with `direction: "outbound"` once it's on the contact's phone;
@@ -346,7 +347,7 @@ On iMessage, your read receipt shows even if the contact turned off read receipt
 | [`message.reaction.removed`](/webhooks/events) | A tapback was removed: you took it back, a newer one of yours replaced it, or the contact took theirs back. |
 | [`message.reaction.failed`](/webhooks/events) | Your tapback, or its removal, couldn't be sent. `action` says which, `failed_reason` why. |
 
-Your team can also, from the dashboard, put a tapback on a message your line sent or on one file of a message; those fire the same events, with `direction: "outbound"`. One person keeps one tapback on each part of a message, so track tapbacks by `reaction_id`, not by message.
+Your team can also, from the dashboard, put a tapback on a message your line sent, or on one photo or file of a message your line or a contact sent; those fire the same events, with `direction: "outbound"`. One person keeps one tapback on each part of a message, so track tapbacks by `reaction_id`, not by message.
 
 Marking a conversation read and typing fire no events. Every event above carries `conversation_id`. Your own tapbacks are events about your own actions: never send a message because of one (see [An auto-reply that cannot loop](/guides/receive-messages#an-auto-reply-that-cannot-loop)).
 
