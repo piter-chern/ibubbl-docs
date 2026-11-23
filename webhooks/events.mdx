@@ -55,10 +55,10 @@ Every `message.*` event carries `line_id`: the line that sent the message, or re
 
 ### Tapbacks on one file
 
-A message with photos or files is several bubbles on the phone, and a tapback can be on one of them. Then `message.reaction.added`, `message.reaction.removed` and `message.reaction.failed` also carry:
+A message with photos or files is several bubbles on the phone, and a tapback can be on one of them: a contact's tapback on one file of a message you sent, or your team's tapback, from the dashboard, on one file of a message you sent or a contact sent. Then `message.reaction.added`, `message.reaction.removed` and `message.reaction.failed` also carry:
 
 - `attachment_id`: the file the tapback is on, as in the message's attachments;
-- `target_part`: the file's position in the message as iMessage numbers it (the text is 0, so it's 1 or more).
+- `target_part`: the file's position in the message as iMessage numbers it, absent for the message's first part. On a message your line sent the text comes first, so its files are 1 or more; on an iPhone message a contact sent, the files come first and the text last, so the first photo has none.
 
 Both are optional. Neither is present for a tapback on the whole message or on its text. Either can be present without the other: a file sent as a message of its own usually has no `target_part`, and a tapback whose file iBubbl can't tell has `target_part` alone. Use `attachment_id` to place a tapback when it's there.
 
