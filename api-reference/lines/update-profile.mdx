@@ -1,0 +1,215 @@
+---
+title: "Update a line's profile"
+openapi: 'PUT /v1/lines/{line_id}/profile'
+---
+
+### Update a line's profile
+
+**Method:** `PUT` | **Endpoint:** `/v1/lines/{line_id}/profile`
+
+**Description:** Set the name, and optionally the photo, that people see for this line in iMessage: its iMessage contact card. The line applies it within about a minute. The answer is the saved profile with `status: "applying"`; read `profile` on [Retrieve a line](/api-reference/lines/retrieve) to see it turn `applied`.
+
+**Authentication:** API key in the `Authorization` header: `Authorization: Bearer ib_pk_<64 hex>`. Create keys in the dashboard under **Settings → API access**.
+
+<Note>
+Name & Photo is turned on line by line. Until it's on for a line, this endpoint answers `404 feature_disabled` for it. Ask support to turn it on.
+</Note>
+
+#### When recipients see it
+
+- **On the line's next iMessage to them.** After each save, the line shares its card with each person the next time it sends them an iMessage in a one-to-one chat. Nobody is messaged just to deliver the card, and people the line doesn't message again never get it.
+- **The photo updates by itself; a new name waits.** The recipient's iPhone applies a new photo on its own. A new name shows as a banner at the top of the chat, and changes once they tap **Update**.
+- **First name only.** There is no last name. A recipient who saved the line in their contacts with a last name keeps that last name next to the new first name.
+- **Only in iMessage.** SMS and RCS chats, and group chats, don't carry the card.
+- **Every save shares again.** After a new save, each person gets the card again on the line's next iMessage to them, even if they had the previous one.
+
+#### Request Body
+The path parameter `line_id` is the line's ID (a UUID), from [List lines](/api-reference/lines/list). The line must be `active`.
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `name` | string, 1 to 64 characters | Yes | The first name people see for the line. Spaces at either end are trimmed. No control characters or invisible formatting characters (such as zero-width spaces). An emoji can count as two characters. |
+| `image_b64` | string | No | A new photo: a JPEG, PNG, WebP or HEIC image, base64-encoded. A `data:image/...;base64,` prefix is fine. At most 3 MiB once decoded, at least 256 px on its shorter side, at most 50 megapixels. Leave it out to keep the current photo. |
+
+Fields not listed above are rejected with `422 validation_error`. The whole body may be at most about 4 MiB.
+
+iBubbl prepares the photo for you: it turns it upright (EXIF rotation), crops it to the centred square, scales it down to at most 1,024 px, and puts transparent areas on white. Crop the photo yourself first if its subject isn't in the middle. A photo can be replaced, but not removed.
+
+<RequestExample>
+
+```bash cURL
+curl -X PUT https://api.ibubbl.com/v1/lines/5f0c2a9e-7d41-4b8a-9e3c-6a1b2c3d4e5f/profile \
+  -H "Authorization: Bearer $IBUBBL_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d "{
+    \"name\": \"Acme Support\",
+    \"image_b64\": \"$(base64 < logo.png | tr -d '\n')\"
+  }"
+```
+
+```typescript TypeScript
+import { readFile } from "node:fs/promises";
+
+const lineId = "5f0c2a9e-7d41-4b8a-9e3c-6a1b2c3d4e5f";
+const image = await readFile("logo.png");
+
+const res = await fetch(`https://api.ibubbl.com/v1/lines/${lineId}/profile`, {
+  method: "PUT",
+  headers: {
+    Authorization: `Bearer ${process.env.IBUBBL_API_KEY}`,
+    "Content-Type": "application/json",
+  },
+  body: JSON.stringify({
+    name: "Acme Support",
+    image_b64: image.toString("base64"), // leave out to keep the current photo
+  }),
+  signal: AbortSignal.timeout(30_000),
+});
+
+const data = await res.json();
+if (!res.ok) throw new Error(`${res.status} ${data.detail?.error}`);
+console.log(data.status); // "applying"
+```
+
+```python Python
+import base64
+import os
+
+import requests
+
+API_KEY = os.environ["IBUBBL_API_KEY"]
+
+line_id = "5f0c2a9e-7d41-4b8a-9e3c-6a1b2c3d4e5f"
+with open("logo.png", "rb") as f:
+    image_b64 = base64.b64encode(f.read()).decode()
+
+res = requests.put(
+    f"https://api.ibubbl.com/v1/lines/{line_id}/profile",
+    headers={"Authorization": f"Bearer {API_KEY}"},
+    json={
+        "name": "Acme Support",
+        "image_b64": image_b64,  # leave out to keep the current photo
+    },
+    timeout=30,
+)
+data = res.json()
+if not res.ok:
+    raise RuntimeError(f"{res.status_code} {data['detail']['error']}")
+print(data["status"])  # "applying"
+```
+
+</RequestExample>
+
+<ResponseExample>
+
+```json 202 Accepted
+{
+  "name": "Acme Support",
+  "has_photo": true,
+  "status": "applying",
+  "error": null,
+  "updated_at": "2026-11-23T19:04:45.158000Z",
+  "applied_at": "2026-11-20T16:12:03.004000Z"
+}
+```
+
+```json 422 Unprocessable Entity
+{
+  "detail": {
+    "error": "image_too_small",
+    "message": "The photo must be at least 256 px on its shorter side."
+  }
+}
+```
+
+</ResponseExample>
+
+#### Responses
+**202 Accepted**
+
+The profile as saved, with `status: "applying"`. The line hasn't set it yet. `applied_at` still shows the last time the line applied a save; it is `null` before the first one.
+
+| Field | Description |
+|-------|-------------|
+| `name` | The first name you saved. |
+| `has_photo` | Whether the profile has a photo. Fetch it from [Get a line's profile photo](/api-reference/lines/profile-photo). |
+| `status` | `applying`: saved, and the line is setting it, usually in under a minute. `applied`: the line's card shows it. `failed`: the line couldn't set it; see `error`. |
+| `error` | Why the last save failed, when `status` is `failed`; `null` otherwise. `timeout` means the line didn't apply it in time, for example because it was offline. Any other value is a diagnostic code for support. Either way, save again to retry. |
+| `updated_at` | When you last saved (ISO 8601 UTC). |
+| `applied_at` | When the line last applied a save (ISO 8601 UTC), or `null` before the first. |
+
+To follow a save, poll [Retrieve a line](/api-reference/lines/retrieve) every few seconds until `profile.status` is no longer `applying`. A new save replaces one that is still applying; only the latest is set.
+
+**401 Unauthorized**
+```json
+{
+  "detail": {
+    "error": "unauthorized",
+    "message": "Invalid or revoked API key"
+  }
+}
+```
+Other `message` values: `Authorization Bearer token required`, `API key required (use Authorization: Bearer ib_pk_…)`, `Invalid API key format`, `Customer account not found`.
+
+**403 Forbidden**
+```json
+{
+  "detail": {
+    "error": "forbidden",
+    "message": "Account is suspended"
+  }
+}
+```
+Your iBubbl account is suspended or cancelled (`message` is then `Account is cancelled`). Every API-key endpoint returns this.
+
+**404 Not Found**
+```json
+{
+  "detail": {
+    "error": "feature_disabled",
+    "message": "This line can't set a profile yet."
+  }
+}
+```
+Name & Photo isn't on for this line yet; ask support. The other `error` is `line_not_found` (`No active line with that id on this account.`): the ID is malformed, belongs to another account, or the line isn't `active`.
+
+**413 Payload Too Large**
+```json
+{
+  "detail": {
+    "error": "payload_too_large",
+    "message": "Request body too large."
+  }
+}
+```
+The body is over about 4 MiB. Send a smaller photo; at most 3 MiB once decoded.
+
+**422 Unprocessable Entity**
+```json
+{
+  "detail": {
+    "error": "image_too_small",
+    "message": "The photo must be at least 256 px on its shorter side."
+  }
+}
+```
+Nothing was saved. The `error` values:
+
+| `error` | Meaning |
+|---------|---------|
+| `validation_error` | The body isn't a JSON object, has an unknown field, `name` is missing or over 64 characters, or `image_b64` isn't valid base64. `message` names the problem. |
+| `invalid_name` | `name` is empty once trimmed, contains a control or invisible formatting character, or is over 64 characters counting an emoji as two. |
+| `image_unsupported` | The photo isn't a JPEG, PNG, WebP or HEIC image, or it couldn't be read. |
+| `image_too_small` | The photo is under 256 px on its shorter side. |
+| `image_too_large` | The photo is over 3 MiB once decoded, or over 50 megapixels. |
+
+**429 Too Many Requests**
+```json
+{
+  "detail": {
+    "error": "rate_limited",
+    "message": "Too many uploads; wait 12s (limit 60 a minute per account)."
+  }
+}
+```
+Profile updates count toward the upload budget of [Upload a file](/api-reference/files/upload): 60 requests a minute per account, all your keys together. Wait the `Retry-After` header's seconds, then send again.

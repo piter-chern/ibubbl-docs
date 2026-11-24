@@ -82,6 +82,14 @@ print(data["phone_number"], data["status"], data["limits"] and data["limits"]["m
       "limit": 1000,
       "resets_at": "2026-11-12T05:00:00.000000Z"
     }
+  },
+  "profile": {
+    "name": "Acme Support",
+    "has_photo": true,
+    "status": "applied",
+    "error": null,
+    "updated_at": "2026-11-10T19:04:45.158000Z",
+    "applied_at": "2026-11-10T19:04:46.520000Z"
   }
 }
 ```
@@ -100,7 +108,7 @@ print(data["phone_number"], data["status"], data["limits"] and data["limits"]["m
 #### Responses
 **200 OK**
 
-The line, in the same shape as an item of [List lines](/api-reference/lines/list#responses), where every field is described. The example above is a line at its daily new-contact limit, with its hour also full: 4 messages to new contacts wait for a slot, and the next one frees at `next_slot_at`.
+The line, in the same shape as an item of [List lines](/api-reference/lines/list#responses), where every field is described. The example above is a line at its daily new-contact limit, with its hour also full: 4 messages to new contacts wait for a slot, and the next one frees at `next_slot_at`. Its `profile` is the iMessage name and photo set with [Update a line's profile](/api-reference/lines/update-profile); after a save, read it here until `profile.status` leaves `applying`.
 
 **401 Unauthorized**
 ```json

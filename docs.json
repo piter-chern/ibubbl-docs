@@ -147,7 +147,9 @@
             "group": "Lines",
             "pages": [
               "api-reference/lines/list",
-              "api-reference/lines/retrieve"
+              "api-reference/lines/retrieve",
+              "api-reference/lines/update-profile",
+              "api-reference/lines/profile-photo"
             ]
           },
           {
