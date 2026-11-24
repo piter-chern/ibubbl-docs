@@ -1,0 +1,119 @@
+---
+title: "Get a line's profile photo"
+openapi: 'GET /v1/lines/{line_id}/profile/photo'
+---
+
+### Get a line's profile photo
+
+**Method:** `GET` | **Endpoint:** `/v1/lines/{line_id}/profile/photo`
+
+**Description:** Download the photo set on this line's profile with [Update a line's profile](/api-reference/lines/update-profile), as iBubbl prepared it: a square JPEG, at most 1,024 px. It is the photo of your latest save, even while that save is still `applying`.
+
+**Authentication:** API key in the `Authorization` header: `Authorization: Bearer ib_pk_<64 hex>`. Create keys in the dashboard under **Settings → API access**.
+
+#### Request Body
+None. The path parameter `line_id` is the line's ID (a UUID), from [List lines](/api-reference/lines/list). Check `profile.has_photo` on [Retrieve a line](/api-reference/lines/retrieve) first to know whether there is one.
+
+<RequestExample>
+
+```bash cURL
+curl https://api.ibubbl.com/v1/lines/5f0c2a9e-7d41-4b8a-9e3c-6a1b2c3d4e5f/profile/photo \
+  -H "Authorization: Bearer $IBUBBL_API_KEY" \
+  -o line-photo.jpg
+```
+
+```typescript TypeScript
+import { writeFile } from "node:fs/promises";
+
+const lineId = "5f0c2a9e-7d41-4b8a-9e3c-6a1b2c3d4e5f";
+
+const res = await fetch(`https://api.ibubbl.com/v1/lines/${lineId}/profile/photo`, {
+  headers: { Authorization: `Bearer ${process.env.IBUBBL_API_KEY}` },
+  signal: AbortSignal.timeout(10_000),
+});
+
+if (!res.ok) {
+  const data = await res.json();
+  throw new Error(`${res.status} ${data.detail?.error}`);
+}
+await writeFile("line-photo.jpg", Buffer.from(await res.arrayBuffer()));
+```
+
+```python Python
+import os
+
+import requests
+
+API_KEY = os.environ["IBUBBL_API_KEY"]
+
+line_id = "5f0c2a9e-7d41-4b8a-9e3c-6a1b2c3d4e5f"
+
+res = requests.get(
+    f"https://api.ibubbl.com/v1/lines/{line_id}/profile/photo",
+    headers={"Authorization": f"Bearer {API_KEY}"},
+    timeout=10,
+)
+if not res.ok:
+    raise RuntimeError(f"{res.status_code} {res.json()['detail']['error']}")
+with open("line-photo.jpg", "wb") as f:
+    f.write(res.content)
+```
+
+</RequestExample>
+
+<ResponseExample>
+
+```text 200 OK
+Content-Type: image/jpeg
+
+(the JPEG bytes)
+```
+
+```json 404 Not Found
+{
+  "detail": {
+    "error": "not_found",
+    "message": "This line has no profile photo."
+  }
+}
+```
+
+</ResponseExample>
+
+#### Responses
+**200 OK**
+
+The photo's bytes, with `Content-Type: image/jpeg`: a square image between 256 and 1,024 px on a side.
+
+**401 Unauthorized**
+```json
+{
+  "detail": {
+    "error": "unauthorized",
+    "message": "Invalid or revoked API key"
+  }
+}
+```
+Other `message` values: `Authorization Bearer token required`, `API key required (use Authorization: Bearer ib_pk_…)`, `Invalid API key format`, `Customer account not found`.
+
+**403 Forbidden**
+```json
+{
+  "detail": {
+    "error": "forbidden",
+    "message": "Account is suspended"
+  }
+}
+```
+Your iBubbl account is suspended or cancelled (`message` is then `Account is cancelled`). Every API-key endpoint returns this.
+
+**404 Not Found**
+```json
+{
+  "detail": {
+    "error": "not_found",
+    "message": "This line has no profile photo."
+  }
+}
+```
+The line has no profile, or its profile has no photo. The other `error` is `line_not_found` (`No active line with that id on this account.`): the ID is malformed, belongs to another account, or the line isn't `active`.

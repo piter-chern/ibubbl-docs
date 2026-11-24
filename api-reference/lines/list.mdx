@@ -116,6 +116,14 @@ for line in data["data"]:
           "limit": 1000,
           "resets_at": "2026-11-12T05:00:00.000000Z"
         }
+      },
+      "profile": {
+        "name": "Acme Support",
+        "has_photo": true,
+        "status": "applied",
+        "error": null,
+        "updated_at": "2026-11-10T19:04:45.158000Z",
+        "applied_at": "2026-11-10T19:04:46.520000Z"
       }
     },
     {
@@ -124,7 +132,8 @@ for line in data["data"]:
       "status": "retired",
       "online": null,
       "created_at": "2026-08-01T09:15:00.000000Z",
-      "limits": null
+      "limits": null,
+      "profile": null
     }
   ],
   "has_more": false
@@ -155,6 +164,7 @@ for line in data["data"]:
 | `online` | For an `active` line: whether it has checked in with iBubbl in the last 2 minutes. `false` means new messages wait as `queued` until it is back (see [Offline lines](/concepts/limits#offline-lines)). It says nothing about any one recipient. `null` for `paused` and `retired` lines. |
 | `created_at` | When the line was set up (ISO 8601 UTC, with microseconds and a `Z`). |
 | `limits` | Today's usage against the line's send limits, or `null` for `paused` and `retired` lines. |
+| `profile` | The iMessage name and photo you set for the line with [Update a line's profile](/api-reference/lines/update-profile): `name`, `has_photo`, `status` (`applying`, `applied` or `failed`), `error`, `updated_at` and `applied_at`, described there. `null` until you set one. |
 
 `limits` has three counters, the line-wide [limits](/concepts/limits#the-four-limits). Each has `used` and `limit`:
 

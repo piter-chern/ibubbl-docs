@@ -168,7 +168,7 @@ LIMITS (per line; https://docs.ibubbl.com/concepts/limits)
   {code, message, retryable} on a "failed" or "expired" message, the same
   as message.failed; both are null for every other status.
 
-LINES (GET /v1/lines, GET /v1/lines/{id})
+LINES (GET /v1/lines, GET /v1/lines/{id}, PUT /v1/lines/{id}/profile)
 - Lists the account's lines (same pagination and rate limit as READING
   HISTORY; filter status=active|paused|retired). Each line: id,
   phone_number, status, online (active lines: checked in within 2 minutes;
@@ -183,6 +183,19 @@ LINES (GET /v1/lines, GET /v1/lines/{id})
 - 404 line_not_found for an id that isn't one of the account's lines;
   503 limits_unavailable means the counters couldn't be read: retry
   shortly, never treat it as zero.
+- Name & Photo (on only for lines support turned it on for; otherwise
+  404 feature_disabled): PUT /v1/lines/{id}/profile with JSON
+  {"name": "<first name, 1-64 chars>", "image_b64": "<optional base64
+  JPEG/PNG/WebP/HEIC, max 3 MiB, min 256 px>"}. Omit image_b64 to keep the
+  photo; a photo can't be removed. It answers 202 with
+  profile.status "applying"; poll GET /v1/lines/{id} until profile.status is
+  "applied" or "failed" (error "timeout" = the line was offline; save again).
+  The photo is centre-cropped to a square, so crop it yourself first.
+  Recipients get the card only on the line's NEXT one-to-one iMessage to
+  them: never send a message just to deliver it. The photo updates by
+  itself; a new name waits for the recipient to tap Update. Counts toward
+  the 60-a-minute upload budget. GET /v1/lines/{id}/profile/photo returns
+  the JPEG.
 
 READING HISTORY (GET /v1/messages)
 - Lists inbound and outbound messages, newest first, as

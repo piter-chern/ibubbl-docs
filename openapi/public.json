@@ -66,7 +66,7 @@
             }
           },
           "422": {
-            "description": "Request rejected; see `detail.error`. `validation_error` (bad request shape; for a `to` that isn't in its standard E.164 form, `detail.suggested` holds the standard form), `contact_opted_out`, `contact_blocked`, `no_eligible_line` (no line on your account can send it: none is active, or the group's line no longer serves your account), `unresponsive_contact`, `cold_cap_exhausted`, `followup_cap_exhausted`, `daily_cap_exhausted`, `group_outbound_blocked_suppression`, `insufficient_participants`, `reply_target_not_found`, `reply_target_unsent`, `reply_target_partly_unsent`, `first_message_needs_text`, `attachment_fetch_failed`, `attachment_too_large`, `unsupported_attachment`, `attachment_combination_not_supported`, `file_expired`, `sms_attachment_refused` (a calendar file, `.ics`, to a contact who can only take SMS), or `account_setup_incomplete` (your account has no active manager in the dashboard; add or reactivate one, then retry).",
+            "description": "Request rejected; see `detail.error`. `validation_error` (bad request shape; for a `to` that isn't in its standard E.164 form, `detail.suggested` holds the standard form), `contact_opted_out`, `contact_blocked`, `no_eligible_line` (no line on your account can send it: none is active, or the group's line no longer serves your account), `unresponsive_contact`, `cold_cap_exhausted`, `followup_cap_exhausted`, `daily_cap_exhausted`, `group_outbound_blocked_suppression`, `insufficient_participants`, `group_member_not_imessage` (a member of the new group is known not to be on iMessage, so the group would silently leave them out), `group_includes_own_line` (your line's own number is in `participant_phones`), `group_member_invalid_handle` (a `participant_phones` entry that isn't a full phone number or email address), `group_too_large` (more than 32 people, counting your line; more than 10 when the group would go by text message), `group_already_exists` (your line already has a group with exactly these people; `detail.conversation_id` and `detail.chat_guid` name it, and `chat_guid` is null until that group has started), `group_create_blocked` (the group's last start may have reached another group with the same people, so it can't send until that is checked), `group_sms_feature_unsupported` (an `effect` or a `reply_to_message_id` sent to a group that goes by text message), `reply_target_not_found`, `reply_target_unsent`, `reply_target_partly_unsent`, `first_message_needs_text`, `attachment_fetch_failed`, `attachment_too_large`, `unsupported_attachment`, `attachment_combination_not_supported`, `file_expired`, `sms_attachment_refused` (a calendar file, `.ics`, to a contact who can only take SMS), or `account_setup_incomplete` (your account has no active manager in the dashboard; add or reactivate one, then retry).",
             "content": {
               "application/json": {
                 "schema": {
@@ -538,7 +538,7 @@
             }
           },
           "503": {
-            "description": "`opt_out_check_unavailable`: the contact's opt-out couldn't be checked, so nothing was sent. Retry.",
+            "description": "`opt_out_check_unavailable`: the contact's opt-out couldn't be checked, so nothing was sent. Retry. `tapback_not_ready`: the group goes by text message and its line can't send a tapback right now, so nothing was sent. Retry in a minute.",
             "content": {
               "application/json": {
                 "schema": {
@@ -3232,6 +3232,212 @@
         }
       }
     },
+    "/v1/lines/{line_id}/profile": {
+      "put": {
+        "tags": [
+          "Lines"
+        ],
+        "summary": "Update a line's profile",
+        "description": "Set the name, and optionally the photo, that recipients see for this line in iMessage. The line's Mac applies it within about a minute: the answer is the saved profile with `status: applying`; read `profile` on [Retrieve a line](/api-reference/lines/retrieve) to see it turn `applied` (or `failed`, with `error`).\n\nRecipients see the change after the line next messages them: the line shares its card with each person on its next iMessage to them. A new photo then updates on their phone by itself; a new name waits for them to tap **Update**.\n\nThe body may be at most about 4 MiB. Uploads allow 60 requests a minute per account.",
+        "operationId": "updateLineProfile",
+        "parameters": [
+          {
+            "name": "line_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Line Id"
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "description": "Saved; the line is applying it.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LineProfile"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid API key.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "`line_not_found`: no active line with that ID on your account. `feature_disabled`: this line can't set a profile yet (ask support).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "`payload_too_large`: the body is over the size limit.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "`validation_error` (not JSON, an unknown field, `name` missing or over 64 characters, or `image_b64` not base64), `invalid_name` (empty after trimming, or a control character), `image_unsupported` (not a JPEG, PNG, WebP or HEIC we can read), `image_too_small` (under 256 px on its shorter side) or `image_too_large` (over 3 MiB, or too many pixels).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "`rate_limited`: more than 60 uploads in 60 seconds from your account (all keys count together; other requests have their own budgets). Wait `Retry-After` seconds, then send the same request again.",
+            "headers": {
+              "Retry-After": {
+                "description": "Seconds to wait before retrying.",
+                "schema": {
+                  "type": "integer"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "`forbidden`: your iBubbl account is suspended or cancelled.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "properties": {
+                  "name": {
+                    "description": "The first name recipients see for this line, 1\u201364 characters, no control characters. There is no last name.",
+                    "examples": [
+                      "Acme Support"
+                    ],
+                    "maxLength": 64,
+                    "minLength": 1,
+                    "title": "Name",
+                    "type": "string"
+                  },
+                  "image_b64": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ],
+                    "description": "A new photo: a JPEG, PNG, WebP or HEIC image, base64-encoded (a `data:image/...;base64,` prefix is fine), at most 3 MiB decoded and at least 256 px on its shorter side. iBubbl crops it to the centred square and scales it to at most 1024 px. Leave it out to keep the current photo.",
+                    "title": "Image B64"
+                  }
+                },
+                "required": [
+                  "name"
+                ],
+                "title": "LineProfileUpdate",
+                "type": "object"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/lines/{line_id}/profile/photo": {
+      "get": {
+        "tags": [
+          "Lines"
+        ],
+        "summary": "Get a line's profile photo",
+        "description": "The photo set on this line's profile, as iBubbl prepared it: a square JPEG, at most 1024 px. Returns `404 not_found` when the line has no profile photo.",
+        "operationId": "getLineProfilePhoto",
+        "parameters": [
+          {
+            "name": "line_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Line Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The photo.",
+            "content": {
+              "image/jpeg": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid API key.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "`line_not_found`: no active line with that ID on your account. `not_found`: the line has no profile photo.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "`forbidden`: your iBubbl account is suspended or cancelled.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/v1/sending-hours": {
       "get": {
         "tags": [
@@ -4137,6 +4343,17 @@
               }
             ],
             "description": "Today's usage against the line's send limits, read live. Null for `paused` and `retired` lines, and for an active line that isn't on the published limits (ask support if you see one)."
+          },
+          "profile": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/LineProfile"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The iMessage name and photo you set for this line with [Update a line's profile](/api-reference/lines/update-profile). Null until you set one."
           }
         },
         "type": "object",
@@ -4146,7 +4363,8 @@
           "status",
           "online",
           "created_at",
-          "limits"
+          "limits",
+          "profile"
         ],
         "title": "Line"
       },
@@ -4287,6 +4505,83 @@
           "has_more"
         ],
         "title": "LineList"
+      },
+      "LineProfile": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "title": "Name",
+            "description": "The first name recipients see for the line. There is no last name: a recipient who saved the line with one keeps it.",
+            "examples": [
+              "Acme Support"
+            ]
+          },
+          "has_photo": {
+            "type": "boolean",
+            "title": "Has Photo",
+            "description": "Whether a photo was set. Fetch it from [Get a line's profile photo](/api-reference/lines/profile-photo)."
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "applying",
+              "applied",
+              "failed"
+            ],
+            "title": "Status",
+            "description": "`applying` = saved; the line is setting it (usually under a minute). `applied` = the line's card shows it. `failed` = the line couldn't set it (see `error`); save again to retry."
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error",
+            "description": "Why the last save failed, when `status` is `failed`. Null otherwise.",
+            "examples": [
+              "timeout"
+            ]
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated At",
+            "description": "ISO 8601 UTC timestamp of the last save.",
+            "examples": [
+              "2026-11-23T19:04:45.158000Z"
+            ]
+          },
+          "applied_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Applied At",
+            "description": "ISO 8601 UTC timestamp of when the line last applied a save. Null before the first.",
+            "examples": [
+              "2026-11-23T19:04:46.520000Z"
+            ]
+          }
+        },
+        "type": "object",
+        "required": [
+          "name",
+          "has_photo",
+          "status",
+          "error",
+          "updated_at",
+          "applied_at"
+        ],
+        "title": "LineProfile"
       },
       "MessageError": {
         "properties": {
