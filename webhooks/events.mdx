@@ -621,7 +621,17 @@ A tapback on one file also carries `attachment_id` and `target_part` (see [Tapba
 - `expired` — it couldn't be sent within 10 minutes, so it was dropped rather than sent late
 - `target_unsent` — the contact unsent the message before the tapback went out
 - `line_inactive` — the line it would go out on was paused or retired before it went out
+- `part_unavailable` — your line couldn't find the photo or file the tapback was on (a tapback on one file)
+- `part_tapback_unavailable` — no line could send a tapback on one file within 10 minutes
 - `retract_rejected` — the removal was refused (`action: "remove"`)
+
+A tapback from the dashboard that goes out as a text message, in a one-to-one conversation on SMS or in a group that goes by SMS or RCS, obeys the rules a message sent now would. When one of them refuses it by the time your line picks it up, it fails with that rule's code:
+
+- `contact_opted_out` — the contact opted out
+- `outside_sending_hours` — it's outside the contact's [sending hours](/concepts/working-hours)
+- `daily_cap_exhausted` — the line has reached its daily limit
+- `unresponsive_contact` — the contact hasn't replied to your recent messages (one-to-one only)
+- `international_sms_not_enabled`, `international_sms_country_unsupported`, `international_sms_line_unsupported` — the international SMS rules refuse it (one-to-one only)
 
 [Retrieve](/api-reference/messages/retrieve) shows nothing for a failed tapback; this event is how you learn of it. A failed tapback can be sent again with [Add a tapback](/api-reference/messages/react), which starts a new reaction.
 </Accordion>

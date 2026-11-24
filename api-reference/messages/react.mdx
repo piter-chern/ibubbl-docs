@@ -25,9 +25,9 @@ The path parameter `message_id` is the ID of a message you **received**: the `me
 - **It's accepted first, sent second.** The answer is `201` with `status: "pending"`. When the tapback reaches the contact's phone, [`message.reaction.added`](/webhooks/events) fires with `direction: "outbound"`. If it can't be sent, [`message.reaction.failed`](/webhooks/events) fires with a `failed_reason`, usually within seconds and always within 10 minutes.
 - **One tapback per message.** As in iMessage, a different type **replaces** your previous tapback on that message: the new one is `201`, and the old one ends as `removed`. If the old one had reached the phone, `message.reaction.removed` fires for it. Tapbacks sent from the dashboard count as yours too.
 - **It's safe to call twice.** Sending the type that's already on the message answers `200` with that same reaction and sends nothing.
-- **Groups work.** A tapback on a message in a group conversation goes to the group, unless someone in the group has [opted out](/concepts/suppression) (`422 contact_opted_out`, as a send to the group is refused) or the group goes by SMS or RCS (`422 sms_not_supported`).
+- **Groups work.** A tapback on a message in a group conversation goes to the group, unless someone in the group has [opted out](/concepts/suppression) (`422 contact_opted_out`, as a send to the group is refused). In a group that goes by SMS or RCS (because someone in it isn't on iMessage) it goes out as an RCS or MMS tapback to everyone; if the group's line can't send one right now, the answer is `503 tapback_not_ready` and nothing was sent (retry in a minute). How it looks depends on each person's phone: over MMS some apps show a text such as "Liked …", and in an RCS group Android phones may show a text for a tapback on a photo or on a text the group has seen twice, while iPhones may not show a tapback on an older message.
 - **Blocked and opted-out contacts get none.** In a one-to-one conversation, a [blocked](/api-reference/contacts/block) contact gets `422 contact_blocked` and an [opted-out](/concepts/suppression) one `422 contact_opted_out`, as for a send.
-- **Not over SMS.** If the message came in by SMS, or the conversation's latest messages are going out by SMS, the answer is `422 sms_not_supported`. If iBubbl can't tell yet, it's accepted, and a tapback the line then can't send fires `message.reaction.failed` with `failed_reason: "sms_target"`.
+- **Not over SMS.** In a one-to-one conversation, if the message came in by SMS, or the conversation's latest messages are going out by SMS, the answer is `422 sms_not_supported`. If iBubbl can't tell yet, it's accepted, and a tapback the line then can't send fires `message.reaction.failed` with `failed_reason: "sms_target"`.
 
 <RequestExample>
 
@@ -122,7 +122,7 @@ The tapback is accepted and on its way.
 | `type` / `emoji` | The tapback, as its name and as an emoji. |
 | `direction` | Always `outbound`: a tapback you sent. |
 | `status` | `pending` (accepted, not on the phone yet), `sent` (on the phone; `message.reaction.added` has fired), `failed` (never sent; see `failed_reason`) or `removed` (you removed it, or a newer tapback replaced it). |
-| `failed_reason` | Why a `failed` tapback wasn't sent: `sms_target`, `target_not_found`, `rejected`, `messages_error`, `expired`, `retract_rejected`, `target_unsent` or `line_inactive` (its line was paused or retired before it went out). Otherwise `null`. See [`message.reaction.failed`](/webhooks/events). |
+| `failed_reason` | Why a `failed` tapback wasn't sent: `sms_target`, `target_not_found`, `rejected`, `messages_error`, `expired`, `retract_rejected`, `target_unsent` or `line_inactive` (its line was paused or retired before it went out). Tapbacks sent from the dashboard can also fail with a few more codes, listed on [`message.reaction.failed`](/webhooks/events#message-reaction-failed). Otherwise `null`. |
 | `created_at` / `removed_at` | When you sent it, and when it was removed or replaced (UTC; `removed_at` is `null` while it's active). |
 
 ```json
