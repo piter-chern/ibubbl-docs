@@ -265,12 +265,12 @@ The dialer tells your page what happens with `postMessage`. It sends them only t
 | `type` | When | Other fields |
 |--------|------|--------------|
 | `ibubbl:ready` | The dialer can make and take calls. | — |
-| `ibubbl:incoming` | A call is ringing. Sent again when the caller's name is found. | `from` (E.164), `contact_name` (string or `null`) |
-| `ibubbl:call-started` | The rep answered, or started a call. | `direction` (`inbound` or `outbound`), `number` |
-| `ibubbl:call-ended` | The call ended. | `direction`, `number`, `duration_s` (seconds connected, `0` if never answered) |
+| `ibubbl:incoming` | A call is ringing. Sent again when the caller's name is found. | `from` (E.164), `contact_name` (string or `null`), `call_id` (the call's ID, or `null`; see [Open the contact when a call rings](#open-the-contact-when-a-call-rings)) |
+| `ibubbl:call-started` | The rep answered, or started a call. | `direction` (`inbound` or `outbound`), `number`, `call_id` (the call's ID on an inbound call, `null` on an outbound one) |
+| `ibubbl:call-ended` | The call ended. | `direction`, `number`, `duration_s` (seconds connected, `0` if never answered), `call_id` (as on `ibubbl:call-started`) |
 | `ibubbl:session-expired` | The session ended. Create a new one and set the iframe's `src` again. | — |
 | `ibubbl:status` | The dialer's status changed. Sent on every change, starting when the dialer loads. | `state`: `start`, `connecting`, `ready`, `reconnecting`, `offline`, `mic-blocked`, `registration-failed`, `session-ended`, `link-used`, `link-expired`, `origin-refused`, `not-enabled`, `account-inactive`, `bad-link` or `not-framed`. The dock also uses a `load` field; ignore it. |
-| `ibubbl:incoming-ended` | A call stopped ringing in this dialer. Sent once per call. | `from`, and `reason`: `answered` (answered here; `ibubbl:call-started` follows), `declined` (the rep pressed Decline here) or `missed` (anything else: the caller hung up, the call went to voicemail, or another dialer or dashboard tab answered it). `answered_elsewhere` is reserved for later. |
+| `ibubbl:incoming-ended` | A call stopped ringing in this dialer. Sent once per call. | `from`, and `reason`: `answered` (answered here; `ibubbl:call-started` follows), `declined` (the rep pressed Decline here) or `missed` (anything else: the caller hung up, the call went to voicemail, or another dialer or dashboard tab answered it). `answered_elsewhere` is reserved for later. `call_id`: the same ID as that call's `ibubbl:incoming`. |
 
 Your page can send one message: `{ "type": "ibubbl:dial", "to": "+14155551234" }`. It fills the keypad with the number, and the rep presses Call. The dialer accepts it only from the page it started on, and ignores a number it can't read.
 
@@ -300,6 +300,62 @@ function callWithIbubbl(phone: string) {
 ```
 
 `showToast`, `logCall` and `getNewDialerUrl` stand for your own code.
+
+### Open the contact when a call rings
+
+The messages about an inbound call carry `call_id`: the call's ID in iBubbl, the same ID that [Retrieve a call](/api-reference/calls/retrieve) takes and that the [`call.*` webhooks](/webhooks/events#call-completed) carry as `data.id`. Use it to open the caller's record while the phone is still ringing, and to attach the call's outcome to that record when it ends.
+
+1. On `ibubbl:incoming`, send `call_id` to your server. Your server calls `GET /v1/calls/{call_id}` with your API key and gets the call's `contact_id`, `contact_number` and `conversation_id`. The call can already be read while it rings: its `status` is `ringing`. Never put your API key in the page.
+2. Open the record. A ring can send `ibubbl:incoming` twice (the second time with the caller's name), so key the record on `call_id`: open it once, then update the name.
+3. `ibubbl:incoming-ended`, `ibubbl:call-started` and `ibubbl:call-ended` for that call carry the same `call_id`.
+4. When the call ends, [`call.completed`](/webhooks/events#call-completed) or [`call.missed`](/webhooks/events#call-missed) reaches your webhook endpoint with `data.id` equal to `call_id`. Log the outcome against the record.
+
+`call_id` is set on inbound calls only, and is `null` on outbound calls. It can also be `null` on an inbound call, and a dialer page loaded before this field existed sends no `call_id` at all: treat a missing `call_id` like `null`, and fall back to `from`. If you use the [drop-in dock](#or-the-drop-in-dock), the same messages reach your page; check their origin against the origin of the session `url` your endpoint returns.
+
+```typescript
+// In your page, next to the listener above.
+const openRecords = new Map<string, Promise<string>>(); // call_id → your record's ID
+
+window.addEventListener("message", async (event) => {
+  if (event.origin !== dialerOrigin) return;
+  const msg = event.data;
+  if (msg?.type !== "ibubbl:incoming") return;
+
+  const callId: string | null = msg.call_id ?? null;
+  if (!callId) {
+    showToast(`Incoming call from ${msg.contact_name ?? msg.from}`); // no ID: match by number
+    return;
+  }
+
+  // Store the lookup before awaiting it, so the second message doesn't open a second record.
+  let record = openRecords.get(callId);
+  if (!record) {
+    record = fetch(`/api/ibubbl/calls/${encodeURIComponent(callId)}`)
+      .then((res) => res.json())
+      .then((call) => openContactRecord(call.contact_id, call.contact_number));
+    openRecords.set(callId, record);
+  }
+  if (msg.contact_name) updateCallerName(await record, msg.contact_name);
+});
+```
+
+```typescript
+// Your server. Check that your own user is signed in first; the API key never leaves the server.
+app.get("/api/ibubbl/calls/:callId", async (req, res) => {
+  const r = await fetch(
+    `https://api.ibubbl.com/v1/calls/${encodeURIComponent(req.params.callId)}`,
+    { headers: { Authorization: `Bearer ${process.env.IBUBBL_API_KEY}` } },
+  );
+  res.status(r.status).json(await r.json());
+});
+
+// Your webhook endpoint, after verifying the signature.
+if (event.type === "call.completed" || event.type === "call.missed") {
+  logCallOutcome(event.data.id, event.type, event.data.duration_seconds); // event.data.id is the call_id
+}
+```
+
+`openContactRecord`, `updateCallerName` and `logCallOutcome` stand for your own code.
 
 ## Ending a session
 
