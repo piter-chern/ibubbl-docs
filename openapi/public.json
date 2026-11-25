@@ -4121,6 +4121,143 @@
           }
         }
       }
+    },
+    "/v1/dialer/sessions": {
+      "post": {
+        "tags": [
+          "Dialer"
+        ],
+        "summary": "Create a dialer session",
+        "description": "Start an embeddable dialer session for one rep. Call this **from your server**: your API key must never reach a browser. Load the returned `url` in an `<iframe allow=\"microphone; autoplay\">` on one of the `frame_ancestors` origins; the rep then makes and takes calls on your iBubbl lines inside your app. See [Embed the dialer](/guides/embed-the-dialer).\n\nThe URL works once and must be loaded within 5 minutes, so create a session for each page view, not one per rep per day. Every open dialer, and every open dashboard tab, of your account rings on an incoming call; the first to answer takes it.\n\nThe embeddable dialer is turned on per account: ask support.",
+        "operationId": "createDialerSession",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DialerSessionCreate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Session created.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DialerSession"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`unauthorized`: missing, invalid or revoked API key.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "`dialer_not_enabled`: the embeddable dialer is not turned on for your account (ask support). `forbidden`: your account is suspended or cancelled.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "`invalid_frame_ancestors` (not 1 to 10 origins, a path, a wildcard, or `http://` other than localhost), `invalid_ttl` (not 300 to 86400), `invalid_external_user_id` (not 1 to 128 characters) or `validation_error` (a missing or mistyped field, or a field this endpoint doesn't take).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "`rate_limited`: more than 60 dialer sessions in 60 seconds from your account (all keys count together; other requests have their own budgets). Wait `Retry-After` seconds, then send the same request again.",
+            "headers": {
+              "Retry-After": {
+                "description": "Seconds to wait before retrying.",
+                "schema": {
+                  "type": "integer"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/dialer/sessions/{session_id}": {
+      "delete": {
+        "tags": [
+          "Dialer"
+        ],
+        "summary": "End a dialer session",
+        "description": "End a dialer session now. The dialer notices on its next request to iBubbl, at the latest within 10 minutes, and stops taking calls once any call in progress ends. Ending a session twice is safe.",
+        "operationId": "revokeDialerSession",
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Session Id"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "The session is ended (or already was)."
+          },
+          "401": {
+            "description": "`unauthorized`: missing, invalid or revoked API key.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "`forbidden`: your account is suspended or cancelled.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "`not_found`: no session with this ID on your account (also for a malformed ID).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -4255,6 +4392,105 @@
           "read_receipt": "queued",
           "read_receipt_skipped_reason": null
         }
+      },
+      "DialerSession": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id",
+            "description": "The session's ID (a UUID). Use it to end the session."
+          },
+          "url": {
+            "type": "string",
+            "title": "Url",
+            "description": "The page to load in your `<iframe>`. Its part after `#` is a single-use launch token: load the URL within 5 minutes, once, and don't log or store it."
+          },
+          "expires_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Expires At",
+            "description": "When the session ends."
+          },
+          "frame_ancestors": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Frame Ancestors",
+            "description": "The origins the dialer may run in, as iBubbl normalized them."
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "url",
+          "expires_at",
+          "frame_ancestors"
+        ],
+        "title": "DialerSession",
+        "examples": [
+          {
+            "expires_at": "2026-11-25T23:00:00.000000Z",
+            "frame_ancestors": [
+              "https://crm.example.com"
+            ],
+            "id": "3f1c9a2e-5b7d-4c8e-9f0a-1b2c3d4e5f6a",
+            "url": "https://ibubbl-dashboard.vercel.app/embed/dialer/3f1c9a2e-5b7d-4c8e-9f0a-1b2c3d4e5f6a#l=Q2xhdW1kZS1sYXVuY2gtdG9rZW4tZXhhbXBsZTAwMDA"
+          }
+        ]
+      },
+      "DialerSessionCreate": {
+        "properties": {
+          "frame_ancestors": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Frame Ancestors",
+            "description": "The origins (scheme, host and port, no path) of the pages that will embed the dialer, 1 to 10. `https://` origins only, except `http://localhost` and `http://127.0.0.1` for development. The dialer refuses to start on any other site."
+          },
+          "ttl_seconds": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ttl Seconds",
+            "description": "How long the session lasts, 300 to 86400 seconds. Leave it out for 28800 (8 hours). When it ends, the dialer stops taking calls after any call in progress."
+          },
+          "external_user_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "External User Id",
+            "description": "Your own ID for the rep using this dialer, 1 to 128 characters. iBubbl stores it with the session and does not interpret it."
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "frame_ancestors"
+        ],
+        "title": "DialerSessionCreate",
+        "description": "A dialer session for one rep's page view. Fields not listed here are rejected with `422 validation_error`.",
+        "examples": [
+          {
+            "external_user_id": "user_8231",
+            "frame_ancestors": [
+              "https://crm.example.com"
+            ],
+            "ttl_seconds": 28800
+          }
+        ]
       },
       "EventAck": {
         "properties": {
@@ -7348,6 +7584,9 @@
     },
     {
       "name": "iMessage lookups"
+    },
+    {
+      "name": "Dialer"
     },
     {
       "name": "Webhooks"

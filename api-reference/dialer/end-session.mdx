@@ -1,0 +1,114 @@
+---
+title: 'End a dialer session'
+openapi: 'DELETE /v1/dialer/sessions/{session_id}'
+---
+
+### End a dialer session
+
+**Method:** `DELETE` | **Endpoint:** `/v1/dialer/sessions/{session_id}`
+
+**Description:** End an [embeddable dialer](/guides/embed-the-dialer) session now, for example when the rep signs out of your app. The dialer notices on its next request to iBubbl, within 10 minutes at the latest, and stops taking calls once any call in progress ends. Ending a session twice is safe. It works even if the dialer has since been turned off for your account.
+
+**Authentication:** API key in the `Authorization` header: `Authorization: Bearer ib_pk_<64 hex>`. Create keys in the dashboard under **Settings → API access**.
+
+#### Request Body
+None. The path parameter `session_id` is the session's `id` from [Create a dialer session](/api-reference/dialer/create-session) (a UUID).
+
+<RequestExample>
+
+```bash cURL
+curl -X DELETE https://api.ibubbl.com/v1/dialer/sessions/3f1c9a2e-5b7d-4c8e-9f0a-1b2c3d4e5f6a \
+  -H "Authorization: Bearer $IBUBBL_API_KEY"
+```
+
+```typescript TypeScript
+const sessionId = "3f1c9a2e-5b7d-4c8e-9f0a-1b2c3d4e5f6a";
+
+const res = await fetch(`https://api.ibubbl.com/v1/dialer/sessions/${sessionId}`, {
+  method: "DELETE",
+  headers: { Authorization: `Bearer ${process.env.IBUBBL_API_KEY}` },
+  signal: AbortSignal.timeout(10_000),
+});
+
+if (!res.ok) {
+  const data = await res.json();
+  throw new Error(`${res.status} ${data.detail?.error}`);
+}
+// 204: no body.
+```
+
+```python Python
+import os
+
+import requests
+
+API_KEY = os.environ["IBUBBL_API_KEY"]
+
+session_id = "3f1c9a2e-5b7d-4c8e-9f0a-1b2c3d4e5f6a"
+
+res = requests.delete(
+    f"https://api.ibubbl.com/v1/dialer/sessions/{session_id}",
+    headers={"Authorization": f"Bearer {API_KEY}"},
+    timeout=10,
+)
+if not res.ok:
+    data = res.json()
+    raise RuntimeError(f"{res.status_code} {data['detail']['error']}")
+# 204: no body.
+```
+
+</RequestExample>
+
+<ResponseExample>
+
+```text 204 No Content
+(no body)
+```
+
+```json 404 Not Found
+{
+  "detail": {
+    "error": "not_found",
+    "message": "dialer session not found"
+  }
+}
+```
+
+</ResponseExample>
+
+#### Responses
+**204 No Content**
+
+The session is ended, or already was. No body.
+
+**401 Unauthorized**
+```json
+{
+  "detail": {
+    "error": "unauthorized",
+    "message": "Invalid or revoked API key"
+  }
+}
+```
+
+**403 Forbidden**
+```json
+{
+  "detail": {
+    "error": "forbidden",
+    "message": "Account is suspended"
+  }
+}
+```
+Your iBubbl account is suspended or cancelled (`message` is then `Account is cancelled`). Every API-key endpoint returns this.
+
+**404 Not Found**
+```json
+{
+  "detail": {
+    "error": "not_found",
+    "message": "dialer session not found"
+  }
+}
+```
+Also returned for a malformed ID and for a session that belongs to another account.
