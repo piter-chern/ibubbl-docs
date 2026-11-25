@@ -169,7 +169,7 @@ Return a new URL on every call: each one works once. Don't log it.
 ```html
 <script
   src="https://ibubbl-dashboard.vercel.app/embed/v1.0.0/dock.js"
-  integrity="sha384-Pghn4fKPQLJ+8zXXKgluX57S5m5UfALS8dW4d69rJwZZOV/icxeGn4+imJgnKQ72"
+  integrity="sha384-qzizEpjtdGVNChNbx9QPdeydeisJ7fqDunJf1RdmVJCZN2Eyxj1ureFYyrEKxpSM"
   crossorigin="anonymous"
 ></script>
 ```
@@ -185,7 +185,7 @@ A numbered file never changes. Newer ones are listed in the [changelog](/changel
 | `zIndex` | `2147483000` | The dock's stacking order, if your own overlays must sit above it. |
 | `theme` | `"auto"` | `"light"`, `"dark"`, or `"auto"` to follow the computer's setting. It styles the dock and the dialer inside it. |
 | `accentColor` | `"#2563EB"` | Any CSS color, used for the button and the dock's header. The icon and text on it switch between black and white to stay readable. |
-| `notifications` | `false` | Show a system notification for an incoming call while your page is in the background. It uses your page's notification permission, which the dock asks for the first time the rep clicks its button. |
+| `notifications` | `false` | Show a system notification for an incoming call while your page is in the background, one per call. It uses your page's notification permission. Browsers ask for it only after a click on your page, so until the rep decides, the dock's header shows **Turn on alerts**. You can also call `IbubblDock.enableNotifications()` from a button of your own. |
 | `singleTab` | `true` | Run one dialer per browser, not one per tab. See [More than one tab](#more-than-one-tab). |
 | `onEvent` | — | Receives every message from the dialer, as listed in [Messages between your page and the dialer](#messages-between-your-page-and-the-dialer). |
 
@@ -198,6 +198,7 @@ A numbered file never changes. Newer ones are listed in the [changelog](/changel
 | `IbubblDock.open()` / `IbubblDock.close()` | Opens or minimizes the panel. |
 | `IbubblDock.dial(number)` | Opens the dock with the number in the keypad (a "Call" button on a contact page). The rep still presses Call. |
 | `IbubblDock.retry()` | Tries again after the dock gave up connecting. |
+| `IbubblDock.enableNotifications()` | Turns on call notifications and asks for the permission if the rep hasn't decided yet. Call it from a click, for example in your settings. Returns a promise of `"granted"`, `"denied"`, `"default"` or `"unsupported"`. |
 | `IbubblDock.getState()` | A snapshot: `phase`, `open`, `dialer` (the status below), `ringing`, `inCall` and `role`. |
 | `IbubblDock.version` | The dock's version. |
 
