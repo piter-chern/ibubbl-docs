@@ -288,7 +288,7 @@ The dialer tells your page what happens with `postMessage`. It sends them only t
 | `type` | When | Other fields |
 |--------|------|--------------|
 | `ibubbl:ready` | The dialer can make and take calls. | — |
-| `ibubbl:incoming` | A call is ringing. Sent again when the caller's name is found. | `from` (E.164), `contact_name` (string or `null`), `call_id` (the call's ID, or `null`; see [Open the contact when a call rings](#open-the-contact-when-a-call-rings)) |
+| `ibubbl:incoming` | A call is ringing. Sent again when the caller is found in your iBubbl contacts with a name. | `from` (the caller's number, in E.164; when the caller withholds their number, a text such as `anonymous` instead), `contact_name` (the caller's name in your iBubbl contacts, or `null`: also `null` for a named contact the dialer couldn't find, such as one that opted out), `call_id` (the call's ID, or `null`; see [Open the contact when a call rings](#open-the-contact-when-a-call-rings)) |
 | `ibubbl:call-started` | The rep answered, or started a call. | `direction` (`inbound` or `outbound`), `number`, `call_id` (the call's ID on an inbound call, `null` on an outbound one) |
 | `ibubbl:call-ended` | The call ended. | `direction`, `number`, `duration_s` (seconds connected, `0` if never answered), `call_id` (as on `ibubbl:call-started`) |
 | `ibubbl:session-expired` | The session ended. Create a new one and set the iframe's `src` again. | — |
