@@ -97,6 +97,134 @@ The session lasts 8 hours unless you set `ttl_seconds` (300 to 86400). `external
 
 To pre-fill a number in the keypad, add `&to=` and the URL-encoded E.164 number to the end of the URL, for example `&to=%2B14155551234`. The rep still presses Call.
 
+## Or: the drop-in dock
+
+Instead of placing the iframe yourself, add the dock: a phone button that floats in a corner of your app and opens into the dialer. It needs no space in your layout, keeps ringing while collapsed, and gets a new session by itself when one ends. You write one server endpoint, the same session call as step 1, and add two script tags.
+
+### Your endpoint
+
+The dock calls your endpoint whenever it needs a session: on each page load and when a session ends. Your endpoint creates one, exactly as in [step 1](#1-create-a-session-on-your-server), and returns its `url` as text. Protect the endpoint like the rest of your app: anyone who can call it gets a dialer on your lines.
+
+<CodeGroup>
+
+```typescript Node (Express)
+app.post("/api/ibubbl-session", requireSignedInRep, async (req, res) => {
+  const r = await fetch("https://api.ibubbl.com/v1/dialer/sessions", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${process.env.IBUBBL_API_KEY}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      frame_ancestors: ["https://crm.example.com"],
+      external_user_id: req.user.id,
+    }),
+    signal: AbortSignal.timeout(10_000),
+  });
+  const data = await r.json();
+  if (!r.ok) return res.status(502).send(data.detail?.error ?? "dialer_session_failed");
+  res.set("Cache-Control", "no-store").type("text/plain").send(data.url);
+});
+```
+
+```python Python (Flask)
+@app.post("/api/ibubbl-session")
+@login_required
+def ibubbl_session():
+    r = requests.post(
+        "https://api.ibubbl.com/v1/dialer/sessions",
+        headers={"Authorization": f"Bearer {API_KEY}"},
+        json={
+            "frame_ancestors": ["https://crm.example.com"],
+            "external_user_id": current_user.id,
+        },
+        timeout=10,
+    )
+    if not r.ok:
+        return r.json()["detail"]["error"], 502
+    return r.json()["url"], 200, {"Content-Type": "text/plain", "Cache-Control": "no-store"}
+```
+
+</CodeGroup>
+
+Return a new URL on every call: each one works once. Don't log it.
+
+### The script
+
+```html
+<script src="https://ibubbl-dashboard.vercel.app/embed/v1/dock.js"></script>
+<script>
+  IbubblDock.mount({
+    getSessionUrl: () =>
+      fetch("/api/ibubbl-session", { method: "POST" }).then((r) => {
+        if (!r.ok) throw new Error(`ibubbl-session ${r.status}`);
+        return r.text();
+      }),
+  });
+</script>
+```
+
+`/embed/v1/dock.js` always serves the latest version 1 of the dock, so you get compatible fixes within minutes. To pin an exact version instead, load a numbered file with its integrity hash:
+
+```html
+<script
+  src="https://ibubbl-dashboard.vercel.app/embed/v1.0.0/dock.js"
+  integrity="sha384-Pghn4fKPQLJ+8zXXKgluX57S5m5UfALS8dW4d69rJwZZOV/icxeGn4+imJgnKQ72"
+  crossorigin="anonymous"
+></script>
+```
+
+A numbered file never changes. Newer ones are listed in the [changelog](/changelog).
+
+### Options
+
+| Option | Default | |
+|--------|---------|---|
+| `getSessionUrl` | required | A function returning the session `url` (a string, `{ url }`, or a promise of either). Called on mount and each time the session must be renewed. It gets 15 seconds. |
+| `position` | `"bottom-right"` | Or `"bottom-left"`. |
+| `zIndex` | `2147483000` | The dock's stacking order, if your own overlays must sit above it. |
+| `theme` | `"auto"` | `"light"`, `"dark"`, or `"auto"` to follow the computer's setting. It styles the dock and the dialer inside it. |
+| `accentColor` | `"#2563EB"` | Any CSS color, used for the button and the dock's header. The icon and text on it switch between black and white to stay readable. |
+| `notifications` | `false` | Show a system notification for an incoming call while your page is in the background. It uses your page's notification permission, which the dock asks for the first time the rep clicks its button. |
+| `singleTab` | `true` | Run one dialer per browser, not one per tab. See [More than one tab](#more-than-one-tab). |
+| `onEvent` | — | Receives every message from the dialer, as listed in [Messages between your page and the dialer](#messages-between-your-page-and-the-dialer). |
+
+### Methods
+
+| Method | |
+|--------|---|
+| `IbubblDock.mount(options)` | Adds the dock. Call it once per page; a second call keeps the first dock. |
+| `IbubblDock.unmount()` | Removes the dock and its dialer. When the rep signs out, call it and [end the session](/api-reference/dialer/end-session) on your server. |
+| `IbubblDock.open()` / `IbubblDock.close()` | Opens or minimizes the panel. |
+| `IbubblDock.dial(number)` | Opens the dock with the number in the keypad (a "Call" button on a contact page). The rep still presses Call. |
+| `IbubblDock.retry()` | Tries again after the dock gave up connecting. |
+| `IbubblDock.getState()` | A snapshot: `phase`, `open`, `dialer` (the status below), `ringing`, `inCall` and `role`. |
+| `IbubblDock.version` | The dock's version. |
+
+The dock logs its problems to the browser console, prefixed with `[IbubblDock]`. A common one: `getSessionUrl` returned an error page instead of a URL.
+
+### What the rep sees
+
+- **The first time,** the dock opens by itself on **Start the dialer**. After the click it says **Ready** and minimizes to its button.
+- **The button's dot:** green means Ready, amber means starting or reconnecting, red means the dialer needs attention. Hover over the button to see why.
+- **An incoming call** opens the dock by itself, even when it's minimized. When the call ends, or stops ringing without being answered, the dock minimizes again. If the rep minimizes a ringing call, the button pulses until it stops.
+- **During a call,** the minimized button shows the call's duration. For an outgoing call, it counts from when the rep pressed Call.
+- **When a session ends,** the dock gets a new one from your endpoint and reloads the dialer. In Chrome the new dialer starts by itself. When the browser needs another click, Safari usually included, the dock opens on **Start the dialer**. Renewals never interrupt a call: they wait until it ends.
+- **If it can't connect** after several tries over about 8 minutes, the dock shows **Reconnect**.
+
+### More than one tab
+
+Reps often have your app open in several tabs. With `singleTab` (the default), only one tab runs the dialer and creates sessions, so a call rings once instead of in every tab. The other tabs show **Calls are on in another tab** and a **Use here** button that moves the dialer to that tab. **Use here** is unavailable while a call rings or is in progress. When the tab with the dialer closes, another tab takes over by itself.
+
+A call rings only in the tab that has the dialer, and the dock can't bring that tab to the front. With `notifications: true`, clicking the notification does.
+
+### Limits of the dock
+
+- **A full page load reloads the dock.** Calls don't ring until it's back, which usually takes a few seconds, and **a call in progress ends**. In an app whose pages change without reloading (React, Vue, and similar), the dock and its calls carry on.
+- **Each page load needs the browser's permission again.** Chrome usually starts the dialer by itself once the rep has used your app. Safari may ask for a click, and sometimes for the microphone, on each load.
+- **Your Content Security Policy** must allow `https://ibubbl-dashboard.vercel.app` in `script-src` and `frame-src`. If your page sends a `Permissions-Policy` header, it must not turn the microphone off. If your app itself runs inside another page's iframe, each iframe around it needs `allow="microphone; autoplay"`.
+- **A changed `theme`** reaches the dialer the next time it loads.
+
 ## 3. What the rep sees
 
 The first time, the rep clicks **Start dialer** and allows the microphone. Browsers allow sound and the microphone in an iframe only after a click inside it, so without this click an incoming call couldn't ring. Safari may ask for the microphone again on each page load.
@@ -138,6 +266,8 @@ The dialer tells your page what happens with `postMessage`. It sends them only t
 | `ibubbl:call-started` | The rep answered, or started a call. | `direction` (`inbound` or `outbound`), `number` |
 | `ibubbl:call-ended` | The call ended. | `direction`, `number`, `duration_s` (seconds connected, `0` if never answered) |
 | `ibubbl:session-expired` | The session ended. Create a new one and set the iframe's `src` again. | — |
+| `ibubbl:status` | The dialer's status changed. Sent on every change, starting when the dialer loads. | `state`: `start`, `connecting`, `ready`, `reconnecting`, `offline`, `mic-blocked`, `registration-failed`, `session-ended`, `link-used`, `link-expired`, `origin-refused`, `not-enabled`, `account-inactive`, `bad-link` or `not-framed`. The dock also uses a `load` field; ignore it. |
+| `ibubbl:incoming-ended` | A call stopped ringing in this dialer. Sent once per call. | `from`, and `reason`: `answered` (answered here; `ibubbl:call-started` follows), `declined` (the rep pressed Decline here) or `missed` (anything else: the caller hung up, the call went to voicemail, or another dialer or dashboard tab answered it). `answered_elsewhere` is reserved for later. |
 
 Your page can send one message: `{ "type": "ibubbl:dial", "to": "+14155551234" }`. It fills the keypad with the number, and the rep presses Call. The dialer accepts it only from the page it started on, and ignores a number it can't read.
 
