@@ -103,7 +103,7 @@ Instead of placing the iframe yourself, add the dock: a phone button that floats
 
 ### Your endpoint
 
-The dock calls your endpoint whenever it needs a session: on each page load and when a session ends. Your endpoint creates one, exactly as in [step 1](#1-create-a-session-on-your-server), and returns its `url` as text. Protect the endpoint like the rest of your app: anyone who can call it gets a dialer on your lines.
+The dock calls your endpoint whenever it needs a session: on each page load and when a session ends. Your endpoint creates one, exactly as in [step 1](#1-create-a-session-on-your-server), and returns its `url` as text. When iBubbl refuses, pass its answer on unchanged (the status, the JSON body and `Retry-After`), so the dock can tell a refusal that a retry fixes from one that it doesn't; see [When the dock can't get a session](#when-the-dock-cant-get-a-session). Protect the endpoint like the rest of your app: anyone who can call it gets a dialer on your lines.
 
 <CodeGroup>
 
@@ -121,8 +121,13 @@ app.post("/api/ibubbl-session", requireSignedInRep, async (req, res) => {
     }),
     signal: AbortSignal.timeout(10_000),
   });
-  const data = await r.json();
-  if (!r.ok) return res.status(502).send(data.detail?.error ?? "dialer_session_failed");
+  const data = await r.json().catch(() => ({ detail: { error: "internal_error" } }));
+  if (!r.ok) {
+    // iBubbl's refusal, unchanged: the dock reads its code and Retry-After.
+    const retryAfter = r.headers.get("Retry-After");
+    if (retryAfter) res.set("Retry-After", retryAfter);
+    return res.status(r.status).json(data);
+  }
   res.set("Cache-Control", "no-store").type("text/plain").send(data.url);
 });
 ```
@@ -141,7 +146,9 @@ def ibubbl_session():
         timeout=10,
     )
     if not r.ok:
-        return r.json()["detail"]["error"], 502
+        # iBubbl's refusal, unchanged: the dock reads its code and Retry-After.
+        headers = {"Retry-After": r.headers["Retry-After"]} if "Retry-After" in r.headers else {}
+        return r.content, r.status_code, {"Content-Type": "application/json", **headers}
     return r.json()["url"], 200, {"Content-Type": "text/plain", "Cache-Control": "no-store"}
 ```
 
@@ -155,39 +162,38 @@ Return a new URL on every call: each one works once. Don't log it.
 <script src="https://ibubbl-dashboard.vercel.app/embed/v1/dock.js"></script>
 <script>
   IbubblDock.mount({
-    getSessionUrl: () =>
-      fetch("/api/ibubbl-session", { method: "POST" }).then((r) => {
-        if (!r.ok) throw new Error(`ibubbl-session ${r.status}`);
-        return r.text();
-      }),
+    // Return the response itself: its text is the URL, and a refusal is read from it.
+    getSessionUrl: () => fetch("/api/ibubbl-session", { method: "POST" }),
   });
 </script>
 ```
+
+Returning the response needs version 1.1.0 or later of the dock. With version 1.0.0, return `r.text()` and throw when `!r.ok`; the dock then retries every failure the same way.
 
 `/embed/v1/dock.js` always serves the latest version 1 of the dock, so you get compatible fixes within minutes. To pin an exact version instead, load a numbered file with its integrity hash:
 
 ```html
 <script
-  src="https://ibubbl-dashboard.vercel.app/embed/v1.0.0/dock.js"
-  integrity="sha384-qzizEpjtdGVNChNbx9QPdeydeisJ7fqDunJf1RdmVJCZN2Eyxj1ureFYyrEKxpSM"
+  src="https://ibubbl-dashboard.vercel.app/embed/v1.1.0/dock.js"
+  integrity="sha384-BFJAiUDO8O7SWd9pLb7nhIBubLNi7mD4YEH7eTyjodnMR5lortIU1dyjZVqU2D9M"
   crossorigin="anonymous"
 ></script>
 ```
 
-A numbered file never changes. Newer ones are listed in the [changelog](/changelog).
+A numbered file never changes. Version 1.0.0 (`sha384-qzizEpjtdGVNChNbx9QPdeydeisJ7fqDunJf1RdmVJCZN2Eyxj1ureFYyrEKxpSM`) stays available. Newer ones are listed in the [changelog](/changelog).
 
 ### Options
 
 | Option | Default | |
 |--------|---------|---|
-| `getSessionUrl` | required | A function returning the session `url` (a string, `{ url }`, or a promise of either). Called on mount and each time the session must be renewed. It gets 15 seconds. |
+| `getSessionUrl` | required | A function returning the session `url` (a string, `{ url }`, or a promise of either). Since 1.1.0 it can also return your endpoint's `fetch` response as it is, return `{ error: "<code>" }`, or throw an `Error` with a `code`. Called on mount and each time the session must be renewed. It gets 15 seconds, including reading the response. |
 | `position` | `"bottom-right"` | Or `"bottom-left"`. |
 | `zIndex` | `2147483000` | The dock's stacking order, if your own overlays must sit above it. |
 | `theme` | `"auto"` | `"light"`, `"dark"`, or `"auto"` to follow the computer's setting. It styles the dock and the dialer inside it. |
 | `accentColor` | `"#2563EB"` | Any CSS color, used for the button and the dock's header. The icon and text on it switch between black and white to stay readable. |
 | `notifications` | `false` | Show a system notification for an incoming call while your page is in the background, one per call. It uses your page's notification permission. Browsers ask for it only after a click on your page, so until the rep decides, the dock's header shows **Turn on alerts**. You can also call `IbubblDock.enableNotifications()` from a button of your own. |
 | `singleTab` | `true` | Run one dialer per browser, not one per tab. See [More than one tab](#more-than-one-tab). |
-| `onEvent` | — | Receives every message from the dialer, as listed in [Messages between your page and the dialer](#messages-between-your-page-and-the-dialer). |
+| `onEvent` | — | Receives every message from the dialer, as listed in [Messages between your page and the dialer](#messages-between-your-page-and-the-dialer) and [Call state, quality and errors](#call-state-quality-and-errors). Since 1.1.0, also the dock's own problems, as `ibubbl:error` with `source: "dock"` (see [When the dock can't get a session](#when-the-dock-cant-get-a-session)). |
 
 ### Methods
 
@@ -199,10 +205,26 @@ A numbered file never changes. Newer ones are listed in the [changelog](/changel
 | `IbubblDock.dial(number)` | Opens the dock with the number in the keypad (a "Call" button on a contact page). The rep still presses Call. |
 | `IbubblDock.retry()` | Tries again after the dock gave up connecting. |
 | `IbubblDock.enableNotifications()` | Turns on call notifications and asks for the permission if the rep hasn't decided yet. Call it from a click, for example in your settings. Returns a promise of `"granted"`, `"denied"`, `"default"` or `"unsupported"`. |
-| `IbubblDock.getState()` | A snapshot: `phase`, `open`, `dialer` (the status below), `ringing`, `inCall` and `role`. |
+| `IbubblDock.getState()` | A snapshot: `phase`, `open`, `dialer` (the status below), `ringing`, `inCall`, `role` and, since 1.1.0, `error`: the last problem as `{ code, retryable }`, or `null` once a dialer is ready. |
 | `IbubblDock.version` | The dock's version. |
 
 The dock logs its problems to the browser console, prefixed with `[IbubblDock]`. A common one: `getSessionUrl` returned an error page instead of a URL.
+
+### When the dock can't get a session
+
+When `getSessionUrl` fails, the dock decides from the refusal's code whether to try again. It reports each failure to `onEvent` as `{ type: "ibubbl:error", protocol: 2, source: "dock", code, retryable, message, at }` and in `getState().error`.
+
+| Code | Where it comes from | The dock |
+|------|---------------------|----------|
+| `unauthorized`, `forbidden`, `dialer_not_enabled`, `account_inactive`, `invalid_frame_ancestors`, `invalid_ttl`, `invalid_external_user_id`, `validation_error`, `not_found` | iBubbl's refusal, passed on by your endpoint | Stops at once and shows **Reconnect** (`retryable: false`): a new attempt can't fix it. |
+| `session_refused` | Your endpoint answered 4xx without one of iBubbl's codes (for example the rep's own sign-in expired) | Stops at once (`retryable: false`). |
+| `rate_limited` | iBubbl's 429, or your endpoint's | Tries again after `Retry-After`, never sooner than its own backoff. |
+| `session_unavailable` | Your endpoint answered 5xx, couldn't be reached, threw, or took longer than 15 seconds | Tries again with backoff (`retryable: true`). |
+| `session_url_invalid` | It returned something that isn't a dialer URL, such as an error page | Tries again with backoff. |
+| `dialer_unreachable` | The dialer page loaded but never answered (often your Content Security Policy blocking `frame-src`) | Shows **Reconnect**. |
+| any other code | Passed on by your endpoint | Tries again with backoff. |
+
+The backoff is 0, 5, 30, 120 and 300 seconds; after that the dock shows **Reconnect**, and `IbubblDock.retry()` starts again.
 
 ### What the rep sees
 
@@ -210,6 +232,7 @@ The dock logs its problems to the browser console, prefixed with `[IbubblDock]`.
 - **The button's dot:** green means Ready, amber means starting or reconnecting, red means the dialer needs attention. Hover over the button to see why.
 - **An incoming call** opens the dock by itself, even when it's minimized. When the call ends, or stops ringing without being answered, the dock minimizes again. If the rep minimizes a ringing call, the button pulses until it stops.
 - **During a call,** the minimized button shows the call's duration. For an outgoing call, it counts from when the rep pressed Call.
+- **If the dialer goes offline,** the dock gives it 15 seconds to reconnect by itself (it usually does, within a second or two) before getting a new session.
 - **When a session ends,** the dock gets a new one from your endpoint and reloads the dialer. In Chrome the new dialer starts by itself. When the browser needs another click, Safari usually included, the dock opens on **Start the dialer**. Renewals never interrupt a call: they wait until it ends.
 - **If it can't connect** after several tries over about 8 minutes, the dock shows **Reconnect**.
 
@@ -536,6 +559,8 @@ window.addEventListener("message", (event) => {
 | `unauthorized` / `forbidden` | 401 / 403 | No: your API key or account. |
 | `dialer_not_enabled` | 403 | No: ask support to turn the dialer on. |
 | `invalid_frame_ancestors` / `invalid_ttl` / `invalid_external_user_id` / `validation_error` | 422 | No: fix the request. |
+
+With the [drop-in dock](#or-the-drop-in-dock) (version 1.1.0 or later), return that response from `getSessionUrl` as it is: the dock reads it and decides; see [When the dock can't get a session](#when-the-dock-cant-get-a-session).
 
 ```typescript
 // Your server: forward iBubbl's refusal as it is.
