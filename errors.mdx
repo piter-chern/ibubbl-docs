@@ -501,6 +501,10 @@ if not res.ok:
 
 The general rule: **don't retry 4xx**. Most 4xxes are payload-level problems that retrying won't fix. The exception is `429 rate_limited`: wait, then send the same request again (on a list, a conversation action, an upload or an attachment send, `Retry-After` says how long). The limit 422s (`daily_cap_exhausted`, `cold_cap_exhausted`) are retryable only after the limit resets at midnight ET; iBubbl does not queue them for you. The hourly new-contact limit and an offline line are different: those sends are accepted and wait (`pending` with `held_reason: "hourly_limit"`, or `queued`), so resending just creates a duplicate. The numbers are on [Limits and queues](/concepts/limits). A send refused with a `404` or `422` creates no message, so its `idempotency_key` stays unused and you can reuse it when you send again. The same holds for a scheduled message refused with `503 no_active_line`.
 
+### Errors in the embedded dialer
+
+The [embedded dialer](/guides/embed-the-dialer) reports what fails inside the page (the microphone, its connection, a call) to your page as `ibubbl:error` messages, each with a stable `code` and whether it's `retryable`. Those codes are listed in [Errors from the dialer](/guides/embed-the-dialer#errors-from-the-dialer). When your server can't create a dialer session, see [When your server can't create a session](/guides/embed-the-dialer#when-your-server-cant-create-a-session).
+
 ## HTTP status mapping summary
 
 | Status | When |

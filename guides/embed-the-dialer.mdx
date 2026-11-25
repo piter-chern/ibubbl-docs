@@ -272,7 +272,9 @@ The dialer tells your page what happens with `postMessage`. It sends them only t
 | `ibubbl:status` | The dialer's status changed. Sent on every change, starting when the dialer loads. | `state`: `start`, `connecting`, `ready`, `reconnecting`, `offline`, `mic-blocked`, `registration-failed`, `session-ended`, `link-used`, `link-expired`, `origin-refused`, `not-enabled`, `account-inactive`, `bad-link` or `not-framed`. The dock also uses a `load` field; ignore it. |
 | `ibubbl:incoming-ended` | A call stopped ringing in this dialer. Sent once per call. | `from`, and `reason`: `answered` (answered here; `ibubbl:call-started` follows), `declined` (the rep pressed Decline here) or `missed` (anything else: the caller hung up, the call went to voicemail, or another dialer or dashboard tab answered it). `answered_elsewhere` is reserved for later. `call_id`: the same ID as that call's `ibubbl:incoming`. |
 
-Your page can send one message: `{ "type": "ibubbl:dial", "to": "+14155551234" }`. It fills the keypad with the number, and the rep presses Call. The dialer accepts it only from the page it started on, and ignores a number it can't read.
+These messages never change: fields are only ever added. The dialer also sends the newer messages in [Call state, quality and errors](#call-state-quality-and-errors).
+
+Your page can send one message: `{ "type": "ibubbl:dial", "to": "+14155551234" }`. It fills the keypad with the number, and the rep presses Call. The dialer accepts it only from the page it started on. A number it can't read fills nothing and is answered with an [`ibubbl:error`](#errors-from-the-dialer) `invalid_number`; a message from any other page is ignored.
 
 ```typescript
 const dialer = document.querySelector<HTMLIFrameElement>("#ibubbl-dialer")!;
@@ -356,6 +358,196 @@ if (event.type === "call.completed" || event.type === "call.missed") {
 ```
 
 `openContactRecord`, `updateCallerName` and `logCallOutcome` stand for your own code.
+
+## Call state, quality and errors
+
+The dialer also sends the messages below: each call's state as it changes, the call's quality, the connection, and every error with a stable code. They are new message types, so a page that only knows the messages above keeps working. The first message a dialer that sends them posts is `ibubbl:hello` with `protocol: 2`: check for it before you rely on them.
+
+Every message in this section has `protocol` (`2`) and `at`: when the dialer sent it, in ISO 8601, by the clock of the rep's computer.
+
+| `type` | When | Other fields |
+|--------|------|--------------|
+| `ibubbl:hello` | Once, when the dialer loads, before its first `ibubbl:status`. | — |
+| `ibubbl:connection` | The dialer's connection changed: once the dialer starts, then on every change. | `device`: `unregistered`, `registering`, `registered` (calls ring here) or `destroyed` (the session ended). `network`: `online` or `offline`, as the rep's browser sees it. |
+| `ibubbl:call-state` | A call's state changed. | `call_ref`, `call_id`, `seq`, `direction`, `number`, `state`, `previous`; on `ringing`: `early_media`; on `closed`: `reason`, `duration_s` and, when `reason` is `failed`, `error`. See [A call's states](#a-calls-states). |
+| `ibubbl:call-warning` | The call's audio quality dropped. | `call_ref`, `call_id`, `seq`, `name` (see [Call quality](#call-quality)) |
+| `ibubbl:call-warning-cleared` | That warning is over. | `call_ref`, `call_id`, `seq`, `name` |
+| `ibubbl:call-mute` | The rep muted or unmuted the call. | `call_ref`, `call_id`, `seq`, `muted` (`true` or `false`) |
+| `ibubbl:error` | Something failed. | `code`, `retryable`, `source` and more; see [Errors from the dialer](#errors-from-the-dialer). |
+
+Three fields tie a call's messages together:
+
+- `call_ref`: the dialer's own name for one call, `c_` and 16 hex characters. Every message about a call carries it, outbound calls included, and two calls never share one. It means nothing to the API.
+- `call_id`: the call's ID in iBubbl, as on `ibubbl:incoming` (see [Open the contact when a call rings](#open-the-contact-when-a-call-rings)). Inbound calls only; `null` on outbound calls and when it isn't known.
+- `seq`: counts the messages about one `call_ref`, from 1, with no gaps. Messages reach your page in order. If you pass them on to your server, use `seq` to put them back in order and to drop repeats; don't order by `at`.
+
+The dialer never puts its session credential, a calling token or Twilio's own call IDs in a message.
+
+### A call's states
+
+```mermaid
+stateDiagram-v2
+  [*] --> connecting: outbound call placed
+  [*] --> ringing: inbound call rings here
+  connecting --> ringing: the other phone rings
+  connecting --> open
+  ringing --> open: answered
+  connecting --> reconnecting
+  ringing --> reconnecting
+  open --> reconnecting: connection dropped
+  reconnecting --> open: back (it returns to the state it left)
+  reconnecting --> ringing
+  reconnecting --> connecting
+  connecting --> closed
+  ringing --> closed
+  open --> closed
+  reconnecting --> closed
+  closed --> [*]
+```
+
+| `state` | Meaning |
+|---------|---------|
+| `connecting` | Outbound only, the first state: the call is placed and the other phone isn't ringing yet. |
+| `ringing` | Inbound: the call rings in this dialer (the first state). Outbound: the other phone is ringing; `early_media` is `true` when the carrier is already playing sound, such as a ringback tone or a message. |
+| `open` | Connected: the other side answered (outbound) or the rep answered here (inbound), and audio flows. |
+| `reconnecting` | The connection dropped and the dialer is restoring it. The call returns to the state it left, usually `open`, once both its audio and its connection to the calling service are back. The audio can return first: `ibubbl:call-warning-cleared` with `ice-connectivity-lost` says it has, while the state still reads `reconnecting`. |
+| `closed` | The call is over. Sent exactly once per call, and always the last message about that `call_ref`. |
+
+`previous` is the state before (`null` on the first message). So "answered" is `open` coming from `ringing` or `connecting`, and "reconnected" is any state coming from `reconnecting`.
+
+**Order.** At each moment the older message comes first: `ibubbl:incoming` and then `ringing`; `ibubbl:incoming-ended` (`answered`), then `ibubbl:call-started`, then `open` once audio connects; `ibubbl:call-ended` or `ibubbl:incoming-ended`, then `closed`. Treat a call as connected on `open`, not on `ibubbl:call-started`: when a caller hangs up just as the rep answers, `ibubbl:call-started` is sent but the call closes without ever being `open`.
+
+### Why a call closed
+
+On `closed`, `reason` says why, and `duration_s` is the seconds between `open` and `closed` (`null` if the call was never `open`).
+
+| `reason` | Direction | Meaning |
+|----------|-----------|---------|
+| `completed` | both | The call was connected, then either side hung up. |
+| `failed` | both | The call failed. `error` has its `code` and `retryable`, from [Errors from the dialer](#errors-from-the-dialer). |
+| `rejected` | inbound | The rep pressed **Decline** here. The call goes on ringing for the others. |
+| `not_answered_here` | inbound | The call stopped ringing here without being answered here: the caller hung up, it went to voicemail, or another dialer or dashboard tab answered it. The dialer can't tell which. |
+| `cancelled` | outbound | The rep hung up before the other side answered. |
+| `busy` | outbound | The other side was busy. |
+| `no_answer` | outbound | The call ended before it was answered: nobody picked up, the other side declined, or the number couldn't be reached. |
+| `missed`, `answered_elsewhere`, and `cancelled` on an inbound call | inbound | **Not sent yet.** They will replace `not_answered_here` where the dialer can tell what happened. Handle them already, as you would `not_answered_here`. |
+
+A number refused only after it was dialed shows `open`, then `completed`. Numbers outside the US and Canada and premium-rate numbers are refused before anything is dialed, with an [`ibubbl:error`](#errors-from-the-dialer) `number_not_allowed`.
+
+**`call-state` drives your screen; the call's record has the final word.** `ibubbl:call-state` tells your page what the rep is seeing now. What finally happened to a call is in iBubbl: [Retrieve a call](/api-reference/calls/retrieve) (`GET /v1/calls/{call_id}`) and the [`call.completed`](/webhooks/events#call-completed), [`call.missed`](/webhooks/events#call-missed) and [`call.voicemail`](/webhooks/events#call-voicemail) webhooks. For example, a call that closes here as `not_answered_here` was missed, went to voicemail, or was answered by a teammate: don't log it as missed from the dialer alone.
+
+```typescript
+// After `closed` with reason `not_answered_here` on an inbound call: ask your server what happened.
+async function settleCall(msg: { call_id: string | null; from?: string }) {
+  if (!msg.call_id) return; // no ID: wait for the call.* webhook, matched by number
+  const call = await fetch(`/api/ibubbl/calls/${encodeURIComponent(msg.call_id)}`).then((r) => r.json());
+  // call.status: "in_progress" or "completed" → a teammate answered it;
+  // "no_answer" or "cancelled" → missed; "voicemail" → the caller left one.
+  // While it still says "ringing", wait for the call.completed / call.missed webhook.
+  showCallOutcome(msg.call_id, call.status);
+}
+```
+
+`/api/ibubbl/calls/:callId` is the server route from [Open the contact when a call rings](#open-the-contact-when-a-call-rings); `showCallOutcome` stands for your own code.
+
+### Call quality
+
+`ibubbl:call-warning` says the call's audio got worse, and `ibubbl:call-warning-cleared` with the same `name` says it recovered. They come only between a call's first state and `closed`, and `closed` ends every warning still on. The names come from the calling service; these are the ones you will see most:
+
+| `name` | Meaning |
+|--------|---------|
+| `high-jitter` | Audio packets arrive unevenly: choppy sound. |
+| `high-packet-loss` / `high-packets-lost-fraction` | Audio packets are being lost: gaps in the sound. |
+| `high-rtt` | High delay on the connection: people talk over each other. |
+| `low-mos` | The estimated call quality is poor. |
+| `low-bytes-received` / `low-bytes-sent` | No audio is arriving, or none is leaving. |
+| `ice-connectivity-lost` | The audio connection was lost; `reconnecting` usually follows. |
+| `constant-audio-input-level` / `constant-audio-output-level` | The microphone or the speaker seems stuck (for example a muted headset). |
+
+Other names may appear: show them as a generic "call quality" warning.
+
+### Errors from the dialer
+
+`ibubbl:error` has:
+
+- `code`: one of the codes below. They are stable: codes are never renamed or removed.
+- `retryable`: whether trying the same thing again later can work. It is fixed per code.
+- `source`: where it happened: `launch` (opening the session), `token` (renewing the dialer's calling token), `microphone`, `device` (the dialer's connection for calls), `call` (a call) or `dial` (placing a call, or your `ibubbl:dial`).
+- `message`: a sentence for your logs. It may change; don't match on it.
+- When they apply: `status` (the HTTP status iBubbl answered), `twilio_code` (the calling service's error code), `retry_in_s` (when the dialer tries again by itself), and `call_ref` and `call_id` for an error about one call.
+
+| `code` | `retryable` | When | What to do |
+|--------|-------------|------|------------|
+| `link_invalid` | no | The dialer `url` has no valid launch token. | Create a new session and set the iframe's `src` again. |
+| `link_used` | no | The `url` was already opened (it works once). | Create a new session. |
+| `link_expired` | no | The `url` wasn't opened within 5 minutes. | Create a new session. |
+| `origin_not_allowed` | no | This page's origin isn't in the session's `frame_ancestors`. | Fix `frame_ancestors`. |
+| `session_ended` | no | The session expired or was ended. `ibubbl:session-expired` follows. | Create a new session. |
+| `dialer_not_enabled` | no | The dialer isn't turned on for your account. | Email support. |
+| `account_inactive` | no | Your iBubbl account isn't active. | Email support. |
+| `rate_limited` | yes | Too many requests from this dialer. | Nothing: the dialer waits (`retry_in_s`). If it happened while opening the session, create a new one after `retry_in_s`. |
+| `token_unavailable` | yes | Renewing the dialer's calling token failed. Sent for each failed try, with `retry_in_s`. | Nothing: see [The dialer's calling token](#the-dialers-calling-token). |
+| `microphone_unavailable` | no | The browser, the rep or your iframe refused the microphone, or there is none. | Ask the rep to allow the microphone. Your iframe needs `allow="microphone"`. |
+| `connection_failed` | yes | The dialer couldn't reach iBubbl or the calling service, or couldn't register for calls. | Usually nothing: it reconnects by itself. If its status stays `offline`, reload it with a new session. |
+| `call_failed` | yes | A call failed, or couldn't be placed or answered. On an answered call that goes on (for example a keypad tone that couldn't be sent), the call is not ended. | Try the call again. |
+| `invalid_number` | no | The number can't be dialed, or your `ibubbl:dial` had one the dialer can't read. | Fix the number. |
+| `number_not_allowed` | no | Calls to that country, or to premium-rate numbers, are blocked. | Don't retry. |
+| `line_unavailable` | no | Your account has no active line, or no owner to place calls for. | Fix it in the dashboard. |
+| `request_refused` | no | iBubbl refused a request for another reason; `status` says which. | Email support with the time. |
+
+The dialer sends at most one error with the same `code`, `source` and `call_ref` every 10 seconds; `token_unavailable` comes once per try. A call that fails also closes with `reason: "failed"` and the same code in `error`. A busy or unanswered outbound call is not an error: it closes with `busy` or `no_answer`.
+
+### The dialer's calling token
+
+The dialer renews the token it uses for calls by itself. It renews a minute before the token expires and, if that fails, tries again after 5, 15 and 30 seconds, while the old token still works. After that it tries once a minute until it works or the session ends, and it tries at once when the rep's network comes back. Each failed try sends `ibubbl:error` `token_unavailable` (or `rate_limited`) with `retry_in_s`. From the second failure the status is `reconnecting`, and it goes back to `ready` once a new token is in. A call in progress is not affected. If iBubbl answers that the session is over, the dialer stops: `session_ended`, then `ibubbl:session-expired`.
+
+```typescript
+window.addEventListener("message", (event) => {
+  if (event.origin !== dialerOrigin) return;
+  const msg = event.data;
+  switch (msg?.type) {
+    case "ibubbl:call-state":
+      updateCallPanel(msg.call_ref, msg.state, msg.number); // connecting, ringing, open, reconnecting, closed
+      if (msg.state === "closed") logCallEnd(msg.call_ref, msg.call_id, msg.reason, msg.duration_s);
+      break;
+    case "ibubbl:call-warning":
+      showQualityBadge(msg.call_ref, msg.name);
+      break;
+    case "ibubbl:call-warning-cleared":
+      hideQualityBadge(msg.call_ref, msg.name);
+      break;
+    case "ibubbl:error":
+      if (!msg.retryable) reportDialerProblem(msg.code, msg.message);
+      break;
+  }
+});
+```
+
+`updateCallPanel`, `logCallEnd`, `showQualityBadge`, `hideQualityBadge` and `reportDialerProblem` stand for your own code.
+
+### When your server can't create a session
+
+[Create a dialer session](/api-reference/dialer/create-session) answers an error as `{ "detail": { "error": "<code>", "message": "…" } }`. Pass the HTTP status, `detail.error` and the `Retry-After` header on to your page unchanged, rather than one generic failure, so it can decide:
+
+| `detail.error` | Status | Retry? |
+|----------------|--------|--------|
+| `rate_limited` | 429 | Yes, after `Retry-After` seconds. |
+| `internal_error`, or no answer at all | 500, network | Yes, after a short backoff. |
+| `unauthorized` / `forbidden` | 401 / 403 | No: your API key or account. |
+| `dialer_not_enabled` | 403 | No: ask support to turn the dialer on. |
+| `invalid_frame_ancestors` / `invalid_ttl` / `invalid_external_user_id` / `validation_error` | 422 | No: fix the request. |
+
+```typescript
+// Your server: forward iBubbl's refusal as it is.
+const r = await fetch("https://api.ibubbl.com/v1/dialer/sessions", { /* as in step 1 */ });
+const data = await r.json().catch(() => ({ detail: { error: "internal_error" } }));
+if (!r.ok) {
+  const retryAfter = r.headers.get("Retry-After");
+  if (retryAfter) res.set("Retry-After", retryAfter);
+  return res.status(r.status).json({ error: data.detail?.error ?? "internal_error" });
+}
+res.json({ url: data.url });
+```
 
 ## Ending a session
 
