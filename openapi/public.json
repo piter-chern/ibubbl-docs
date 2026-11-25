@@ -3787,6 +3787,434 @@
         }
       }
     },
+    "/v1/calls": {
+      "get": {
+        "tags": [
+          "Calls"
+        ],
+        "summary": "List calls",
+        "description": "List your voice calls, inbound and outbound, newest first: who, on which line, how each call ended and how long it lasted, its voicemail, and which of your reps handled it when an [embedded dialer](/guides/embed-the-dialer) session placed or answered it (`external_user_id`). Use it to sync a call log, or to catch up after your webhook endpoint was down.\n\nResults are paginated: pass the `id` of the last call as `starting_after` while `has_more` is true. See [Pagination](/concepts/pagination).\n\nFilters combine with AND. A filter value that matches nothing (including another account's ids) returns an empty page. An unknown or repeated query parameter returns `422 validation_error`.\n\nLists allow 120 requests a minute per account, across all your API keys and all lists. Over that, the answer is `429 rate_limited` with a `Retry-After` header in seconds.",
+        "operationId": "listCalls",
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 100,
+              "minimum": 1,
+              "description": "How many items to return, 1 to 100. Defaults to 50.",
+              "default": 50,
+              "title": "Limit"
+            },
+            "description": "How many items to return, 1 to 100. Defaults to 50."
+          },
+          {
+            "name": "starting_after",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "The `id` of the last item on the page you already have. Returns the items that come after it, in the same order. Leave it out for the first page. An `id` that isn't one of yours returns `422 invalid_cursor`.",
+              "title": "Starting After"
+            },
+            "description": "The `id` of the last item on the page you already have. Returns the items that come after it, in the same order. Leave it out for the first page. An `id` that isn't one of yours returns `422 invalid_cursor`."
+          },
+          {
+            "name": "contact_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Only calls with this contact.",
+              "title": "Contact Id"
+            },
+            "description": "Only calls with this contact."
+          },
+          {
+            "name": "conversation_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Only calls in this conversation.",
+              "title": "Conversation Id"
+            },
+            "description": "Only calls in this conversation."
+          },
+          {
+            "name": "line_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Only calls on this line.",
+              "title": "Line Id"
+            },
+            "description": "Only calls on this line."
+          },
+          {
+            "name": "direction",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "inbound",
+                    "outbound"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Only `inbound` or only `outbound` calls.",
+              "title": "Direction"
+            },
+            "description": "Only `inbound` or only `outbound` calls."
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "initiated",
+                    "ringing",
+                    "in_progress",
+                    "completed",
+                    "no_answer",
+                    "busy",
+                    "failed",
+                    "cancelled",
+                    "voicemail"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Only calls with this `status`.",
+              "title": "Status"
+            },
+            "description": "Only calls with this `status`."
+          },
+          {
+            "name": "external_user_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 128
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Only calls an embedded dialer session with this `external_user_id` placed or answered.",
+              "title": "External User Id"
+            },
+            "description": "Only calls an embedded dialer session with this `external_user_id` placed or answered."
+          },
+          {
+            "name": "created_after",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Only calls with `created_at` strictly after this time. ISO 8601 with a time zone, e.g. `2026-11-25T09:30:00Z`; in a query string, write `Z` or encode `+` as `%2B`.",
+              "title": "Created After"
+            },
+            "description": "Only calls with `created_at` strictly after this time. ISO 8601 with a time zone, e.g. `2026-11-25T09:30:00Z`; in a query string, write `Z` or encode `+` as `%2B`."
+          },
+          {
+            "name": "created_before",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Only calls with `created_at` strictly before this time. Same format as `created_after`.",
+              "title": "Created Before"
+            },
+            "description": "Only calls with `created_at` strictly before this time. Same format as `created_after`."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "A page of calls.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CallList"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid API key.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "`validation_error` (a bad, unknown or repeated query parameter, or `limit` outside 1\u2013100) or `invalid_cursor` (`starting_after` is not one of your calls).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "`rate_limited`: more than 120 list requests in 60 seconds from your account (all keys and all lists count together). Wait `Retry-After` seconds, then send the same request again.",
+            "headers": {
+              "Retry-After": {
+                "description": "Seconds to wait before retrying.",
+                "schema": {
+                  "type": "integer"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "`forbidden`: your iBubbl account is suspended or cancelled.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/calls/{call_id}": {
+      "get": {
+        "tags": [
+          "Calls"
+        ],
+        "summary": "Retrieve a call",
+        "description": "Fetch one of your calls by ID: the same object as in the list and in the `call.*` webhooks. Returns `404 not_found` for an ID that isn't one of your calls.",
+        "operationId": "retrieveCall",
+        "parameters": [
+          {
+            "name": "call_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Call Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The call.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Call"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid API key.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "`not_found`: no call with that ID on your account.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "`forbidden`: your iBubbl account is suspended or cancelled.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/calls/{call_id}/voicemail": {
+      "get": {
+        "tags": [
+          "Calls"
+        ],
+        "summary": "Get a call's voicemail",
+        "description": "Download the voicemail a caller left, as MP3 audio. A call has one when its `voicemail` is not null; this is its `voicemail.audio_url`. iBubbl doesn't record calls themselves: only voicemails have audio.\n\nThe audio is fetched from the voice provider on each request, so store it on your side if you need it again. Downloads have their own budget of 60 a minute per account (`429 rate_limited` with `Retry-After`).",
+        "operationId": "getCallVoicemail",
+        "parameters": [
+          {
+            "name": "call_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Call Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The recording.",
+            "content": {
+              "audio/mpeg": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid API key.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "`not_found`: no call with that ID on your account. `voicemail_not_found`: the call has no voicemail, or its recording no longer exists.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "`voicemail_unavailable`: the recording couldn't be fetched right now. Try again shortly.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "`rate_limited`: more than 60 voicemail downloads in 60 seconds from your account (all keys count together; other requests have their own budgets). Wait `Retry-After` seconds, then send the same request again.",
+            "headers": {
+              "Retry-After": {
+                "description": "Seconds to wait before retrying.",
+                "schema": {
+                  "type": "integer"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "`forbidden`: your iBubbl account is suspended or cancelled.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/v1/webhooks": {
       "post": {
         "tags": [
@@ -4310,6 +4738,307 @@
           "message"
         ],
         "title": "ApiErrorDetail"
+      },
+      "Call": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id",
+            "description": "Unique call identifier (UUID)."
+          },
+          "direction": {
+            "type": "string",
+            "enum": [
+              "inbound",
+              "outbound"
+            ],
+            "title": "Direction",
+            "description": "`inbound` = the contact called your line. `outbound` = a rep called the contact from the iBubbl dashboard or an embedded dialer."
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "initiated",
+              "ringing",
+              "in_progress",
+              "completed",
+              "no_answer",
+              "busy",
+              "failed",
+              "cancelled",
+              "voicemail"
+            ],
+            "title": "Status",
+            "description": "Where the call is. Live: `initiated`, `ringing`, `in_progress`. Ended: `completed` (answered, then hung up), `no_answer`, `busy`, `failed`, `cancelled` (the caller hung up before anyone answered), `voicemail` (an inbound call nobody answered, where the caller left a voicemail). An outbound call answered by the contact's voicemail or an automated system is `completed`."
+          },
+          "line_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Line Id",
+            "description": "The line the call used. The same `id` as in `GET /v1/lines`."
+          },
+          "line_number": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Line Number",
+            "description": "The line's phone number in E.164 format.",
+            "examples": [
+              "+18654608935"
+            ]
+          },
+          "contact_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Contact Id",
+            "description": "The contact on the other end of the call."
+          },
+          "conversation_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Conversation Id",
+            "description": "The contact's conversation on this line, as on messages."
+          },
+          "contact_number": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Contact Number",
+            "description": "The contact's phone number as stored on the contact (usually E.164).",
+            "examples": [
+              "+14155551234"
+            ]
+          },
+          "started_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Started At",
+            "description": "ISO 8601 UTC timestamp of when the call started ringing or dialing.",
+            "examples": [
+              "2026-11-25T18:02:11.204913Z"
+            ]
+          },
+          "answered_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Answered At",
+            "description": "ISO 8601 UTC timestamp of when the call was answered. Null if it wasn't.",
+            "examples": [
+              "2026-11-25T18:02:19.553102Z"
+            ]
+          },
+          "ended_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ended At",
+            "description": "ISO 8601 UTC timestamp of when the call ended. Null while it is live, and on some `voicemail` calls whose end time never arrived.",
+            "examples": [
+              "2026-11-25T18:03:01.880417Z"
+            ]
+          },
+          "duration_seconds": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Duration Seconds",
+            "description": "Talk time in seconds, from answer to hang-up. Null for a call that wasn't answered or hasn't ended.",
+            "examples": [
+              42
+            ]
+          },
+          "missed_reason": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "no_answer",
+                  "busy",
+                  "failed",
+                  "cancelled"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Missed Reason",
+            "description": "Why an unanswered call ended: `no_answer`, `busy`, `failed` or `cancelled`. Null for answered and live calls, and on some `voicemail` calls.",
+            "examples": [
+              "no_answer"
+            ]
+          },
+          "voicemail": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CallVoicemail"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The voicemail the caller left. Null when there is none."
+          },
+          "dialer_session_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Dialer Session Id",
+            "description": "The [embedded dialer](/guides/embed-the-dialer) session that placed the call or answered it. Null for calls handled in the iBubbl dashboard, and once the session has expired and been deleted (`external_user_id` stays)."
+          },
+          "external_user_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "External User Id",
+            "description": "The `external_user_id` you gave the embedded dialer session that placed or answered the call: your own id for the rep. Null for calls handled in the iBubbl dashboard, for calls before the dialer existed, and when the dialer couldn't report answering an inbound call.",
+            "examples": [
+              "crm-user-1842"
+            ]
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At",
+            "description": "ISO 8601 UTC timestamp, with microseconds and a `Z`, of when iBubbl recorded the call. Lists sort by it.",
+            "examples": [
+              "2026-11-25T18:02:11.204913Z"
+            ]
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "direction",
+          "status",
+          "line_id",
+          "line_number",
+          "contact_id",
+          "conversation_id",
+          "contact_number",
+          "started_at",
+          "answered_at",
+          "ended_at",
+          "duration_seconds",
+          "missed_reason",
+          "voicemail",
+          "dialer_session_id",
+          "external_user_id",
+          "created_at"
+        ],
+        "title": "Call"
+      },
+      "CallList": {
+        "properties": {
+          "data": {
+            "items": {
+              "$ref": "#/components/schemas/Call"
+            },
+            "type": "array",
+            "title": "Data",
+            "description": "Up to `limit` calls, newest first: by `created_at`, then by `id`."
+          },
+          "has_more": {
+            "type": "boolean",
+            "title": "Has More",
+            "description": "Whether more calls match after the last one in `data`. To get them, repeat the request with `starting_after` set to that call's `id`."
+          }
+        },
+        "type": "object",
+        "required": [
+          "data",
+          "has_more"
+        ],
+        "title": "CallList"
+      },
+      "CallVoicemail": {
+        "properties": {
+          "duration_seconds": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Duration Seconds",
+            "description": "Length of the recording in seconds. Null if the voice provider didn't report it.",
+            "examples": [
+              12
+            ]
+          },
+          "transcription": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Transcription",
+            "description": "The recording's text. Null until the transcription arrives (usually under a minute after the recording, announced by `call.voicemail_transcribed`), and stays null when none could be made, for example for silence.",
+            "examples": [
+              "Hi, it's Dana, call me back about the quote."
+            ]
+          },
+          "audio_url": {
+            "type": "string",
+            "title": "Audio Url",
+            "description": "Where to download the recording as MP3: [Get a call's voicemail](/api-reference/calls/voicemail). It needs your API key, like every endpoint.",
+            "examples": [
+              "https://api.ibubbl.com/v1/calls/3f1d2c4b-8a9e-4f61-b2d7-5c0e9a1b7d42/voicemail"
+            ]
+          }
+        },
+        "type": "object",
+        "required": [
+          "duration_seconds",
+          "transcription",
+          "audio_url"
+        ],
+        "title": "CallVoicemail"
       },
       "ContactList": {
         "properties": {
@@ -7584,6 +8313,9 @@
     },
     {
       "name": "iMessage lookups"
+    },
+    {
+      "name": "Calls"
     },
     {
       "name": "Dialer"

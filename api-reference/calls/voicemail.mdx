@@ -1,0 +1,124 @@
+---
+title: "Get a call's voicemail"
+openapi: 'GET /v1/calls/{call_id}/voicemail'
+---
+
+### Get a call's voicemail
+
+**Method:** `GET` | **Endpoint:** `/v1/calls/{call_id}/voicemail`
+
+**Description:** Download the voicemail a caller left, as MP3 audio. A call has one when its `voicemail` is not `null`; this endpoint is its `voicemail.audio_url`. iBubbl doesn't record calls themselves: only voicemails have audio.
+
+The audio is fetched from the voice provider on each request, so store it on your side if you need it again rather than downloading it repeatedly.
+
+**Authentication:** API key in the `Authorization` header: `Authorization: Bearer ib_pk_<64 hex>`. Create keys in the dashboard under **Settings → API access**.
+
+**Rate limit:** 60 downloads per 60 seconds per account, across all your API keys; other requests have their own budgets. Over that, you get `429 rate_limited` with a `Retry-After` header.
+
+#### Request Body
+None. The path parameter `call_id` is the call's ID (a UUID).
+
+<RequestExample>
+
+```bash cURL
+curl https://api.ibubbl.com/v1/calls/3f1d2c4b-8a9e-4f61-b2d7-5c0e9a1b7d42/voicemail \
+  -H "Authorization: Bearer $IBUBBL_API_KEY" \
+  -o voicemail.mp3
+```
+
+```typescript TypeScript
+import { writeFile } from "node:fs/promises";
+
+const callId = "3f1d2c4b-8a9e-4f61-b2d7-5c0e9a1b7d42";
+
+const res = await fetch(`https://api.ibubbl.com/v1/calls/${callId}/voicemail`, {
+  headers: { Authorization: `Bearer ${process.env.IBUBBL_API_KEY}` },
+  signal: AbortSignal.timeout(20_000),
+});
+
+if (!res.ok) {
+  const data = await res.json();
+  throw new Error(`${res.status} ${data.detail?.error}`);
+}
+await writeFile("voicemail.mp3", Buffer.from(await res.arrayBuffer()));
+```
+
+```python Python
+import os
+
+import requests
+
+API_KEY = os.environ["IBUBBL_API_KEY"]
+
+call_id = "3f1d2c4b-8a9e-4f61-b2d7-5c0e9a1b7d42"
+
+res = requests.get(
+    f"https://api.ibubbl.com/v1/calls/{call_id}/voicemail",
+    headers={"Authorization": f"Bearer {API_KEY}"},
+    timeout=20,
+)
+if not res.ok:
+    raise RuntimeError(f"{res.status_code} {res.json()['detail']['error']}")
+with open("voicemail.mp3", "wb") as f:
+    f.write(res.content)
+```
+
+</RequestExample>
+
+<ResponseExample>
+
+```text 200 OK
+Content-Type: audio/mpeg
+
+(the MP3 bytes)
+```
+
+```json 404 Not Found
+{
+  "detail": {
+    "error": "voicemail_not_found",
+    "message": "This call has no voicemail."
+  }
+}
+```
+
+</ResponseExample>
+
+#### Responses
+**200 OK**
+
+The recording's bytes, with `Content-Type: audio/mpeg`. A voicemail is at most 2 minutes long.
+
+**401 Unauthorized**
+```json
+{
+  "detail": {
+    "error": "unauthorized",
+    "message": "Invalid or revoked API key"
+  }
+}
+```
+Other `message` values: `Authorization Bearer token required`, `API key required (use Authorization: Bearer ib_pk_…)`, `Invalid API key format`, `Customer account not found`.
+
+**403 Forbidden**
+```json
+{
+  "detail": {
+    "error": "forbidden",
+    "message": "Account is suspended"
+  }
+}
+```
+Your iBubbl account is suspended or cancelled (`message` is then `Account is cancelled`). Every API-key endpoint returns this.
+
+**404 Not Found**
+
+`not_found`: no call with that ID on your account (a malformed ID and another account's call are answered the same way). `voicemail_not_found`: the call has no voicemail, or its recording no longer exists.
+
+**429 Too Many Requests**
+
+`rate_limited`: over 60 voicemail downloads in 60 seconds from your account. Wait `Retry-After` seconds, then send the same request again.
+
+**502 Bad Gateway**
+
+`voicemail_unavailable`: the recording couldn't be fetched right now. Nothing is wrong with the call; try again shortly.

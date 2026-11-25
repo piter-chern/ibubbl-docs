@@ -168,6 +168,14 @@
             ]
           },
           {
+            "group": "Calls",
+            "pages": [
+              "api-reference/calls/list",
+              "api-reference/calls/retrieve",
+              "api-reference/calls/voicemail"
+            ]
+          },
+          {
             "group": "Dialer",
             "pages": [
               "api-reference/dialer/create-session",
