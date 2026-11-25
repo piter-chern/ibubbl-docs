@@ -288,7 +288,7 @@ The dialer tells your page what happens with `postMessage`. It sends them only t
 | `type` | When | Other fields |
 |--------|------|--------------|
 | `ibubbl:ready` | The dialer can make and take calls. | — |
-| `ibubbl:incoming` | A call is ringing. Sent again when the caller's name is found. | `from` (E.164), `contact_name` (string or `null`), `call_id` (the call's ID, or `null`; see [Open the contact when a call rings](#open-the-contact-when-a-call-rings)) |
+| `ibubbl:incoming` | A call is ringing. Sent again when the caller is found in your iBubbl contacts with a name. | `from` (the caller's number, in E.164; when the caller withholds their number, a text such as `anonymous` instead), `contact_name` (the caller's name in your iBubbl contacts, or `null`: also `null` for a named contact the dialer couldn't find, such as one that opted out; to show your CRM's name instead, see [Caller names from your CRM](#caller-names-from-your-crm)), `call_id` (the call's ID, or `null`; see [Open the contact when a call rings](#open-the-contact-when-a-call-rings)) |
 | `ibubbl:call-started` | The rep answered, or started a call. | `direction` (`inbound` or `outbound`), `number`, `call_id` (the call's ID on an inbound call, `null` on an outbound one) |
 | `ibubbl:call-ended` | The call ended. | `direction`, `number`, `duration_s` (seconds connected, `0` if never answered), `call_id` (as on `ibubbl:call-started`) |
 | `ibubbl:session-expired` | The session ended. Create a new one and set the iframe's `src` again. | — |
@@ -331,7 +331,7 @@ function callWithIbubbl(phone: string) {
 The messages about an inbound call carry `call_id`: the call's ID in iBubbl, the same ID that [Retrieve a call](/api-reference/calls/retrieve) takes and that the [`call.*` webhooks](/webhooks/events#call-completed) carry as `data.id`. Use it to open the caller's record while the phone is still ringing, and to attach the call's outcome to that record when it ends.
 
 1. On `ibubbl:incoming`, send `call_id` to your server. Your server calls `GET /v1/calls/{call_id}` with your API key and gets the call's `contact_id`, `contact_number` and `conversation_id`. The call can already be read while it rings: its `status` is `ringing`. Never put your API key in the page.
-2. Open the record. A ring can send `ibubbl:incoming` twice (the second time with the caller's name), so key the record on `call_id`: open it once, then update the name.
+2. Open the record. A ring can send `ibubbl:incoming` twice (the second time with the caller's name), so key the record on `call_id`: open it once, then fill in iBubbl's name only if your CRM has none.
 3. `ibubbl:incoming-ended`, `ibubbl:call-started` and `ibubbl:call-ended` for that call carry the same `call_id`.
 4. When the call ends, [`call.completed`](/webhooks/events#call-completed) or [`call.missed`](/webhooks/events#call-missed) reaches your webhook endpoint with `data.id` equal to `call_id`. Log the outcome against the record.
 
@@ -360,7 +360,8 @@ window.addEventListener("message", async (event) => {
       .then((call) => openContactRecord(call.contact_id, call.contact_number));
     openRecords.set(callId, record);
   }
-  if (msg.contact_name) updateCallerName(await record, msg.contact_name);
+  // iBubbl's name only fills a gap: your CRM's own name comes first.
+  if (msg.contact_name) updateCallerNameIfMissing(await record, msg.contact_name);
 });
 ```
 
@@ -380,7 +381,116 @@ if (event.type === "call.completed" || event.type === "call.missed") {
 }
 ```
 
-`openContactRecord`, `updateCallerName` and `logCallOutcome` stand for your own code.
+`openContactRecord`, `updateCallerNameIfMissing` and `logCallOutcome` stand for your own code.
+
+### Caller names from your CRM
+
+`contact_name` is the name iBubbl has for the caller. Your CRM usually knows them better, and your page needs nothing from iBubbl to show its own name.
+
+**On your page.** On `ibubbl:incoming`, look `from` up in your CRM and show your own record or toast. Use `contact_name` only when your CRM has no name for the number. With the [drop-in dock](#or-the-drop-in-dock), leave `notifications` off and show your own notification from `onEvent`: the dock's notification uses iBubbl's name.
+
+**In iBubbl.** The dialer's own incoming-call card, the iBubbl dashboard and your automations show the contact's name in iBubbl, as it is when they read it. That includes your messages: `{{contact.first_name}}` in an automated message is this name. Keep it in step from your CRM, and write one way only: iBubbl doesn't tell you when a name changes in iBubbl.
+
+- [Create or update a contact](/api-reference/contacts/upsert) with the phone number and the name fills in a name only where iBubbl has none, so it never undoes what your team typed. Each name is filled on its own: a contact your team named "Dana", with no last name, upserted as "Daniel Leeds" becomes "Dana Leeds".
+- [Update a contact](/api-reference/contacts/update) replaces the names you send, including ones your team typed in iBubbl, and keeps no record of the old ones. Use it when your CRM should win.
+
+Because these names go into messages, send them clean:
+- the first name in `first_name` and the rest in `last_name`. If your CRM keeps one full-name field, split it at the first space, so a message reads "Hi Dana", not "Hi Dana Lee";
+- trimmed, never an empty string, and at most 128 characters each: a longer one fails the whole request with `422 validation_error`;
+- leave out a name you don't have rather than sending `null`. In Update a contact, `null` clears the name.
+
+**While the phone rings.** A caller who isn't one of your contacts yet is added to your iBubbl contacts, without a name, before the dialer rings. Your server can name them straight away:
+
+1. On the first `ibubbl:incoming` of a call, send `from` and `call_id` to your server. Every open dialer gets each call, often twice, so send it once per `call_id` from your page, and skip repeats on your server too.
+2. Look `from` up in your CRM. Go on only when exactly one record matches. No match, several matches or a withheld number (`anonymous` matches nothing) mean there is nothing safe to write.
+3. [Create or update a contact](/api-reference/contacts/upsert) with `phone` set to `from` and the record's names: it finds the contact the call belongs to. For your CRM to win instead, upsert with only `phone`, which changes nothing and returns the contact, and [update the contact](/api-reference/contacts/update) with the names that differ.
+
+The ringing call's own windows, in the dialer and the dashboard, usually keep the name they found when it started ringing. The new name shows everywhere else straight away, and on the next call. Nothing waits for this, so a failure can be logged and ignored: the next call tries again.
+
+```typescript
+// In your page, next to the listeners above.
+const sentCalls = new Set<string>();
+
+window.addEventListener("message", (event) => {
+  if (event.origin !== dialerOrigin) return;
+  const msg = event.data;
+  if (msg?.type !== "ibubbl:incoming") return;
+
+  const key: string = msg.call_id ?? `${msg.from} ${new Date().toISOString().slice(0, 16)}`; // no ID: number + minute
+  if (sentCalls.has(key)) return;
+  sentCalls.add(key);
+  fetch("/api/ibubbl/caller-name", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ from: msg.from, call_id: msg.call_id ?? null }),
+  }).catch(() => {}); // best effort: never hold up the call
+});
+```
+
+```typescript
+// Your server. Check that your own user is signed in first; the API key never leaves the server.
+const CRM_WINS = false; // true: replace names your team typed in iBubbl
+const doneCalls = new Set<string>();
+
+app.post("/api/ibubbl/caller-name", async (req, res) => {
+  res.sendStatus(204); // the page doesn't wait for the result
+  const from = req.body?.from;
+  if (typeof from !== "string") return;
+  const key: string = req.body.call_id ?? `${from} ${new Date().toISOString().slice(0, 16)}`;
+  if (doneCalls.has(key)) return;
+  if (doneCalls.size > 10_000) doneCalls.clear();
+  doneCalls.add(key);
+
+  try {
+    const matches = await findCrmContactsByPhone(from);
+    if (matches.length !== 1) return; // none, ambiguous, or a withheld number
+    const name = cleanName(matches[0].firstName, matches[0].lastName);
+    if (!name.first_name && !name.last_name) return;
+
+    if (!CRM_WINS) {
+      await ibubbl("POST", "/v1/contacts", { phone: from, ...name }); // fills only names iBubbl doesn't have
+      return;
+    }
+    const contact = await ibubbl("POST", "/v1/contacts", { phone: from }); // changes nothing, returns the contact
+    const changed = Object.fromEntries(
+      Object.entries(name).filter(([field, value]) => contact[field] !== value),
+    );
+    if (Object.keys(changed).length > 0) {
+      await ibubbl("PATCH", `/v1/contacts/${encodeURIComponent(contact.id)}`, changed);
+    }
+  } catch (err) {
+    console.warn("caller name not synced", err); // the next call tries again
+  }
+});
+
+async function ibubbl(method: string, path: string, body: object) {
+  const r = await fetch(`https://api.ibubbl.com${path}`, {
+    method,
+    headers: {
+      Authorization: `Bearer ${process.env.IBUBBL_API_KEY}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(body),
+  });
+  if (!r.ok) throw new Error(`${method} ${path}: ${r.status}`);
+  return r.json();
+}
+
+// Trimmed, split at the first space when there is no last name, at most 128 characters, never empty.
+function cleanName(first?: string | null, last?: string | null) {
+  let f = (first ?? "").trim();
+  let l = (last ?? "").trim();
+  const space = f.indexOf(" ");
+  if (!l && space > 0) [f, l] = [f.slice(0, space), f.slice(space + 1).trim()];
+  const cut = (s: string) => Array.from(s).slice(0, 128).join("").trim();
+  const name: { first_name?: string; last_name?: string } = {};
+  if (cut(f)) name.first_name = cut(f);
+  if (cut(l)) name.last_name = cut(l);
+  return name;
+}
+```
+
+`findCrmContactsByPhone` stands for your own code: it returns the CRM records whose phone is `from`, with their `firstName` and `lastName` (or a full name in `firstName`).
 
 ## Call state, quality and errors
 
