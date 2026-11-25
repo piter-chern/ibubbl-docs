@@ -1,0 +1,159 @@
+---
+title: 'Create a dialer session'
+openapi: 'POST /v1/dialer/sessions'
+---
+
+### Create a dialer session
+
+**Method:** `POST` | **Endpoint:** `/v1/dialer/sessions`
+
+**Description:** Start an [embeddable dialer](/guides/embed-the-dialer) session for one rep, and get the URL to load in an `<iframe>`. Call this from your server: your API key must never reach a browser. The URL works once and must be loaded within 5 minutes, so create a session each time you render the page. The embeddable dialer is turned on per account: ask [support](mailto:support@ibubbl.com).
+
+**Authentication:** API key in the `Authorization` header: `Authorization: Bearer ib_pk_<64 hex>`. Create keys in the dashboard under **Settings → API access**.
+
+#### Request Body
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `frame_ancestors` | array of strings | Yes | The origins (scheme, host and port, no path) of the pages that will embed the dialer, 1 to 10, such as `https://crm.example.com`. `https://` only, except `http://localhost` and `http://127.0.0.1` for development. The dialer refuses to start on any other site. |
+| `ttl_seconds` | integer | No | How long the session lasts, 300 to 86400 seconds. Default 28800 (8 hours). |
+| `external_user_id` | string | No | Your own ID for the rep, 1 to 128 characters. Stored with the session; iBubbl doesn't interpret it. |
+
+Fields not listed above are rejected with `422 validation_error`.
+
+<RequestExample>
+
+```bash cURL
+curl -X POST https://api.ibubbl.com/v1/dialer/sessions \
+  -H "Authorization: Bearer $IBUBBL_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "frame_ancestors": ["https://crm.example.com"],
+    "external_user_id": "user_8231"
+  }'
+```
+
+```typescript TypeScript
+const res = await fetch("https://api.ibubbl.com/v1/dialer/sessions", {
+  method: "POST",
+  headers: {
+    Authorization: `Bearer ${process.env.IBUBBL_API_KEY}`,
+    "Content-Type": "application/json",
+  },
+  body: JSON.stringify({
+    frame_ancestors: ["https://crm.example.com"],
+    external_user_id: "user_8231",
+  }),
+  signal: AbortSignal.timeout(10_000),
+});
+
+const data = await res.json();
+if (!res.ok) throw new Error(`${res.status} ${data.detail?.error}`);
+console.log(data.id, data.expires_at); // load data.url in the iframe; don't log it
+```
+
+```python Python
+import os
+
+import requests
+
+API_KEY = os.environ["IBUBBL_API_KEY"]
+
+res = requests.post(
+    "https://api.ibubbl.com/v1/dialer/sessions",
+    headers={"Authorization": f"Bearer {API_KEY}"},
+    json={
+        "frame_ancestors": ["https://crm.example.com"],
+        "external_user_id": "user_8231",
+    },
+    timeout=10,
+)
+data = res.json()
+if not res.ok:
+    raise RuntimeError(f"{res.status_code} {data['detail']['error']}")
+print(data["id"], data["expires_at"])  # load data["url"] in the iframe; don't log it
+```
+
+</RequestExample>
+
+<ResponseExample>
+
+```json 201 Created
+{
+  "id": "3f1c9a2e-5b7d-4c8e-9f0a-1b2c3d4e5f6a",
+  "url": "https://ibubbl-dashboard.vercel.app/embed/dialer/3f1c9a2e-5b7d-4c8e-9f0a-1b2c3d4e5f6a#l=Q2xhdW1kZS1sYXVuY2gtdG9rZW4tZXhhbXBsZTAwMDA",
+  "expires_at": "2026-11-25T23:00:00.000000Z",
+  "frame_ancestors": ["https://crm.example.com"]
+}
+```
+
+```json 403 Forbidden
+{
+  "detail": {
+    "error": "dialer_not_enabled",
+    "message": "The embeddable dialer is not enabled for this account."
+  }
+}
+```
+
+</ResponseExample>
+
+#### Responses
+**201 Created**
+```json
+{
+  "id": "3f1c9a2e-5b7d-4c8e-9f0a-1b2c3d4e5f6a",
+  "url": "https://ibubbl-dashboard.vercel.app/embed/dialer/3f1c9a2e-5b7d-4c8e-9f0a-1b2c3d4e5f6a#l=Q2xhdW1kZS1sYXVuY2gtdG9rZW4tZXhhbXBsZTAwMDA",
+  "expires_at": "2026-11-25T23:00:00.000000Z",
+  "frame_ancestors": ["https://crm.example.com"]
+}
+```
+- `id`: the session's ID. Use it to [end the session](/api-reference/dialer/end-session).
+- `url`: the page to load in your `<iframe allow="microphone; autoplay">`. The part after `#` is a single-use launch token: load the URL once, within 5 minutes, and don't log or store it. See [Embed the dialer](/guides/embed-the-dialer).
+- `expires_at`: when the session ends.
+- `frame_ancestors`: your origins as iBubbl normalized them (lower case, default port dropped, duplicates removed).
+
+**401 Unauthorized**
+```json
+{
+  "detail": {
+    "error": "unauthorized",
+    "message": "Invalid or revoked API key"
+  }
+}
+```
+
+**403 Forbidden**
+```json
+{
+  "detail": {
+    "error": "dialer_not_enabled",
+    "message": "The embeddable dialer is not enabled for this account."
+  }
+}
+```
+The embeddable dialer isn't turned on for your account: ask [support](mailto:support@ibubbl.com). A suspended or cancelled account gets `forbidden` instead (`message` `Account is suspended` or `Account is cancelled`).
+
+**422 Unprocessable Entity**
+```json
+{
+  "detail": {
+    "error": "invalid_frame_ancestors",
+    "message": "'https://crm.example.com/app': an origin has no path, query or fragment"
+  }
+}
+```
+- `invalid_frame_ancestors`: not 1 to 10 origins, or one with a path, a wildcard, credentials, or `http://` on a host other than `localhost` or `127.0.0.1`. The `message` names the value.
+- `invalid_ttl`: `ttl_seconds` is not 300 to 86400.
+- `invalid_external_user_id`: `external_user_id` is not 1 to 128 characters.
+- `validation_error`: `frame_ancestors` is missing or not an array of strings, a field has the wrong type (`ttl_seconds` must be a JSON integer, not a string), or the body has a field this endpoint doesn't take.
+
+**429 Too Many Requests**
+```json
+{
+  "detail": {
+    "error": "rate_limited",
+    "message": "Too many dialer sessions; wait 12s (limit 60 a minute per account)."
+  }
+}
+```
+More than 60 sessions in a minute from your account (all keys count together). Wait `Retry-After` seconds, then send the request again.

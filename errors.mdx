@@ -371,6 +371,22 @@ if not res.ok:
   An [inbound event](/inbound-events/overview) body exceeded 256 KiB (262,144 bytes).
 </ResponseField>
 
+<ResponseField name="dialer_not_enabled" type="403">
+  [Create a dialer session](/api-reference/dialer/create-session): the [embeddable dialer](/guides/embed-the-dialer) isn't turned on for your account. It is turned on per account; email [support@ibubbl.com](mailto:support@ibubbl.com). Nothing was created.
+</ResponseField>
+
+<ResponseField name="invalid_frame_ancestors" type="422">
+  [Create a dialer session](/api-reference/dialer/create-session): `frame_ancestors` isn't 1 to 10 origins, or one of them has a path, query, wildcard or credentials, or uses `http://` on a host other than `localhost` or `127.0.0.1`. The `message` names the value. Nothing was created.
+</ResponseField>
+
+<ResponseField name="invalid_ttl" type="422">
+  [Create a dialer session](/api-reference/dialer/create-session): `ttl_seconds` isn't a whole number from 300 to 86400. Nothing was created.
+</ResponseField>
+
+<ResponseField name="invalid_external_user_id" type="422">
+  [Create a dialer session](/api-reference/dialer/create-session): `external_user_id` isn't 1 to 128 characters. Nothing was created.
+</ResponseField>
+
 <ResponseField name="feature_disabled" type="403">
   [Look up a number](/api-reference/imessage-lookups/create) and [Retrieve a lookup](/api-reference/imessage-lookups/retrieve): iMessage lookups have been turned off for your account (a `404` before 2026-11-13). They are on for every account unless support turns them off; email [support@ibubbl.com](mailto:support@ibubbl.com).
 </ResponseField>
@@ -388,13 +404,14 @@ if not res.ok:
 </ResponseField>
 
 <ResponseField name="rate_limited" type="429">
-  Returned in six places, and nowhere else:
+  Returned in these places, and nowhere else:
 
   - **Conversation actions** ([Edit](/api-reference/messages/edit), [unsend](/api-reference/messages/unsend) and [cancel](/api-reference/messages/cancel) a message, [add](/api-reference/messages/react) and [remove](/api-reference/messages/remove-reaction) a tapback, [Mark read](/api-reference/conversations/mark-read), [start](/api-reference/conversations/start-typing) and [stop](/api-reference/conversations/stop-typing) typing, and [schedule](/api-reference/scheduled-messages/create), [update](/api-reference/scheduled-messages/update), [cancel](/api-reference/scheduled-messages/cancel) and [send now](/api-reference/scheduled-messages/send-now) a scheduled message): your account made more than 300 of these requests in 60 seconds (all API keys and all eleven endpoints together; a budget separate from lists). The response has a `Retry-After` header; wait that long and call again. See [Rate limits](/concepts/limits#rate-limits).
   - **List endpoints** ([List messages](/api-reference/messages/list), [List scheduled messages](/api-reference/scheduled-messages/list), [List contacts](/api-reference/contacts/list), [List lines](/api-reference/lines/list)): your account made more than 120 list requests in 60 seconds (all API keys and all lists together). The response has a `Retry-After` header with the seconds to wait; then send the same request again. See [Rate limits](/concepts/limits#rate-limits).
   - **[Uploads](/api-reference/files/upload)**: more than 60 uploads in 60 seconds from your account (all API keys together; a budget of its own), or 4 already in progress. The response has a `Retry-After` header; wait that long and upload again.
   - **[iMessage lookups](/api-reference/imessage-lookups/create)**: more than 60 lookup requests in 60 seconds from your account (all API keys together; a budget of its own). The response has a `Retry-After` header. Not the same as `lookup_budget_exhausted`, which is your lines' Apple lookup budget.
   - **Sends with attachment URLs**, rarely: iBubbl was already downloading as many attachment sends as it can, and no slot freed within 10 seconds. `Retry-After` is `5`; then send the same request with the same `idempotency_key`. Nothing was created.
+  - **[Dialer sessions](/api-reference/dialer/create-session)**: more than 60 sessions in 60 seconds from your account (all API keys together; a budget of its own). The response has a `Retry-After` header; wait that long and create the session again.
   - **`/v1/events`**: a secret-URL [inbound event](/inbound-events/overview) source received more than 60 events in 60 seconds. There is no `Retry-After` header here; send again after about a minute.
 
   Text-only sends (`POST /v1/messages` without `attachments`) never return it.
@@ -456,9 +473,11 @@ if not res.ok:
 | `daily_cap_exhausted` / `cold_cap_exhausted` | 422 | ⚠️ Not queued. Send again after the limit resets (midnight ET). |
 | `hourly_cap_hit` / `followup_cap_exhausted` | — | Legacy: not used on any current line. |
 | `no_eligible_line` | 422 | ⚠️ A send: send again once your line is back online. ❌ Edit, unsend, tapbacks, typing: the message's line is no longer on your account; don't retry. |
-| `rate_limited` | 429 | ✅ Lists, conversation actions, uploads, lookups and attachment sends: send the same request again (same `idempotency_key`) after `Retry-After` seconds. `/v1/events`: after about a minute. |
+| `rate_limited` | 429 | ✅ Lists, conversation actions, uploads, lookups, dialer sessions and attachment sends: send the same request again (same `idempotency_key`) after `Retry-After` seconds. `/v1/events`: after about a minute. |
 | `lookup_budget_exhausted` | 429 | ✅ After `Retry-After` seconds, when one of your lines frees a lookup slot. |
 | `feature_disabled` | 403 | ❌ Lookups are turned off for your account; email support. |
+| `dialer_not_enabled` | 403 | ❌ Ask support to turn the embeddable dialer on. |
+| `invalid_frame_ancestors` / `invalid_ttl` / `invalid_external_user_id` | 422 | ❌ Fix the value. |
 | `invalid_phone` | 422 | ❌ Fix the number. |
 | `account_setup_incomplete` | 422 | ⚠️ Add or reactivate a manager in the dashboard, then send the same request again. |
 | `lookup_unavailable` | 503 | ✅ Retry after a short backoff. |

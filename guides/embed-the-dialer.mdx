@@ -1,0 +1,194 @@
+---
+title: 'Embed the dialer'
+description: 'Put an iBubbl dialer in your own app, so your reps make and take calls on your iBubbl lines without leaving it: the server call, the iframe, what the rep sees, and the messages your page can exchange with it.'
+---
+
+The embeddable dialer is a small calling page you load in an `<iframe>` in your own app, such as your CRM. Your reps make and take phone calls on your iBubbl lines there: outgoing calls show your line's number, and calls to your lines ring in every open dialer.
+
+<Note>
+The embeddable dialer is turned on per account. Ask [support](mailto:support@ibubbl.com) to turn it on. Until then, [Create a dialer session](/api-reference/dialer/create-session) answers `403 dialer_not_enabled`.
+</Note>
+
+## How it works
+
+1. **Your server creates a session.** It calls [Create a dialer session](/api-reference/dialer/create-session) with your API key and the origins of the pages that will show the dialer. Your API key never reaches a browser.
+2. **Your page loads the session's `url`** in an `<iframe>`. The URL works once and must be loaded within 5 minutes, so create a session each time you render the page.
+3. **The rep clicks Start dialer.** The browser asks for the microphone. The dialer then shows **Ready**, and calls to your lines ring there.
+4. **The dialer works until the session ends,** when its time runs out or you [end it](/api-reference/dialer/end-session). A call in progress is never cut: the dialer stops once the call ends.
+
+## 1. Create a session on your server
+
+Create one session per page view, for the rep who is viewing it. `frame_ancestors` lists the origins of the pages that will embed the dialer: scheme, host and port, with no path. `https://` origins only, except `http://localhost` and `http://127.0.0.1` for development.
+
+<CodeGroup>
+
+```bash cURL
+curl -X POST https://api.ibubbl.com/v1/dialer/sessions \
+  -H "Authorization: Bearer $IBUBBL_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "frame_ancestors": ["https://crm.example.com"],
+    "external_user_id": "user_8231"
+  }'
+```
+
+```typescript TypeScript
+const res = await fetch("https://api.ibubbl.com/v1/dialer/sessions", {
+  method: "POST",
+  headers: {
+    Authorization: `Bearer ${process.env.IBUBBL_API_KEY}`,
+    "Content-Type": "application/json",
+  },
+  body: JSON.stringify({
+    frame_ancestors: ["https://crm.example.com"],
+    external_user_id: "user_8231",
+  }),
+  signal: AbortSignal.timeout(10_000),
+});
+
+const data = await res.json();
+if (!res.ok) throw new Error(`${res.status} ${data.detail?.error}`);
+// Hand data.url to the page you are rendering. Don't log it: it is a
+// one-time credential for the next 5 minutes.
+```
+
+```python Python
+import os
+
+import requests
+
+API_KEY = os.environ["IBUBBL_API_KEY"]
+
+res = requests.post(
+    "https://api.ibubbl.com/v1/dialer/sessions",
+    headers={"Authorization": f"Bearer {API_KEY}"},
+    json={
+        "frame_ancestors": ["https://crm.example.com"],
+        "external_user_id": "user_8231",
+    },
+    timeout=10,
+)
+data = res.json()
+if not res.ok:
+    raise RuntimeError(f"{res.status_code} {data['detail']['error']}")
+# Hand data["url"] to the page you are rendering. Don't log it: it is a
+# one-time credential for the next 5 minutes.
+```
+
+</CodeGroup>
+
+The session lasts 8 hours unless you set `ttl_seconds` (300 to 86400). `external_user_id` is your own ID for the rep: iBubbl stores it with the session and doesn't interpret it.
+
+## 2. Load the dialer in an iframe
+
+```html
+<iframe
+  src="SESSION_URL"
+  allow="microphone; autoplay"
+  title="iBubbl dialer"
+  style="width: 360px; height: 620px; border: 0;"
+></iframe>
+```
+
+- **`allow="microphone; autoplay"` is required.** Without it the browser blocks the microphone, and the dialer shows **Microphone blocked**. If your page sends a `Permissions-Policy` header, it must not turn the microphone off.
+- **Use the URL exactly as returned, once.** The part after `#` is a single-use launch token. A second load of the same URL shows **Link already used**; one loaded after 5 minutes shows **Link expired**.
+- **The page must be on one of `frame_ancestors`.** Anywhere else the dialer shows **Not allowed here** and the link stays usable where it belongs. Opened on its own, outside a page, it shows **Open the dialer inside your CRM**.
+- **Size.** It works from about 320 × 520 pixels.
+
+To pre-fill a number in the keypad, add `&to=` and the URL-encoded E.164 number to the end of the URL, for example `&to=%2B14155551234`. The rep still presses Call.
+
+## 3. What the rep sees
+
+The first time, the rep clicks **Start dialer** and allows the microphone. Browsers allow sound and the microphone in an iframe only after a click inside it, so without this click an incoming call couldn't ring. Safari may ask for the microphone again on each page load.
+
+The status line at the top always says whether calls ring there:
+
+| Status | Meaning |
+|--------|---------|
+| **Ready** | Calls to your lines ring here while this page is open. |
+| **Start the dialer** | Waiting for the rep's click. |
+| **Connecting…** / **Reconnecting…** | Not ringing yet, or the connection dropped. The dialer retries by itself. |
+| **Offline** | The connection is gone. Reload the page. |
+| **Can't receive calls** | The dialer couldn't register for incoming calls. Close other dialer tabs of this account, then reload. |
+| **Microphone blocked** | The browser or your iframe refused the microphone. |
+| **Session ended** | The session expired, or you ended it. Create a new one. |
+| **Link already used** / **Link expired** / **Invalid dialer link** | Render the page again, with a new session. |
+| **Not allowed here** | This page's origin isn't in `frame_ancestors`. |
+| **Calling not enabled** | The dialer isn't turned on for your account. |
+
+From **Ready** the rep can:
+- dial from the **Keypad**, or pick someone from **Contacts** (your iBubbl contacts, searched by name or number);
+- answer or decline an incoming call;
+- during a call: mute, use the keypad to send tones (for phone menus), and hang up.
+
+## Calls
+
+**Incoming calls ring in every open dialer and every open iBubbl dashboard tab of your account at once.** The first to answer takes the call. **Decline** stops only that dialer: the others keep ringing. If nobody answers, the caller reaches your voicemail. Calls ring only while a dialer or dashboard tab is open, so keep the page with the dialer open while reps are taking calls.
+
+**Outgoing calls** show your line's number as the caller ID: the line the contact already talks to, or your oldest active line for a new contact. Dialing a number that isn't one of your contacts yet adds it to your contacts. Calls to numbers outside the US, its territories and Canada, and to premium-rate numbers, are refused before anything is dialed.
+
+## Messages between your page and the dialer
+
+The dialer tells your page what happens with `postMessage`. It sends them only to the page it started on, the origin in `frame_ancestors` it was loaded under. Check the sender's origin before you trust a message: it is the origin of the session `url`.
+
+| `type` | When | Other fields |
+|--------|------|--------------|
+| `ibubbl:ready` | The dialer can make and take calls. | — |
+| `ibubbl:incoming` | A call is ringing. Sent again when the caller's name is found. | `from` (E.164), `contact_name` (string or `null`) |
+| `ibubbl:call-started` | The rep answered, or started a call. | `direction` (`inbound` or `outbound`), `number` |
+| `ibubbl:call-ended` | The call ended. | `direction`, `number`, `duration_s` (seconds connected, `0` if never answered) |
+| `ibubbl:session-expired` | The session ended. Create a new one and set the iframe's `src` again. | — |
+
+Your page can send one message: `{ "type": "ibubbl:dial", "to": "+14155551234" }`. It fills the keypad with the number, and the rep presses Call. The dialer accepts it only from the page it started on, and ignores a number it can't read.
+
+```typescript
+const dialer = document.querySelector<HTMLIFrameElement>("#ibubbl-dialer")!;
+const dialerOrigin = new URL(dialer.src).origin;
+
+window.addEventListener("message", async (event) => {
+  if (event.origin !== dialerOrigin) return;
+  switch (event.data?.type) {
+    case "ibubbl:incoming":
+      showToast(`Incoming call from ${event.data.contact_name ?? event.data.from}`);
+      break;
+    case "ibubbl:call-ended":
+      logCall(event.data.direction, event.data.number, event.data.duration_s);
+      break;
+    case "ibubbl:session-expired":
+      dialer.src = await getNewDialerUrl(); // your server creates a new session
+      break;
+  }
+});
+
+// A "Call" button on a contact page: pre-fill the dialer.
+function callWithIbubbl(phone: string) {
+  dialer.contentWindow?.postMessage({ type: "ibubbl:dial", to: phone }, dialerOrigin);
+}
+```
+
+`showToast`, `logCall` and `getNewDialerUrl` stand for your own code.
+
+## Ending a session
+
+A session ends:
+- when its `ttl_seconds` runs out;
+- when you [end it](/api-reference/dialer/end-session);
+- when the API key that created it is revoked;
+- when the dialer is turned off for your account.
+
+The dialer notices on its next request to iBubbl, within 10 minutes at the latest. It then shows **Session ended** (**Calling not enabled** if the dialer was turned off) and sends `ibubbl:session-expired`. A call in progress is never cut: the dialer stops once it ends.
+
+End a rep's session when they sign out of your app.
+
+## Security
+
+- Create sessions **only on your server**. Never send your API key to a browser.
+- The session `url` is a one-time credential for 5 minutes. Don't log it, store it or put it anywhere but the iframe's `src`.
+- Keep `frame_ancestors` to the origins that really embed the dialer.
+- Anyone who can open the dialer can make and take calls on your lines until the session ends. Keep `ttl_seconds` to a working shift, and end sessions when reps sign out.
+
+## Limits
+
+- 60 new sessions a minute per account. Beyond that: `429 rate_limited`, with `Retry-After`.
+- Up to 10 origins in `frame_ancestors`.
+- Tested in desktop Chrome and Safari.
