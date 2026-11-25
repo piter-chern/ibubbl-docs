@@ -256,6 +256,8 @@ From **Ready** the rep can:
 
 **Outgoing calls** show your line's number as the caller ID: the line the contact already talks to, or your oldest active line for a new contact. Dialing a number that isn't one of your contacts yet adds it to your contacts. Calls to numbers outside the US, its territories and Canada, and to premium-rate numbers, are refused before anything is dialed.
 
+**Which rep handled a call.** Calls placed from a dialer, and inbound calls answered in one, carry that session's `external_user_id` in [List calls](/api-reference/calls/list), [Retrieve a call](/api-reference/calls/retrieve) and the [`call.*` webhooks](/webhooks/events#call-completed), so your CRM can log each call against the right user.
+
 ## Messages between your page and the dialer
 
 The dialer tells your page what happens with `postMessage`. It sends them only to the page it started on, the origin in `frame_ancestors` it was loaded under. Check the sender's origin before you trust a message: it is the origin of the session `url`.

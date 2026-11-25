@@ -85,6 +85,14 @@ if not res.ok:
   [Retrieve a line](/api-reference/lines/retrieve): no line with that ID on your account. A malformed ID and another account's line are answered the same way. Line IDs come from [List lines](/api-reference/lines/list) and from `line_id` on messages and webhooks.
 </ResponseField>
 
+<ResponseField name="voicemail_not_found" type="404">
+  [Get a call's voicemail](/api-reference/calls/voicemail): the call has no voicemail (its `voicemail` is `null`), or the recording no longer exists. Nothing to retry.
+</ResponseField>
+
+<ResponseField name="voicemail_unavailable" type="502">
+  [Get a call's voicemail](/api-reference/calls/voicemail): the recording couldn't be fetched from the voice provider right now. Nothing is wrong with the call; retry after a short backoff.
+</ResponseField>
+
 <ResponseField name="idempotency_conflict" type="409">
   You reused an `idempotency_key` with a request payload that doesn't match the one originally cached. Either generate a new key for this distinct send, or fix your retry logic to reuse the original payload byte-for-byte. Keys are shared by [Send a message](/api-reference/messages/send) and [Schedule a message](/api-reference/scheduled-messages/create), so a key used on one is this error on the other (`message` names the endpoint that used it). On a scheduled message the payload includes `send_at`: to move it, [update it](/api-reference/scheduled-messages/update). See [Idempotency](/idempotency).
 </ResponseField>
@@ -426,6 +434,8 @@ if not res.ok:
 | `not_found` | 404 | ❌ Verify the ID. |
 | `group_not_found` | 404 | ❌ Use the group's current `chat_guid`. |
 | `line_not_found` | 404 | ❌ Use a `line_id` from List lines. |
+| `voicemail_not_found` | 404 | ❌ The call has no voicemail. |
+| `voicemail_unavailable` | 502 | ✅ After a short backoff. |
 | `idempotency_conflict` | 409 | ❌ Fix the retry logic. |
 | `edit_in_flight` | 409 | ✅ After `message.edited` (a few seconds). |
 | `already_unsent` | 409 | ❌ The message was unsent. |
@@ -498,12 +508,13 @@ The general rule: **don't retry 4xx**. Most 4xxes are payload-level problems tha
 | `200` / `201` / `202` / `204` | Success. `202` for accepted-but-queued sends, edits and unsends; `201` for created resources, including an [upload](/api-reference/files/upload) and a [scheduled message](/api-reference/scheduled-messages/create) (`200` for its retry); `204` (no body) for [Delete a contact](/api-reference/contacts/delete) and [Delete a file](/api-reference/files/delete); `200` everywhere else. |
 | `401` | Auth failure. |
 | `403` | Account suspended or cancelled (`forbidden`), iMessage lookups turned off for your account (`feature_disabled`), or an inbound event's signature failed (`invalid_signature`). |
-| `404` | Resource not found (or hidden across tenants), `group_not_found`, `line_not_found` or `file_not_found`. |
+| `404` | Resource not found (or hidden across tenants), `group_not_found`, `line_not_found`, `file_not_found` or `voicemail_not_found`. |
 | `409` | Idempotency conflict, or a message in a state another request holds: `edit_in_flight`, `already_unsent`, `message_dispatching`, `scheduled_message_sending`, `scheduled_message_changed`. |
 | `408` | `upload_timeout`: an upload that took too long to arrive. |
 | `413` | Inbound event body over 256 KiB. |
 | `422` | Validation, routing or send-limit failure. |
-| `429` | `rate_limited`: too many list requests, conversation actions, uploads or lookups from your account, or attachment downloads busy (all with `Retry-After`), or too many inbound events for one source on `/v1/events`. `lookup_budget_exhausted`: your lines' Apple lookup budget is used up (with `Retry-After`). |
+| `429` | `rate_limited`: too many list requests, conversation actions, uploads, lookups or voicemail downloads from your account, or attachment downloads busy (all with `Retry-After`), or too many inbound events for one source on `/v1/events`. `lookup_budget_exhausted`: your lines' Apple lookup budget is used up (with `Retry-After`). |
 | `500` | An unexpected iBubbl error (`internal_error`). |
 | `503` | `opt_out_check_unavailable` on a tapback, edit or typing call, `limits_unavailable` on a lines read (retry after a short backoff), or `no_active_line` when scheduling to a contact you have no conversation with yet while no line of yours is active (send the same request again, same `idempotency_key`, once one is). On an [iMessage lookup](/api-reference/imessage-lookups/create): `line_offline`, `no_active_line` or `lookup_unavailable`, with nothing queued. |
+| `502` | `voicemail_unavailable`: a voicemail couldn't be fetched right now (retry after a short backoff). |
 | `502` / `503` without a `detail.error` | The network edge during a deployment blip, not iBubbl itself. Retry with the same idempotency key after a short backoff. |

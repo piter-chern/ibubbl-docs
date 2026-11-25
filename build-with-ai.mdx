@@ -370,6 +370,29 @@ https://docs.ibubbl.com/guides/check-imessage-availability)
 - 403 feature_disabled = lookups are turned off for the account; don't
   retry.
 
+CALLS (GET /v1/calls, GET /v1/calls/{id}, GET /v1/calls/{id}/voicemail;
+read-only: nothing here places, answers or controls a call)
+- The list follows READING HISTORY's pagination and rate limit; filters
+  contact_id, conversation_id, line_id, direction, status, external_user_id,
+  created_after, created_before. status: initiated | ringing | in_progress |
+  completed | no_answer | busy | failed | cancelled | voicemail.
+- A call: id, direction, status, line_id, line_number, contact_id,
+  conversation_id, contact_number, started_at, answered_at, ended_at,
+  duration_seconds (talk time), missed_reason, voicemail {duration_seconds,
+  transcription, audio_url} or null, dialer_session_id, external_user_id
+  (the embedded dialer session's id for the rep who placed or answered it;
+  null for dashboard calls), created_at.
+- Webhooks: call.completed (answered, ended) or call.missed (unanswered),
+  exactly one per ended call, either direction; call.voicemail, then
+  call.voicemail_transcribed when its text arrives (none if it can't be
+  transcribed). data = the call. Once per call and type: dedupe on the
+  envelope id. On per account by support; no backfill, so sync history with
+  the list.
+- Voicemail audio: GET audio_url with the API key returns audio/mpeg; 60
+  downloads a minute per account; 404 voicemail_not_found, 502
+  voicemail_unavailable (retry). iBubbl doesn't record calls: never promise
+  a call recording.
+
 RETRIES AND ERRORS
 - Branch on detail.error (the stable code), never on detail.message.
 - Log the X-Request-Id response header with every error; quote it to

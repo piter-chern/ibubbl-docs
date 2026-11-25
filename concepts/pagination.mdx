@@ -3,7 +3,7 @@ title: 'Pagination'
 description: 'How list endpoints page through results: newest first, a starting_after cursor, has_more, and the rules every list follows.'
 ---
 
-List endpoints return results a page at a time. Every paginated list in the iBubbl API works the same way, so one loop covers all of them. [List messages](/api-reference/messages/list), [List scheduled messages](/api-reference/scheduled-messages/list), [List contacts](/api-reference/contacts/list) and [List lines](/api-reference/lines/list) follow these rules, and lists added later will too.
+List endpoints return results a page at a time. Every paginated list in the iBubbl API works the same way, so one loop covers all of them. [List messages](/api-reference/messages/list), [List scheduled messages](/api-reference/scheduled-messages/list), [List contacts](/api-reference/contacts/list), [List lines](/api-reference/lines/list) and [List calls](/api-reference/calls/list) follow these rules, and lists added later will too.
 
 ## How it works
 
@@ -146,6 +146,9 @@ A few notes:
   </Card>
   <Card title="List lines" icon="phone" href="/api-reference/lines/list">
     Your lines and their live limit counters.
+  </Card>
+  <Card title="List calls" icon="phone-volume" href="/api-reference/calls/list">
+    Your call log, with voicemails and which rep handled each call.
   </Card>
   <Card title="Recover from downtime" icon="rotate" href="/guides/webhook-retries#recover-from-downtime">
     Catch up on what your webhook endpoint missed.

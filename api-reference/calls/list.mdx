@@ -1,0 +1,212 @@
+---
+title: 'List calls'
+openapi: 'GET /v1/calls'
+---
+
+### List calls
+
+**Method:** `GET` | **Endpoint:** `/v1/calls`
+
+**Description:** List your voice calls, inbound and outbound, newest first. For each call you get who it was with, which line it used, how it ended and how long it lasted, its voicemail if the caller left one, and, when an [embedded dialer](/guides/embed-the-dialer) session placed or answered it, which of your reps handled it (`external_user_id`). Use it to sync a call log into your CRM, or to catch up after your webhook endpoint was down. To hear about calls as they end, subscribe to the [`call.*` webhooks](/webhooks/events#call-completed).
+
+Reading calls is all this API does: it doesn't place, answer or control calls. iBubbl doesn't record calls; only voicemails have audio.
+
+**Authentication:** API key in the `Authorization` header: `Authorization: Bearer ib_pk_<64 hex>`. Create keys in the dashboard under **Settings → API access**.
+
+#### Query parameters
+All optional. Filters combine with AND.
+
+| Parameter | Type | Description |
+| --------- | ---- | ----------- |
+| `limit` | integer | How many calls to return, `1` to `100`. Defaults to `50`. Outside that range is `422 validation_error`, not rounded. |
+| `starting_after` | string (UUID) | The `id` of the last call on the page you already have. Returns the calls after it. Leave it out for the first page. See [Pagination](/concepts/pagination). |
+| `contact_id` | string (UUID) | Only calls with this contact. |
+| `conversation_id` | string (UUID) | Only calls in this conversation. |
+| `line_id` | string (UUID) | Only calls on this line, from [List lines](/api-reference/lines/list). |
+| `direction` | string | `inbound` (the contact called you) or `outbound` (your rep called the contact). |
+| `status` | string | Only calls with this `status` (the values are listed under Responses). |
+| `external_user_id` | string | Only calls an embedded dialer session with this `external_user_id` placed or answered: one rep's calls. 1 to 128 characters. |
+| `created_after` | string | Only calls with `created_at` strictly after this time. ISO 8601 with a time zone, e.g. `2026-11-25T09:30:00Z`. In a URL, write `Z` or encode `+` as `%2B`. |
+| `created_before` | string | Only calls with `created_at` strictly before this time. Same format. |
+
+A filter value that matches nothing, including another account's IDs, returns an empty page. Any other query parameter, or one given twice, returns `422 validation_error` naming it.
+
+**Rate limit:** 120 list requests per 60 seconds per account, across all your API keys and all list endpoints. Over that, you get `429 rate_limited` with a `Retry-After` header; see [Rate limits](/concepts/limits#rate-limits). [Retrieve a call](/api-reference/calls/retrieve) isn't a list and has no limit.
+
+<RequestExample>
+
+```bash cURL
+# Sent as ?direction=inbound&created_after=2026-11-25T00%3A00%3A00Z
+curl -G https://api.ibubbl.com/v1/calls \
+  -H "Authorization: Bearer $IBUBBL_API_KEY" \
+  --data-urlencode "direction=inbound" \
+  --data-urlencode "created_after=2026-11-25T00:00:00Z"
+```
+
+```typescript TypeScript
+const params = new URLSearchParams({
+  direction: "inbound",
+  created_after: "2026-11-25T00:00:00Z",
+});
+
+const res = await fetch(`https://api.ibubbl.com/v1/calls?${params}`, {
+  headers: { Authorization: `Bearer ${process.env.IBUBBL_API_KEY}` },
+  signal: AbortSignal.timeout(10_000),
+});
+
+const data = await res.json();
+if (!res.ok) throw new Error(`${res.status} ${data.detail?.error}`);
+for (const call of data.data) {
+  console.log(
+    call.created_at,
+    call.contact_number,
+    call.status,
+    call.duration_seconds ?? "-",
+    call.external_user_id ?? "dashboard",
+  );
+}
+```
+
+```python Python
+import os
+
+import requests
+
+API_KEY = os.environ["IBUBBL_API_KEY"]
+
+res = requests.get(
+    "https://api.ibubbl.com/v1/calls",
+    headers={"Authorization": f"Bearer {API_KEY}"},
+    params={"direction": "inbound", "created_after": "2026-11-25T00:00:00Z"},
+    timeout=10,
+)
+data = res.json()
+if not res.ok:
+    raise RuntimeError(f"{res.status_code} {data['detail']['error']}")
+for call in data["data"]:
+    print(
+        call["created_at"],
+        call["contact_number"],
+        call["status"],
+        call["duration_seconds"],
+        call["external_user_id"] or "dashboard",
+    )
+```
+
+</RequestExample>
+
+<ResponseExample>
+
+```json 200 OK
+{
+  "data": [
+    {
+      "id": "3f1d2c4b-8a9e-4f61-b2d7-5c0e9a1b7d42",
+      "direction": "inbound",
+      "status": "voicemail",
+      "line_id": "5f0c2a9e-7d41-4b8a-9e3c-6a1b2c3d4e5f",
+      "line_number": "+14155550100",
+      "contact_id": "c8a1f4e2-3b9d-4f7c-a8e5-1d2c3b4a5e6f",
+      "conversation_id": "7b2e9d41-6c3a-4f85-9e1d-2a4b6c8e0f13",
+      "contact_number": "+14155551234",
+      "started_at": "2026-11-25T18:02:11.204913Z",
+      "answered_at": null,
+      "ended_at": "2026-11-25T18:02:36.118204Z",
+      "duration_seconds": null,
+      "missed_reason": "no_answer",
+      "voicemail": {
+        "duration_seconds": 12,
+        "transcription": "Hi, it's Dana, call me back about the quote.",
+        "audio_url": "https://api.ibubbl.com/v1/calls/3f1d2c4b-8a9e-4f61-b2d7-5c0e9a1b7d42/voicemail"
+      },
+      "dialer_session_id": null,
+      "external_user_id": null,
+      "created_at": "2026-11-25T18:02:11.204913Z"
+    },
+    {
+      "id": "a41c7e2d-9b3f-4d61-8e5a-0c2b4d6f8a1e",
+      "direction": "inbound",
+      "status": "completed",
+      "line_id": "5f0c2a9e-7d41-4b8a-9e3c-6a1b2c3d4e5f",
+      "line_number": "+14155550100",
+      "contact_id": "d2b4f6a8-1c3e-4a5b-9d7f-0e2c4a6b8d1f",
+      "conversation_id": "e5f7a9b1-3d5f-4b7d-8f9a-1c3e5a7b9d2f",
+      "contact_number": "+13105550182",
+      "started_at": "2026-11-25T16:40:02.551870Z",
+      "answered_at": "2026-11-25T16:40:09.020114Z",
+      "ended_at": "2026-11-25T16:44:51.733901Z",
+      "duration_seconds": 282,
+      "missed_reason": null,
+      "voicemail": null,
+      "dialer_session_id": "6e1f0a7b-2c9d-4e83-a5b4-0f9e8d7c6b5a",
+      "external_user_id": "user_8231",
+      "created_at": "2026-11-25T16:40:02.551870Z"
+    }
+  ],
+  "has_more": false
+}
+```
+
+```json 422 Unprocessable Entity
+{
+  "detail": {
+    "error": "invalid_cursor",
+    "message": "starting_after is not the id of one of your items"
+  }
+}
+```
+
+</ResponseExample>
+
+#### Responses
+**200 OK**
+
+`data` holds up to `limit` calls, newest first: by `created_at`, then by `id`. Each item is exactly what [Retrieve a call](/api-reference/calls/retrieve) returns for that call, and what the [`call.*` webhooks](/webhooks/events#call-completed) carry as `data`. `has_more` is `true` when more calls match; to get them, repeat the request with `starting_after` set to the `id` of the last item in `data`.
+
+| Field | Description |
+| ----- | ----------- |
+| `id` | The call's ID. |
+| `direction` | `inbound`: the contact called your line. `outbound`: a rep called the contact, from the iBubbl dashboard or an embedded dialer. |
+| `status` | Live: `initiated`, `ringing`, `in_progress`. Ended: `completed` (answered, then hung up), `no_answer`, `busy`, `failed`, `cancelled` (the caller hung up before anyone answered), or `voicemail` (an inbound call nobody answered, where the caller left a voicemail). An outbound call answered by the contact's voicemail or an automated system is `completed`: iBubbl can't tell a machine from a person. |
+| `line_id`, `line_number` | The line the call used, and its number in E.164 format. |
+| `contact_id`, `contact_number` | The contact on the other end, and their number as stored on the contact (usually E.164). |
+| `conversation_id` | The contact's conversation on this line, the same as on messages. |
+| `started_at` | When the call started ringing or dialing. |
+| `answered_at` | When the call was answered. `null` if it wasn't. |
+| `ended_at` | When the call ended. `null` while it is live, and on some `voicemail` calls whose end time never arrived. |
+| `duration_seconds` | Talk time in seconds, from answer to hang-up. `null` for a call that wasn't answered or hasn't ended. |
+| `missed_reason` | Why an unanswered call ended: `no_answer`, `busy`, `failed` or `cancelled`. `null` for answered and live calls, and on some `voicemail` calls. |
+| `voicemail` | The voicemail the caller left, or `null`: `duration_seconds`, `transcription` (`null` until it arrives, usually under a minute after the recording, and stays `null` when none could be made) and `audio_url`, where [Get a call's voicemail](/api-reference/calls/voicemail) downloads it as MP3. |
+| `dialer_session_id` | The [embedded dialer](/guides/embed-the-dialer) session that placed the call, or that answered it. `null` for calls handled in the iBubbl dashboard. It also becomes `null` once the session has expired and been deleted; `external_user_id` stays. |
+| `external_user_id` | The `external_user_id` you gave that dialer session when you [created it](/api-reference/dialer/create-session): your own ID for the rep. `null` for calls handled in the dashboard, calls from before the dialer existed, and an inbound call whose dialer couldn't report answering it. |
+| `created_at` | When iBubbl recorded the call (ISO 8601 UTC, with microseconds and a `Z`). Lists sort by it. |
+
+**401 Unauthorized**
+```json
+{
+  "detail": {
+    "error": "unauthorized",
+    "message": "Invalid or revoked API key"
+  }
+}
+```
+Other `message` values: `Authorization Bearer token required`, `API key required (use Authorization: Bearer ib_pk_…)`, `Invalid API key format`, `Customer account not found`.
+
+**403 Forbidden**
+```json
+{
+  "detail": {
+    "error": "forbidden",
+    "message": "Account is suspended"
+  }
+}
+```
+Your iBubbl account is suspended or cancelled (`message` is then `Account is cancelled`). Every API-key endpoint returns this.
+
+**422 Unprocessable Entity**
+
+`validation_error`: a bad, unknown or repeated query parameter, or `limit` outside 1 to 100. `invalid_cursor`: `starting_after` is not one of your calls.
+
+**429 Too Many Requests**
+
+`rate_limited`: over 120 list requests in 60 seconds from your account. Wait `Retry-After` seconds, then send the same request again.
