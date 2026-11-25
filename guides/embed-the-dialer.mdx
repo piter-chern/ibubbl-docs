@@ -288,7 +288,7 @@ The dialer tells your page what happens with `postMessage`. It sends them only t
 | `type` | When | Other fields |
 |--------|------|--------------|
 | `ibubbl:ready` | The dialer can make and take calls. | — |
-| `ibubbl:incoming` | A call is ringing. Sent again when the caller is found in your iBubbl contacts with a name. | `from` (the caller's number, in E.164; when the caller withholds their number, a text such as `anonymous` instead), `contact_name` (the caller's name in your iBubbl contacts, or `null`: also `null` for a named contact the dialer couldn't find, such as one that opted out), `call_id` (the call's ID, or `null`; see [Open the contact when a call rings](#open-the-contact-when-a-call-rings)) |
+| `ibubbl:incoming` | A call is ringing. Sent again when the caller is found in your iBubbl contacts with a name. | `from` (the caller's number, in E.164; when the caller withholds their number, a text such as `anonymous` instead), `contact_name` (the caller's name in your iBubbl contacts, or `null`: also `null` for a named contact the dialer couldn't find, such as one that opted out; to show your CRM's name instead, see [Show the caller's name from your CRM](#show-the-callers-name-from-your-crm)), `call_id` (the call's ID, or `null`; see [Open the contact when a call rings](#open-the-contact-when-a-call-rings)) |
 | `ibubbl:call-started` | The rep answered, or started a call. | `direction` (`inbound` or `outbound`), `number`, `call_id` (the call's ID on an inbound call, `null` on an outbound one) |
 | `ibubbl:call-ended` | The call ended. | `direction`, `number`, `duration_s` (seconds connected, `0` if never answered), `call_id` (as on `ibubbl:call-started`) |
 | `ibubbl:session-expired` | The session ended. Create a new one and set the iframe's `src` again. | — |
@@ -331,7 +331,7 @@ function callWithIbubbl(phone: string) {
 The messages about an inbound call carry `call_id`: the call's ID in iBubbl, the same ID that [Retrieve a call](/api-reference/calls/retrieve) takes and that the [`call.*` webhooks](/webhooks/events#call-completed) carry as `data.id`. Use it to open the caller's record while the phone is still ringing, and to attach the call's outcome to that record when it ends.
 
 1. On `ibubbl:incoming`, send `call_id` to your server. Your server calls `GET /v1/calls/{call_id}` with your API key and gets the call's `contact_id`, `contact_number` and `conversation_id`. The call can already be read while it rings: its `status` is `ringing`. Never put your API key in the page.
-2. Open the record. A ring can send `ibubbl:incoming` twice (the second time with the caller's name), so key the record on `call_id`: open it once, then update the name.
+2. Open the record. A ring can send `ibubbl:incoming` twice (the second time with the caller's name), so key the record on `call_id`: open it once, then fill in iBubbl's name only if your CRM has none.
 3. `ibubbl:incoming-ended`, `ibubbl:call-started` and `ibubbl:call-ended` for that call carry the same `call_id`.
 4. When the call ends, [`call.completed`](/webhooks/events#call-completed) or [`call.missed`](/webhooks/events#call-missed) reaches your webhook endpoint with `data.id` equal to `call_id`. Log the outcome against the record.
 
@@ -360,7 +360,8 @@ window.addEventListener("message", async (event) => {
       .then((call) => openContactRecord(call.contact_id, call.contact_number));
     openRecords.set(callId, record);
   }
-  if (msg.contact_name) updateCallerName(await record, msg.contact_name);
+  // iBubbl's name only fills a gap: your CRM's own name comes first.
+  if (msg.contact_name) updateCallerNameIfMissing(await record, msg.contact_name);
 });
 ```
 
@@ -380,7 +381,7 @@ if (event.type === "call.completed" || event.type === "call.missed") {
 }
 ```
 
-`openContactRecord`, `updateCallerName` and `logCallOutcome` stand for your own code.
+`openContactRecord`, `updateCallerNameIfMissing` and `logCallOutcome` stand for your own code.
 
 ### Show the caller's name from your CRM
 
