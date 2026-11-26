@@ -4600,7 +4600,7 @@
             }
           },
           "422": {
-            "description": "`invalid_frame_ancestors` (not 1 to 10 origins, a path, a wildcard, or `http://` other than localhost), `invalid_ttl` (not 300 to 86400), `invalid_external_user_id` (not 1 to 128 characters) or `validation_error` (a missing or mistyped field, or a field this endpoint doesn't take).",
+            "description": "`invalid_frame_ancestors` (not 1 to 10 origins, a path, a wildcard, or `http://` other than localhost), `invalid_ttl` (not 300 to 86400), `invalid_external_user_id` (not 1 to 128 characters), `invalid_edge` (not a Twilio public edge, more than 3, or one listed twice) or `validation_error` (a missing or mistyped field, or a field this endpoint doesn't take).",
             "content": {
               "application/json": {
                 "schema": {
@@ -5148,6 +5148,31 @@
             "type": "array",
             "title": "Frame Ancestors",
             "description": "The origins the dialer may run in, as iBubbl normalized them."
+          },
+          "play_incoming_ringtone": {
+            "type": "boolean",
+            "title": "Play Incoming Ringtone",
+            "description": "Whether the dialer plays its own ringtone on an incoming call."
+          },
+          "edge": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Edge",
+            "description": "The Twilio edges the dialer tries, in order, or `null` when Twilio picks."
+          },
+          "debug_log": {
+            "type": "boolean",
+            "title": "Debug Log",
+            "description": "Whether the dialer sends its warning and error lines to your page as `ibubbl:log`."
           }
         },
         "type": "object",
@@ -5155,19 +5180,23 @@
           "id",
           "url",
           "expires_at",
-          "frame_ancestors"
+          "frame_ancestors",
+          "play_incoming_ringtone",
+          "edge",
+          "debug_log"
         ],
         "title": "DialerSession",
-        "examples": [
-          {
-            "expires_at": "2026-11-25T23:00:00.000000Z",
-            "frame_ancestors": [
-              "https://crm.example.com"
-            ],
-            "id": "3f1c9a2e-5b7d-4c8e-9f0a-1b2c3d4e5f6a",
-            "url": "https://ibubbl-dashboard.vercel.app/embed/dialer/3f1c9a2e-5b7d-4c8e-9f0a-1b2c3d4e5f6a#l=Q2xhdW1kZS1sYXVuY2gtdG9rZW4tZXhhbXBsZTAwMDA"
-          }
-        ]
+        "example": {
+          "id": "3f1c9a2e-5b7d-4c8e-9f0a-1b2c3d4e5f6a",
+          "url": "https://ibubbl-dashboard.vercel.app/embed/dialer/3f1c9a2e-5b7d-4c8e-9f0a-1b2c3d4e5f6a#l=Q2xhdW1kZS1sYXVuY2gtdG9rZW4tZXhhbXBsZTAwMDA",
+          "expires_at": "2026-11-25T23:00:00.000000Z",
+          "frame_ancestors": [
+            "https://crm.example.com"
+          ],
+          "play_incoming_ringtone": true,
+          "edge": null,
+          "debug_log": false
+        }
       },
       "DialerSessionCreate": {
         "properties": {
@@ -5202,6 +5231,48 @@
             ],
             "title": "External User Id",
             "description": "Your own ID for the rep using this dialer, 1 to 128 characters. iBubbl stores it with the session and does not interpret it."
+          },
+          "play_incoming_ringtone": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Play Incoming Ringtone",
+            "description": "Whether the dialer plays its own ringtone when a call comes in. Leave it out for `true`. Set `false` to play your own sound: start it on the dialer's `ibubbl:call-state` message with `state` `ringing` and stop it on that call's next state. Only this dialer is silent; other dialers and dashboard tabs of your account still ring."
+          },
+          "edge": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Edge",
+            "description": "The Twilio edge (media and signalling region) the dialer connects through, or a list of 1 to 3 to try in order, for example `[\"ashburn\", \"roaming\"]`. One of `ashburn`, `dublin`, `frankfurt`, `roaming`, `sao-paulo`, `singapore`, `sydney`, `tokyo`, `umatilla`. Leave it out and Twilio picks the closest edge for each rep, which is right for almost everyone: set it only when you have measured that a fixed edge serves your reps better, and keep `roaming` last as a fallback."
+          },
+          "debug_log": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Debug Log",
+            "description": "Set `true` to have the dialer send its warning and error log lines to your page as `ibubbl:log` messages, for debugging. Leave it out for `false`. Lines start once the dialer has launched; tokens, credentials and Twilio call IDs are removed from them."
           }
         },
         "additionalProperties": false,

@@ -17,6 +17,9 @@ openapi: 'POST /v1/dialer/sessions'
 | `frame_ancestors` | array of strings | Yes | The origins (scheme, host and port, no path) of the pages that will embed the dialer, 1 to 10, such as `https://crm.example.com`. `https://` only, except `http://localhost` and `http://127.0.0.1` for development. The dialer refuses to start on any other site. |
 | `ttl_seconds` | integer | No | How long the session lasts, 300 to 86400 seconds. Default 28800 (8 hours). |
 | `external_user_id` | string | No | Your own ID for the rep, 1 to 128 characters. Stored with the session; iBubbl doesn't interpret it. |
+| `play_incoming_ringtone` | boolean | No | Whether the dialer plays its own ringtone when a call comes in. Default `true`. Set `false` to play your own sound on your page; see [Turn off the ringtone](/guides/embed-the-dialer#turn-off-the-ringtone). |
+| `edge` | string or array of strings | No | The Twilio edge (media and signalling region) the dialer connects through, or a list of 1 to 3 to try in order, such as `["ashburn", "roaming"]`. One of `ashburn`, `dublin`, `frankfurt`, `roaming`, `sao-paulo`, `singapore`, `sydney`, `tokyo`, `umatilla`. Leave it out and Twilio picks the closest edge for each rep; see [Pick a media region](/guides/embed-the-dialer#pick-a-media-region). |
+| `debug_log` | boolean | No | Set `true` to have the dialer send its warning and error log lines to your page as `ibubbl:log` messages. Default `false`. See [Debug logs](/guides/embed-the-dialer#debug-logs). |
 
 Fields not listed above are rejected with `422 validation_error`.
 
@@ -82,7 +85,10 @@ print(data["id"], data["expires_at"])  # load data["url"] in the iframe; don't l
   "id": "3f1c9a2e-5b7d-4c8e-9f0a-1b2c3d4e5f6a",
   "url": "https://ibubbl-dashboard.vercel.app/embed/dialer/3f1c9a2e-5b7d-4c8e-9f0a-1b2c3d4e5f6a#l=Q2xhdW1kZS1sYXVuY2gtdG9rZW4tZXhhbXBsZTAwMDA",
   "expires_at": "2026-11-25T23:00:00.000000Z",
-  "frame_ancestors": ["https://crm.example.com"]
+  "frame_ancestors": ["https://crm.example.com"],
+  "play_incoming_ringtone": true,
+  "edge": null,
+  "debug_log": false
 }
 ```
 
@@ -104,13 +110,18 @@ print(data["id"], data["expires_at"])  # load data["url"] in the iframe; don't l
   "id": "3f1c9a2e-5b7d-4c8e-9f0a-1b2c3d4e5f6a",
   "url": "https://ibubbl-dashboard.vercel.app/embed/dialer/3f1c9a2e-5b7d-4c8e-9f0a-1b2c3d4e5f6a#l=Q2xhdW1kZS1sYXVuY2gtdG9rZW4tZXhhbXBsZTAwMDA",
   "expires_at": "2026-11-25T23:00:00.000000Z",
-  "frame_ancestors": ["https://crm.example.com"]
+  "frame_ancestors": ["https://crm.example.com"],
+  "play_incoming_ringtone": true,
+  "edge": null,
+  "debug_log": false
 }
 ```
 - `id`: the session's ID. Use it to [end the session](/api-reference/dialer/end-session).
 - `url`: the page to load in your `<iframe allow="microphone; autoplay">`. The part after `#` is a single-use launch token: load the URL once, within 5 minutes, and don't log or store it. See [Embed the dialer](/guides/embed-the-dialer).
 - `expires_at`: when the session ends.
 - `frame_ancestors`: your origins as iBubbl normalized them (lower case, default port dropped, duplicates removed).
+- `play_incoming_ringtone`, `debug_log`: the session's settings, `true` and `false` when you left them out.
+- `edge`: the edges the dialer tries, always as a list (`"ashburn"` comes back as `["ashburn"]`), or `null` when Twilio picks.
 
 **401 Unauthorized**
 ```json
@@ -145,7 +156,8 @@ The embeddable dialer isn't turned on for your account: ask [support](mailto:sup
 - `invalid_frame_ancestors`: not 1 to 10 origins, or one with a path, a wildcard, credentials, or `http://` on a host other than `localhost` or `127.0.0.1`. The `message` names the value.
 - `invalid_ttl`: `ttl_seconds` is not 300 to 86400.
 - `invalid_external_user_id`: `external_user_id` is not 1 to 128 characters.
-- `validation_error`: `frame_ancestors` is missing or not an array of strings, a field has the wrong type (`ttl_seconds` must be a JSON integer, not a string), or the body has a field this endpoint doesn't take.
+- `invalid_edge`: `edge` names something other than the edges listed above (Twilio's Interconnect edges, such as `ashburn-ix`, included), lists more than 3, or lists one twice. Names are lower case, exactly as listed.
+- `validation_error`: `frame_ancestors` is missing or not an array of strings, a field has the wrong type (`ttl_seconds` must be a JSON integer and `play_incoming_ringtone` and `debug_log` JSON booleans, not strings), or the body has a field this endpoint doesn't take.
 
 **429 Too Many Requests**
 ```json
