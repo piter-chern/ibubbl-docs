@@ -103,7 +103,7 @@ Instead of placing the iframe yourself, add the dock: a phone button that floats
 
 ### Your endpoint
 
-The dock calls your endpoint whenever it needs a session: on each page load and when a session ends. Your endpoint creates one, exactly as in [step 1](#1-create-a-session-on-your-server), and returns its `url` as text. When iBubbl refuses, pass its answer on unchanged (the status, the JSON body and `Retry-After`), so the dock can tell a refusal that a retry fixes from one that it doesn't; see [When the dock can't get a session](#when-the-dock-cant-get-a-session). Protect the endpoint like the rest of your app: anyone who can call it gets a dialer on your lines.
+The dock calls your endpoint whenever it needs a session: on each page load and when a session ends. Your endpoint creates one, exactly as in [step 1](#1-create-a-session-on-your-server), and returns its `url` as text. When iBubbl refuses, pass its answer on unchanged (the status, the JSON body and `Retry-After`), so the dock can tell a refusal that a retry fixes from one that it doesn't; see [When the dock cannot get a session](#when-the-dock-cannot-get-a-session). Protect the endpoint like the rest of your app: anyone who can call it gets a dialer on your lines.
 
 <CodeGroup>
 
@@ -195,7 +195,7 @@ The dialer's [session options](#session-options) (ringtone, media region, debug 
 | `accentColor` | `"#2563EB"` | Any CSS color, used for the button and the dock's header. The icon and text on it switch between black and white to stay readable. |
 | `notifications` | `false` | Show a system notification for an incoming call while your page is in the background, one per call. It uses your page's notification permission. Browsers ask for it only after a click on your page, so until the rep decides, the dock's header shows **Turn on alerts**. You can also call `IbubblDock.enableNotifications()` from a button of your own. |
 | `singleTab` | `true` | Run one dialer per browser, not one per tab. See [More than one tab](#more-than-one-tab). |
-| `onEvent` | — | Receives every message from the dialer, as listed in [Messages between your page and the dialer](#messages-between-your-page-and-the-dialer) and [Call state, quality and errors](#call-state-quality-and-errors). Since 1.1.0, also the dock's own problems, as `ibubbl:error` with `source: "dock"` (see [When the dock can't get a session](#when-the-dock-cant-get-a-session)). |
+| `onEvent` | — | Receives every message from the dialer, as listed in [Messages between your page and the dialer](#messages-between-your-page-and-the-dialer) and [Call state, quality and errors](#call-state-quality-and-errors). Since 1.1.0, also the dock's own problems, as `ibubbl:error` with `source: "dock"` (see [When the dock cannot get a session](#when-the-dock-cannot-get-a-session)). |
 
 ### Methods
 
@@ -212,7 +212,7 @@ The dialer's [session options](#session-options) (ringtone, media region, debug 
 
 The dock logs its problems to the browser console, prefixed with `[IbubblDock]`. A common one: `getSessionUrl` returned an error page instead of a URL.
 
-### When the dock can't get a session
+### When the dock cannot get a session
 
 When `getSessionUrl` fails, the dock decides from the refusal's code whether to try again. It reports each failure to `onEvent` as `{ type: "ibubbl:error", protocol: 2, source: "dock", code, retryable, message, at }` and in `getState().error`.
 
@@ -504,7 +504,7 @@ Every message in this section has `protocol` (`2`) and `at`: when the dialer sen
 |--------|------|--------------|
 | `ibubbl:hello` | Once, when the dialer loads, before its first `ibubbl:status`. | — |
 | `ibubbl:connection` | The dialer's connection changed: once the dialer starts, then on every change. | `device`: `unregistered`, `registering`, `registered` (calls ring here) or `destroyed` (the session ended). `network`: `online` or `offline`, as the rep's browser sees it. |
-| `ibubbl:call-state` | A call's state changed. | `call_ref`, `call_id`, `seq`, `direction`, `number`, `state`, `previous`; on `ringing`: `early_media`; on `closed`: `reason`, `duration_s` and, when `reason` is `failed`, `error`. See [A call's states](#a-calls-states). |
+| `ibubbl:call-state` | A call's state changed. | `call_ref`, `call_id`, `seq`, `direction`, `number`, `state`, `previous`; on `ringing`: `early_media`; on `closed`: `reason`, `duration_s` and, when `reason` is `failed`, `error`. See [Call states](#call-states). |
 | `ibubbl:call-warning` | The call's audio quality dropped. | `call_ref`, `call_id`, `seq`, `name` (see [Call quality](#call-quality)) |
 | `ibubbl:call-warning-cleared` | That warning is over. | `call_ref`, `call_id`, `seq`, `name` |
 | `ibubbl:call-mute` | The rep muted or unmuted the call. | `call_ref`, `call_id`, `seq`, `muted` (`true` or `false`) |
@@ -519,7 +519,7 @@ Three fields tie a call's messages together:
 
 The dialer never puts its session credential, a calling token or Twilio's own call IDs in a message.
 
-### A call's states
+### Call states
 
 ```mermaid
 stateDiagram-v2
@@ -622,7 +622,7 @@ Other names may appear: show them as a generic "call quality" warning.
 | `dialer_not_enabled` | no | The dialer isn't turned on for your account. | Email support. |
 | `account_inactive` | no | Your iBubbl account isn't active. | Email support. |
 | `rate_limited` | yes | Too many requests from this dialer. | Nothing: the dialer waits (`retry_in_s`). If it happened while opening the session, create a new one after `retry_in_s`. |
-| `token_unavailable` | yes | Renewing the dialer's calling token failed. Sent for each failed try, with `retry_in_s`. | Nothing: see [The dialer's calling token](#the-dialers-calling-token). |
+| `token_unavailable` | yes | Renewing the dialer's calling token failed. Sent for each failed try, with `retry_in_s`. | Nothing: see [Renewing the calling token](#renewing-the-calling-token). |
 | `microphone_unavailable` | no | The browser, the rep or your iframe refused the microphone, or there is none. | Ask the rep to allow the microphone. Your iframe needs `allow="microphone"`. |
 | `connection_failed` | yes | The dialer couldn't reach iBubbl or the calling service, or couldn't register for calls. | Usually nothing: it reconnects by itself. If its status stays `offline`, reload it with a new session. |
 | `call_failed` | yes | A call failed, or couldn't be placed or answered. On an answered call that goes on (for example a keypad tone that couldn't be sent), the call is not ended. | Try the call again. |
@@ -633,7 +633,7 @@ Other names may appear: show them as a generic "call quality" warning.
 
 The dialer sends at most one error with the same `code`, `source` and `call_ref` every 10 seconds; `token_unavailable` comes once per try. A call that fails also closes with `reason: "failed"` and the same code in `error`. A busy or unanswered outbound call is not an error: it closes with `busy` or `no_answer`.
 
-### The dialer's calling token
+### Renewing the calling token
 
 The dialer renews the token it uses for calls by itself. It renews a minute before the token expires and, if that fails, tries again after 5, 15 and 30 seconds, while the old token still works. After that it tries once a minute until it works or the session ends, and it tries at once when the rep's network comes back. Each failed try sends `ibubbl:error` `token_unavailable` (or `rate_limited`) with `retry_in_s`. From the second failure the status is `reconnecting`, and it goes back to `ready` once a new token is in. A call in progress is not affected. If iBubbl answers that the session is over, the dialer stops: `session_ended`, then `ibubbl:session-expired`.
 
@@ -661,7 +661,7 @@ window.addEventListener("message", (event) => {
 
 `updateCallPanel`, `logCallEnd`, `showQualityBadge`, `hideQualityBadge` and `reportDialerProblem` stand for your own code.
 
-### When your server can't create a session
+### When your server cannot create a session
 
 [Create a dialer session](/api-reference/dialer/create-session) answers an error as `{ "detail": { "error": "<code>", "message": "…" } }`. Pass the HTTP status, `detail.error` and the `Retry-After` header on to your page unchanged, rather than one generic failure, so it can decide:
 
@@ -673,7 +673,7 @@ window.addEventListener("message", (event) => {
 | `dialer_not_enabled` | 403 | No: ask support to turn the dialer on. |
 | `invalid_frame_ancestors` / `invalid_ttl` / `invalid_external_user_id` / `invalid_edge` / `validation_error` | 422 | No: fix the request. |
 
-With the [drop-in dock](#or-the-drop-in-dock) (version 1.1.0 or later), return that response from `getSessionUrl` as it is: the dock reads it and decides; see [When the dock can't get a session](#when-the-dock-cant-get-a-session).
+With the [drop-in dock](#or-the-drop-in-dock) (version 1.1.0 or later), return that response from `getSessionUrl` as it is: the dock reads it and decides; see [When the dock cannot get a session](#when-the-dock-cannot-get-a-session).
 
 ```typescript
 // Your server: forward iBubbl's refusal as it is.
