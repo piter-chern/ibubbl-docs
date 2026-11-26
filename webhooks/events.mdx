@@ -789,7 +789,7 @@ Fired when a conversation moves to another of your lines. A line keeps its ID wh
 
 `previous_line_number` is the old line's number while that line is still yours, and `null` once it belongs to another account. `chat_guid` is the group's `chat_guid` for a group and `null` for a one-to-one conversation, as on the [message object](/api-reference/messages/retrieve).
 
-For a group, `continued` means the group starts again from the new line, with the same people: `chat_guid` is `null` until the next message, sent from the dashboard, creates the new group, and the old `chat_guid` returns `404 group_not_found`. The conversation keeps its `conversation_id`. See [When a conversation's line is no longer yours](/concepts/lines-and-routing#when-a-conversations-line-is-no-longer-yours).
+For a group, `continued` means the group starts again from the new line, with the same people: `chat_guid` is `null` until the next message, sent from the dashboard, creates the new group, and the old `chat_guid` returns `404 group_not_found`. The conversation keeps its `conversation_id`. See [When a line is no longer yours](/concepts/lines-and-routing#when-a-line-is-no-longer-yours).
 </Accordion>
 
 <Accordion title="imessage_lookup.completed" icon="magnifying-glass">
