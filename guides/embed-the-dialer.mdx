@@ -174,13 +174,15 @@ Returning the response needs version 1.1.0 or later of the dock. With version 1.
 
 ```html
 <script
-  src="https://ibubbl-dashboard.vercel.app/embed/v1.1.0/dock.js"
-  integrity="sha384-BFJAiUDO8O7SWd9pLb7nhIBubLNi7mD4YEH7eTyjodnMR5lortIU1dyjZVqU2D9M"
+  src="https://ibubbl-dashboard.vercel.app/embed/v1.1.1/dock.js"
+  integrity="sha384-cViB5dyuUzre0hg6ZynPSGXBCA15pUJcSACMODtn2QkdGPREvJO1bBrqaXECGJVp"
   crossorigin="anonymous"
 ></script>
 ```
 
-A numbered file never changes. Version 1.0.0 (`sha384-qzizEpjtdGVNChNbx9QPdeydeisJ7fqDunJf1RdmVJCZN2Eyxj1ureFYyrEKxpSM`) stays available. Newer ones are listed in the [changelog](/changelog).
+A numbered file never changes. Versions 1.1.0 (`sha384-BFJAiUDO8O7SWd9pLb7nhIBubLNi7mD4YEH7eTyjodnMR5lortIU1dyjZVqU2D9M`) and 1.0.0 (`sha384-qzizEpjtdGVNChNbx9QPdeydeisJ7fqDunJf1RdmVJCZN2Eyxj1ureFYyrEKxpSM`) stay available. Newer ones are listed in the [changelog](/changelog).
+
+The dialer's [session options](#session-options) (ringtone, media region, debug logs) are set by your server when it creates the session, so the dock needs nothing for them, and `onEvent` receives `ibubbl:log` with every version of the dock.
 
 ### Options
 
@@ -216,7 +218,7 @@ When `getSessionUrl` fails, the dock decides from the refusal's code whether to 
 
 | Code | Where it comes from | The dock |
 |------|---------------------|----------|
-| `unauthorized`, `forbidden`, `dialer_not_enabled`, `account_inactive`, `invalid_frame_ancestors`, `invalid_ttl`, `invalid_external_user_id`, `validation_error`, `not_found` | iBubbl's refusal, passed on by your endpoint | Stops at once and shows **Reconnect** (`retryable: false`): a new attempt can't fix it. |
+| `unauthorized`, `forbidden`, `dialer_not_enabled`, `account_inactive`, `invalid_frame_ancestors`, `invalid_ttl`, `invalid_external_user_id`, `invalid_edge`, `validation_error`, `not_found` | iBubbl's refusal, passed on by your endpoint | Stops at once and shows **Reconnect** (`retryable: false`): a new attempt can't fix it. Versions 1.1.0 and 1.0.0 of the dock don't know `invalid_edge` and retry it with backoff. |
 | `session_refused` | Your endpoint answered 4xx without one of iBubbl's codes (for example the rep's own sign-in expired) | Stops at once (`retryable: false`). |
 | `rate_limited` | iBubbl's 429, or your endpoint's | Tries again after `Retry-After`, never sooner than its own backoff. |
 | `session_unavailable` | Your endpoint answered 5xx, couldn't be reached, threw, or took longer than 15 seconds | Tries again with backoff (`retryable: true`). |
@@ -287,7 +289,7 @@ The dialer tells your page what happens with `postMessage`. It sends them only t
 
 | `type` | When | Other fields |
 |--------|------|--------------|
-| `ibubbl:ready` | The dialer can make and take calls. | — |
+| `ibubbl:ready` | The dialer can make and take calls. | `options`: the [session options](#session-options) the dialer applied, `{ play_incoming_ringtone, edge, debug_log }`. A dialer loaded before this field existed sends none. |
 | `ibubbl:incoming` | A call is ringing. Sent again when the caller is found in your iBubbl contacts with a name. | `from` (the caller's number, in E.164; when the caller withholds their number, a text such as `anonymous` instead), `contact_name` (the caller's name in your iBubbl contacts, or `null`: also `null` for a named contact the dialer couldn't find, such as one that opted out; to show your CRM's name instead, see [Caller names from your CRM](#caller-names-from-your-crm)), `call_id` (the call's ID, or `null`; see [Open the contact when a call rings](#open-the-contact-when-a-call-rings)) |
 | `ibubbl:call-started` | The rep answered, or started a call. | `direction` (`inbound` or `outbound`), `number`, `call_id` (the call's ID on an inbound call, `null` on an outbound one) |
 | `ibubbl:call-ended` | The call ended. | `direction`, `number`, `duration_s` (seconds connected, `0` if never answered), `call_id` (as on `ibubbl:call-started`) |
@@ -507,6 +509,7 @@ Every message in this section has `protocol` (`2`) and `at`: when the dialer sen
 | `ibubbl:call-warning-cleared` | That warning is over. | `call_ref`, `call_id`, `seq`, `name` |
 | `ibubbl:call-mute` | The rep muted or unmuted the call. | `call_ref`, `call_id`, `seq`, `muted` (`true` or `false`) |
 | `ibubbl:error` | Something failed. | `code`, `retryable`, `source` and more; see [Errors from the dialer](#errors-from-the-dialer). |
+| `ibubbl:log` | Only with the session option `debug_log`: one of the dialer's warning or error log lines. | `level` (`warn` or `error`), `message`; see [Debug logs](#debug-logs). |
 
 Three fields tie a call's messages together:
 
@@ -668,7 +671,7 @@ window.addEventListener("message", (event) => {
 | `internal_error`, or no answer at all | 500, network | Yes, after a short backoff. |
 | `unauthorized` / `forbidden` | 401 / 403 | No: your API key or account. |
 | `dialer_not_enabled` | 403 | No: ask support to turn the dialer on. |
-| `invalid_frame_ancestors` / `invalid_ttl` / `invalid_external_user_id` / `validation_error` | 422 | No: fix the request. |
+| `invalid_frame_ancestors` / `invalid_ttl` / `invalid_external_user_id` / `invalid_edge` / `validation_error` | 422 | No: fix the request. |
 
 With the [drop-in dock](#or-the-drop-in-dock) (version 1.1.0 or later), return that response from `getSessionUrl` as it is: the dock reads it and decides; see [When the dock can't get a session](#when-the-dock-cant-get-a-session).
 
@@ -683,6 +686,90 @@ if (!r.ok) {
 }
 res.json({ url: data.url });
 ```
+
+## Session options
+
+Three options change how the dialer behaves. Your server sets them when it [creates the session](/api-reference/dialer/create-session), next to `frame_ancestors`; the dialer applies them when it starts and reports what it applied in `ibubbl:ready` as `options`.
+
+| Field | Default | |
+|-------|---------|---|
+| `play_incoming_ringtone` | `true` | `false`: the dialer rings silently, and your page plays its own sound. |
+| `edge` | not set | The Twilio edge the dialer connects through, or a list of up to 3 to try in order. |
+| `debug_log` | `false` | `true`: the dialer sends its warning and error log lines to your page as `ibubbl:log`. |
+
+```json
+{
+  "frame_ancestors": ["https://crm.example.com"],
+  "external_user_id": "user_8231",
+  "play_incoming_ringtone": false
+}
+```
+
+### Turn off the ringtone
+
+With `play_incoming_ringtone: false`, the dialer shows an incoming call but plays no sound, so your page can ring in its own way. Only this dialer is silent: other dialers and dashboard tabs of your account still ring.
+
+Start your sound on an inbound `ibubbl:call-state` with `state: "ringing"`, and stop it on the next `ibubbl:call-state` with the same `call_ref`, whatever its state: `open` when the rep answers, `closed` when the call stops ringing. Also stop it on `ibubbl:session-expired` and on `ibubbl:hello` (the dialer reloaded), and after a minute at most, so a ring can never get stuck on.
+
+Browsers play sound only after the rep has clicked on your page. Safari is stricter than Chrome: prepare your audio on a click (for example when the rep signs in or opens the dialer), or the rep may miss calls with no ring at all.
+
+```typescript
+const ring = new Audio("/sounds/ring.mp3");
+ring.loop = true;
+// Call once from a click, so the browser lets this page play sound.
+function unlockRing() { ring.play().then(() => ring.pause()).catch(() => {}); }
+
+let ringingRef: string | null = null;
+let safety: ReturnType<typeof setTimeout> | undefined;
+function stopRing() {
+  ring.pause(); ring.currentTime = 0; ringingRef = null; clearTimeout(safety);
+}
+
+window.addEventListener("message", (event) => {
+  if (event.origin !== dialerOrigin) return;
+  const msg = event.data;
+  if (msg?.type === "ibubbl:call-state") {
+    if (msg.direction === "inbound" && msg.state === "ringing") {
+      ringingRef = msg.call_ref;
+      ring.play().catch(() => {});
+      safety = setTimeout(stopRing, 60_000);
+    } else if (msg.call_ref === ringingRef) {
+      stopRing();
+    }
+  } else if (msg?.type === "ibubbl:session-expired" || msg?.type === "ibubbl:hello") {
+    stopRing();
+  }
+});
+```
+
+### Pick a media region
+
+`edge` chooses where the dialer's audio and signalling enter Twilio's network: one of `ashburn`, `dublin`, `frankfurt`, `roaming`, `sao-paulo`, `singapore`, `sydney`, `tokyo` or `umatilla`, or a list of up to 3 to try in order.
+
+**Leave it out unless you have measured a reason to set it.** Without it, Twilio picks the closest edge for each rep, which is best for almost everyone. Pin one only when you've compared call quality, for example because your reps' network only allows certain addresses. Then keep `roaming` last as a fallback, `["ashburn", "roaming"]`: with a single edge that is unreachable, the dialer can't connect at all.
+
+Twilio's Interconnect edges (`ashburn-ix` and the like) need a private connection to Twilio and are refused with `422 invalid_edge`.
+
+### Debug logs
+
+With `debug_log: true`, the dialer sends your page its warning and error log lines, the ones it writes to the browser console, as messages:
+
+```json
+{
+  "type": "ibubbl:log",
+  "protocol": 2,
+  "level": "error",
+  "message": "[TwilioVoice][WSTransport] Received websocket close event code: 1006. Reason: ",
+  "at": "2026-11-26T19:38:57.058Z"
+}
+```
+
+- Use it while you build or debug an integration, not for analytics: the lines are written for people, and their wording changes.
+- Lines start once the dialer has opened its session. A problem before that (a refused microphone, a bad link) arrives as [`ibubbl:error`](#errors-from-the-dialer), which you get with or without this option.
+- Calling tokens, the session credential, Twilio's call IDs and the launch token are removed from every line, and a line is at most 500 characters.
+- At most 20 lines go out in 10 seconds; after a burst, one line says how many were dropped.
+
+An iframe can't take a logging function of yours. When iBubbl ships a JavaScript SDK for the dialer, it will take a logger directly.
 
 ## Ending a session
 
