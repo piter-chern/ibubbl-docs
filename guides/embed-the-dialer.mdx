@@ -551,7 +551,7 @@ stateDiagram-v2
 
 `previous` is the state before (`null` on the first message). So "answered" is `open` coming from `ringing` or `connecting`, and "reconnected" is any state coming from `reconnecting`.
 
-**Order.** At each moment the older message comes first: `ibubbl:incoming` and then `ringing`; `ibubbl:incoming-ended` (`answered`), then `ibubbl:call-started`, then `open` once audio connects; `ibubbl:call-ended` or `ibubbl:incoming-ended`, then `closed`. Treat a call as connected on `open`, not on `ibubbl:call-started`: when a caller hangs up just as the rep answers, `ibubbl:call-started` is sent but the call closes without ever being `open`. Messages about another call can come in between: while one ring waits for its outcome, a new call's `ibubbl:incoming` and `ringing` may arrive before the first ring's `ibubbl:incoming-ended` and `closed`. Tell calls apart by `call_ref`.
+**Order.** At each moment the older message comes first: `ibubbl:incoming` and then `ringing`; `ibubbl:incoming-ended` (`answered`), then `ibubbl:call-started`, then `open` once audio connects; `ibubbl:call-ended` or `ibubbl:incoming-ended`, then `closed`. Treat a call as connected on `open`, not on `ibubbl:call-started`: when a caller hangs up just as the rep answers, `ibubbl:call-started` is sent but the call closes without ever being `open`. A new ring never overtakes an older one: if a call starts ringing while the previous ring still waits for its outcome (see [Why a call closed](#why-a-call-closed)), the dialer first sends the previous ring's `ibubbl:incoming-ended` and `closed`.
 
 ### Why a call closed
 
@@ -565,12 +565,12 @@ On `closed`, `reason` says why, and `duration_s` is the seconds between `open` a
 | `answered_elsewhere` | inbound | Another dialer or a dashboard tab answered the call. |
 | `missed` | inbound | Nobody answered: the call rang out and went to voicemail, a teammate sent it to voicemail, or the caller hung up before anyone answered. |
 | `cancelled` | inbound | The caller hung up before anyone answered, when iBubbl knows it. Most callers who hang up while the call rings show as `missed` instead: the calling service reports them like a call that rang out. |
-| `not_answered_here` | inbound | The call stopped ringing here without being answered here, and the dialer couldn't find out what happened: the call has no `call_id`, iBubbl didn't know yet after about 3 seconds, the session ended, or the dialer's page was closing. |
+| `not_answered_here` | inbound | The call stopped ringing here without being answered here, and the dialer couldn't find out what happened: the call has no `call_id`, iBubbl didn't know yet after about 3 seconds, the session ended, another call started ringing, or the dialer's page was closing. |
 | `cancelled` | outbound | The rep hung up before the other side answered. |
 | `busy` | outbound | The other side was busy. |
 | `no_answer` | outbound | The call ended before it was answered: nobody picked up, the other side declined, or the number couldn't be reached. |
 
-**How the dialer knows.** When an inbound call stops ringing here without being answered or declined here, the dialer asks iBubbl what happened and waits up to about 3 seconds for the answer before it sends that call's `ibubbl:incoming-ended` and `closed`. The rep's screen clears at once, and the answer usually comes within a second. If the dialer's page goes away meanwhile (the rep reloads, or the dock replaces the session), both messages go out at once, as `missed` and `not_answered_here`.
+**How the dialer knows.** When an inbound call stops ringing here without being answered or declined here, the dialer asks iBubbl what happened and waits up to about 3 seconds for the answer before it sends that call's `ibubbl:incoming-ended` and `closed`. The rep's screen clears at once, and the answer usually comes within a second. If the dialer's page goes away meanwhile (the rep reloads, or the dock replaces the session), or another call starts ringing, both messages go out at once, as `missed` and `not_answered_here`.
 
 A number refused only after it was dialed shows `open`, then `completed`. Numbers outside the US and Canada and premium-rate numbers are refused before anything is dialed, with an [`ibubbl:error`](#errors-from-the-dialer) `number_not_allowed`.
 
