@@ -232,7 +232,7 @@ The backoff is 0, 5, 30, 120 and 300 seconds; after that the dock shows **Reconn
 
 - **The first time,** the dock opens by itself on **Start the dialer**. After the click it says **Ready** and minimizes to its button.
 - **The button's dot:** green means Ready, amber means starting or reconnecting, red means the dialer needs attention. Hover over the button to see why.
-- **An incoming call** opens the dock by itself, even when it's minimized. When the call ends, or stops ringing without being answered, the dock minimizes again. If the rep minimizes a ringing call, the button pulses until it stops.
+- **An incoming call** opens the dock by itself, even when it's minimized. When the call ends, or stops ringing without being answered, the dock minimizes again (after a ring that stopped, within about 3 seconds, while the dialer finds out what happened). If the rep minimizes a ringing call, the button pulses until it stops.
 - **During a call,** the minimized button shows the call's duration. For an outgoing call, it counts from when the rep pressed Call.
 - **If the dialer goes offline,** the dock gives it 15 seconds to reconnect by itself (it usually does, within a second or two) before getting a new session.
 - **When a session ends,** the dock gets a new one from your endpoint and reloads the dialer. In Chrome the new dialer starts by itself. When the browser needs another click, Safari usually included, the dock opens on **Start the dialer**. Renewals never interrupt a call: they wait until it ends.
@@ -295,7 +295,7 @@ The dialer tells your page what happens with `postMessage`. It sends them only t
 | `ibubbl:call-ended` | The call ended. | `direction`, `number`, `duration_s` (seconds connected, `0` if never answered), `call_id` (as on `ibubbl:call-started`) |
 | `ibubbl:session-expired` | The session ended. Create a new one and set the iframe's `src` again. | — |
 | `ibubbl:status` | The dialer's status changed. Sent on every change, starting when the dialer loads. | `state`: `start`, `connecting`, `ready`, `reconnecting`, `offline`, `mic-blocked`, `registration-failed`, `session-ended`, `link-used`, `link-expired`, `origin-refused`, `not-enabled`, `account-inactive`, `bad-link` or `not-framed`. The dock also uses a `load` field; ignore it. |
-| `ibubbl:incoming-ended` | A call stopped ringing in this dialer. Sent once per call. | `from`, and `reason`: `answered` (answered here; `ibubbl:call-started` follows), `declined` (the rep pressed Decline here) or `missed` (anything else: the caller hung up, the call went to voicemail, or another dialer or dashboard tab answered it). `answered_elsewhere` is reserved for later. `call_id`: the same ID as that call's `ibubbl:incoming`. |
+| `ibubbl:incoming-ended` | A call stopped ringing in this dialer. Sent once per call. | `from`, and `reason`: `answered` (answered here; `ibubbl:call-started` follows), `declined` (the rep pressed Decline here), `answered_elsewhere` (another dialer or dashboard tab answered it) or `missed` (anything else: nobody answered, or the dialer couldn't find out). When a call stops ringing without being answered or declined here, the dialer first asks iBubbl what happened, so this message can come up to about 3 seconds after the ring stopped; see [Why a call closed](#why-a-call-closed). `call_id`: the same ID as that call's `ibubbl:incoming`. |
 
 These messages never change: fields are only ever added. The dialer also sends the newer messages in [Call state, quality and errors](#call-state-quality-and-errors).
 
@@ -547,11 +547,11 @@ stateDiagram-v2
 | `ringing` | Inbound: the call rings in this dialer (the first state). Outbound: the other phone is ringing; `early_media` is `true` when the carrier is already playing sound, such as a ringback tone or a message. |
 | `open` | Connected: the other side answered (outbound) or the rep answered here (inbound), and audio flows. |
 | `reconnecting` | The connection dropped and the dialer is restoring it. The call returns to the state it left, usually `open`, once both its audio and its connection to the calling service are back. The audio can return first: `ibubbl:call-warning-cleared` with `ice-connectivity-lost` says it has, while the state still reads `reconnecting`. |
-| `closed` | The call is over. Sent exactly once per call, and always the last message about that `call_ref`. |
+| `closed` | The call is over. Sent exactly once per call, and always the last message about that `call_ref`. One exception: if your page removes the dialer's iframe in the few seconds an inbound ring waits for its outcome (see [Why a call closed](#why-a-call-closed)), that ring's last messages may not reach you. |
 
 `previous` is the state before (`null` on the first message). So "answered" is `open` coming from `ringing` or `connecting`, and "reconnected" is any state coming from `reconnecting`.
 
-**Order.** At each moment the older message comes first: `ibubbl:incoming` and then `ringing`; `ibubbl:incoming-ended` (`answered`), then `ibubbl:call-started`, then `open` once audio connects; `ibubbl:call-ended` or `ibubbl:incoming-ended`, then `closed`. Treat a call as connected on `open`, not on `ibubbl:call-started`: when a caller hangs up just as the rep answers, `ibubbl:call-started` is sent but the call closes without ever being `open`.
+**Order.** At each moment the older message comes first: `ibubbl:incoming` and then `ringing`; `ibubbl:incoming-ended` (`answered`), then `ibubbl:call-started`, then `open` once audio connects; `ibubbl:call-ended` or `ibubbl:incoming-ended`, then `closed`. Treat a call as connected on `open`, not on `ibubbl:call-started`: when a caller hangs up just as the rep answers, `ibubbl:call-started` is sent but the call closes without ever being `open`. Messages about another call can come in between: while one ring waits for its outcome, a new call's `ibubbl:incoming` and `ringing` may arrive before the first ring's `ibubbl:incoming-ended` and `closed`. Tell calls apart by `call_ref`.
 
 ### Why a call closed
 
@@ -562,15 +562,19 @@ On `closed`, `reason` says why, and `duration_s` is the seconds between `open` a
 | `completed` | both | The call was connected, then either side hung up. |
 | `failed` | both | The call failed. `error` has its `code` and `retryable`, from [Errors from the dialer](#errors-from-the-dialer). |
 | `rejected` | inbound | The rep pressed **Decline** here. The call goes on ringing for the others. |
-| `not_answered_here` | inbound | The call stopped ringing here without being answered here: the caller hung up, it went to voicemail, or another dialer or dashboard tab answered it. The dialer can't tell which. |
+| `answered_elsewhere` | inbound | Another dialer or a dashboard tab answered the call. |
+| `missed` | inbound | Nobody answered: the call rang out and went to voicemail, a teammate sent it to voicemail, or the caller hung up before anyone answered. |
+| `cancelled` | inbound | The caller hung up before anyone answered, when iBubbl knows it. Most callers who hang up while the call rings show as `missed` instead: the calling service reports them like a call that rang out. |
+| `not_answered_here` | inbound | The call stopped ringing here without being answered here, and the dialer couldn't find out what happened: the call has no `call_id`, iBubbl didn't know yet after about 3 seconds, the session ended, or the dialer's page was closing. |
 | `cancelled` | outbound | The rep hung up before the other side answered. |
 | `busy` | outbound | The other side was busy. |
 | `no_answer` | outbound | The call ended before it was answered: nobody picked up, the other side declined, or the number couldn't be reached. |
-| `missed`, `answered_elsewhere`, and `cancelled` on an inbound call | inbound | **Not sent yet.** They will replace `not_answered_here` where the dialer can tell what happened. Handle them already, as you would `not_answered_here`. |
+
+**How the dialer knows.** When an inbound call stops ringing here without being answered or declined here, the dialer asks iBubbl what happened and waits up to about 3 seconds for the answer before it sends that call's `ibubbl:incoming-ended` and `closed`. The rep's screen clears at once, and the answer usually comes within a second. If the dialer's page goes away meanwhile (the rep reloads, or the dock replaces the session), both messages go out at once, as `missed` and `not_answered_here`.
 
 A number refused only after it was dialed shows `open`, then `completed`. Numbers outside the US and Canada and premium-rate numbers are refused before anything is dialed, with an [`ibubbl:error`](#errors-from-the-dialer) `number_not_allowed`.
 
-**`call-state` drives your screen; the call's record has the final word.** `ibubbl:call-state` tells your page what the rep is seeing now. What finally happened to a call is in iBubbl: [Retrieve a call](/api-reference/calls/retrieve) (`GET /v1/calls/{call_id}`) and the [`call.completed`](/webhooks/events#call-completed), [`call.missed`](/webhooks/events#call-missed) and [`call.voicemail`](/webhooks/events#call-voicemail) webhooks. For example, a call that closes here as `not_answered_here` was missed, went to voicemail, or was answered by a teammate: don't log it as missed from the dialer alone.
+**`call-state` drives your screen; the call's record has the final word.** `ibubbl:call-state` tells your page what the rep is seeing (an inbound ring's `closed` can trail by a few seconds, as above). What finally happened to a call is in iBubbl: [Retrieve a call](/api-reference/calls/retrieve) (`GET /v1/calls/{call_id}`) and the [`call.completed`](/webhooks/events#call-completed), [`call.missed`](/webhooks/events#call-missed) and [`call.voicemail`](/webhooks/events#call-voicemail) webhooks. For example, a call that closes as `not_answered_here` could have been answered by a teammate or missed, and one that closes as `missed` may still get a voicemail: log the outcome from the call's record.
 
 ```typescript
 // After `closed` with reason `not_answered_here` on an inbound call: ask your server what happened.
@@ -578,7 +582,7 @@ async function settleCall(msg: { call_id: string | null; from?: string }) {
   if (!msg.call_id) return; // no ID: wait for the call.* webhook, matched by number
   const call = await fetch(`/api/ibubbl/calls/${encodeURIComponent(msg.call_id)}`).then((r) => r.json());
   // call.status: "in_progress" or "completed" → a teammate answered it;
-  // "no_answer" or "cancelled" → missed; "voicemail" → the caller left one.
+  // "no_answer", "busy", "failed" or "cancelled" → missed; "voicemail" → the caller left one.
   // While it still says "ringing", wait for the call.completed / call.missed webhook.
   showCallOutcome(msg.call_id, call.status);
 }
