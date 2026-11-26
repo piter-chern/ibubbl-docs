@@ -11,7 +11,7 @@ The first time your account messages a contact, iBubbl assigns the contact to on
 
 It changes in only two cases:
 
-- **The line can no longer be used** (paused, retired or moved to another account). The next message to the contact moves them to another of your lines. See [When a conversation's line is no longer yours](#when-a-conversations-line-is-no-longer-yours).
+- **The line can no longer be used** (paused, retired or moved to another account). The next message to the contact moves them to another of your lines. See [When a line is no longer yours](#when-a-line-is-no-longer-yours).
 - **The contact texts one of your other lines.** Their next message from you comes from the line they texted. Messages in a group don't move anyone.
 
 A line that is temporarily offline keeps its contacts. Their messages wait as `queued` until it is back. See [Limits and queues](/concepts/limits#offline-lines).
@@ -41,7 +41,7 @@ Every `message.*` [webhook](/webhooks/events#the-line_id-field) carries `line_id
 
 A [retired](/api-reference/lines/list#responses) line stays in the list, so the `line_id` on an old message always resolves.
 
-### When a conversation's line is no longer yours
+### When a line is no longer yours
 
 A line keeps its ID when it's paused, retired or moved to another account, so a conversation can still name a line you can no longer use. The conversation and its history stay.
 
