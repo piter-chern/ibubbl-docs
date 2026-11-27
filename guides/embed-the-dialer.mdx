@@ -279,7 +279,7 @@ From **Ready** the rep can:
 
 **Incoming calls ring in every open dialer and every open iBubbl dashboard tab of your account at once.** The first to answer takes the call. **Decline** stops only that dialer: the others keep ringing. If nobody answers, the caller reaches your voicemail. Calls ring only while a dialer or dashboard tab is open, so keep the page with the dialer open while reps are taking calls.
 
-**Outgoing calls** show your line's number as the caller ID: the line the contact already talks to, or your oldest active line for a new contact. Dialing a number that isn't one of your contacts yet adds it to your contacts. Calls to numbers outside the US, its territories and Canada, and to premium-rate numbers, are refused before anything is dialed.
+**Outgoing calls** show your line's number as the caller ID: the line the contact already talks to, or your oldest active line for a new contact. Dialing a number that isn't one of your contacts yet adds it to your contacts. Calls to numbers outside the US, its territories and Canada, and to premium-rate numbers, are refused before anything is dialed. Every outgoing call is also checked against your [calling limits](#calling-limits) when it starts.
 
 **Which rep handled a call.** Calls placed from a dialer, and inbound calls answered in one, carry that session's `external_user_id` in [List calls](/api-reference/calls/list), [Retrieve a call](/api-reference/calls/retrieve) and the [`call.*` webhooks](/webhooks/events#call-completed), so your CRM can log each call against the right user.
 
@@ -634,6 +634,7 @@ Other names may appear: show them as a generic "call quality" warning.
 | `number_not_allowed` | no | Calls to that country, or to premium-rate numbers, are blocked. | Don't retry. |
 | `line_unavailable` | no | Your account has no active line, or no owner to place calls for. | Fix it in the dashboard. |
 | `request_refused` | no | iBubbl refused a request for another reason; `status` says which. | Email support with the time. |
+| `call_limit_reached` | yes | The call would go over one of your [calling limits](#calling-limits). `message` names the limit; nothing was dialed. | Wait `retry_in_s`, then let the rep call again. `ibubbl:allowance` comes with it. |
 
 The dialer sends at most one error with the same `code`, `source` and `call_ref` every 10 seconds; `token_unavailable` comes once per try. A call that fails also closes with `reason: "failed"` and the same code in `error`. A busy or unanswered outbound call is not an error: it closes with `busy` or `no_answer`.
 
@@ -794,8 +795,49 @@ End a rep's session when they sign out of your app.
 - Keep `frame_ancestors` to the origins that really embed the dialer.
 - Anyone who can open the dialer can make and take calls on your lines until the session ends. Keep `ttl_seconds` to a working shift, and end sessions when reps sign out.
 
+## Calling limits
+
+Every outgoing call, from a dialer or from the iBubbl dashboard, is checked against your account's calling limits when it starts. A call over a limit is refused before anything rings. A call in progress is never cut, and incoming calls never count.
+
+| Limit | Default | Counted over |
+|-------|---------|--------------|
+| Calls from one of your numbers | 4 / 40 / 200 | the last minute / the last 60 minutes / the day |
+| Different people one number calls | 100 | the day |
+| Calls from your account, all numbers together | 300 | the day |
+| Different people your account calls | 150 | the day |
+| Calls in progress on your account at once | 2 | — |
+| Calls in progress on one dialer at once | 1 | — |
+| Calls from one dialer session | 10 | the last 10 minutes |
+
+- **The day** is the calendar day in US Eastern time; daily counts start again at midnight ET.
+- **Calling the same person again** never counts as a different person.
+- **Every call that starts counts**, answered or not. A refused call doesn't count.
+- Your account's limits can differ from the defaults: ask [support](mailto:support@ibubbl.com).
+
+**What the rep sees.** When the dialer finds that a call would go over a limit, it doesn't place it: the rep sees a short line saying which limit was reached, and your page gets [`ibubbl:error`](#errors-from-the-dialer) `call_limit_reached` with `retry_in_s`. Near a limit (80% used or more), the dialer shows a heads-up line. A call placed another way (for example from the dashboard) that goes over a limit is answered with a short spoken message, and no call is made.
+
+**`ibubbl:allowance`.** The dialer tells your page how much calling is left: after it starts, each time it renews its calling token (about every 9 minutes) and after each call it places. The message has `protocol` (`2`), `at`, and `allowance`, the same object [Create a dialer session](/api-reference/dialer/create-session) returns:
+
+- `mode`: `enforce` (calls over a limit are refused) or `shadow` (they are counted but placed; iBubbl uses this while turning limits on).
+- `resets_at`: when the daily counts start again.
+- `session`, `customer`: this dialer's and your account's counters.
+- `lines`: one entry per calling number, with `line_number`, `state` (`ok`, `soft`: 80% or more of a limit used, or `hard`: its next call would be refused) and its counters.
+
+Each counter is `{ "used": 3, "limit": 40 }`; `limit` is `null` when that limit is off for your account.
+
+```typescript
+window.addEventListener("message", (event) => {
+  if (event.origin !== dialerOrigin || event.data?.type !== "ibubbl:allowance") return;
+  const hard = event.data.allowance.lines.filter((l) => l.state === "hard");
+  if (hard.length) showBanner(`Call limit reached on ${hard.map((l) => l.line_number).join(", ")}`);
+});
+```
+
+`showBanner` stands for your own code.
+
 ## Limits
 
-- 60 new sessions a minute per account. Beyond that: `429 rate_limited`, with `Retry-After`.
+- 30 new sessions a minute per account. Beyond that: `429 rate_limited`, with `Retry-After`.
+- Calls: see [Calling limits](#calling-limits).
 - Up to 10 origins in `frame_ancestors`.
 - Tested in desktop Chrome and Safari.

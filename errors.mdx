@@ -419,7 +419,7 @@ if not res.ok:
   - **[Uploads](/api-reference/files/upload)**: more than 60 uploads in 60 seconds from your account (all API keys together; a budget of its own), or 4 already in progress. The response has a `Retry-After` header; wait that long and upload again.
   - **[iMessage lookups](/api-reference/imessage-lookups/create)**: more than 60 lookup requests in 60 seconds from your account (all API keys together; a budget of its own). The response has a `Retry-After` header. Not the same as `lookup_budget_exhausted`, which is your lines' Apple lookup budget.
   - **Sends with attachment URLs**, rarely: iBubbl was already downloading as many attachment sends as it can, and no slot freed within 10 seconds. `Retry-After` is `5`; then send the same request with the same `idempotency_key`. Nothing was created.
-  - **[Dialer sessions](/api-reference/dialer/create-session)**: more than 60 sessions in 60 seconds from your account (all API keys together; a budget of its own). The response has a `Retry-After` header; wait that long and create the session again.
+  - **[Dialer sessions](/api-reference/dialer/create-session)**: more than 30 sessions in 60 seconds from your account (all API keys together; a budget of its own). The response has a `Retry-After` header; wait that long and create the session again.
   - **`/v1/events`**: a secret-URL [inbound event](/inbound-events/overview) source received more than 60 events in 60 seconds. There is no `Retry-After` header here; send again after about a minute.
 
   Text-only sends (`POST /v1/messages` without `attachments`) never return it.
@@ -503,7 +503,7 @@ The general rule: **don't retry 4xx**. Most 4xxes are payload-level problems tha
 
 ### Errors in the embedded dialer
 
-The [embedded dialer](/guides/embed-the-dialer) reports what fails inside the page (the microphone, its connection, a call) to your page as `ibubbl:error` messages, each with a stable `code` and whether it's `retryable`. Those codes are listed in [Errors from the dialer](/guides/embed-the-dialer#errors-from-the-dialer). When your server can't create a dialer session, see [When your server cannot create a session](/guides/embed-the-dialer#when-your-server-cannot-create-a-session).
+The [embedded dialer](/guides/embed-the-dialer) reports what fails inside the page (the microphone, its connection, a call) to your page as `ibubbl:error` messages, each with a stable `code` and whether it's `retryable`. Those codes are listed in [Errors from the dialer](/guides/embed-the-dialer#errors-from-the-dialer); a call over one of your [calling limits](/guides/embed-the-dialer#calling-limits) is `call_limit_reached`. When your server can't create a dialer session, see [When your server cannot create a session](/guides/embed-the-dialer#when-your-server-cannot-create-a-session).
 
 ## HTTP status mapping summary
 

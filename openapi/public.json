@@ -4610,7 +4610,7 @@
             }
           },
           "429": {
-            "description": "`rate_limited`: more than 60 dialer sessions in 60 seconds from your account (all keys count together; other requests have their own budgets). Wait `Retry-After` seconds, then send the same request again.",
+            "description": "`rate_limited`: more than 30 dialer sessions in 60 seconds from your account (all keys count together; other requests have their own budgets). Wait `Retry-After` seconds, then send the same request again.",
             "headers": {
               "Retry-After": {
                 "description": "Seconds to wait before retrying.",
@@ -4968,6 +4968,176 @@
         ],
         "title": "Call"
       },
+      "CallAllowanceCounter": {
+        "properties": {
+          "used": {
+            "type": "integer",
+            "title": "Used",
+            "description": "How many count against this limit now."
+          },
+          "limit": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Limit",
+            "description": "The limit, or `null` when this limit is off for your account."
+          }
+        },
+        "type": "object",
+        "required": [
+          "used",
+          "limit"
+        ],
+        "title": "CallAllowanceCounter"
+      },
+      "CallAllowanceCustomer": {
+        "properties": {
+          "calls_today": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/CallAllowanceCounter"
+              }
+            ],
+            "description": "Calls started today (US Eastern time)."
+          },
+          "numbers_today": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/CallAllowanceCounter"
+              }
+            ],
+            "description": "Different contacts called today (US Eastern time); calling one again doesn't count."
+          },
+          "at_once": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/CallAllowanceCounter"
+              }
+            ],
+            "description": "Calls in progress."
+          },
+          "minutes_today": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/CallAllowanceCounter"
+              }
+            ],
+            "description": "Minutes of today's finished calls, each call rounded up to a whole minute."
+          }
+        },
+        "type": "object",
+        "required": [
+          "calls_today",
+          "numbers_today",
+          "at_once",
+          "minutes_today"
+        ],
+        "title": "CallAllowanceCustomer",
+        "description": "Your account's limits, all lines together."
+      },
+      "CallAllowanceLine": {
+        "properties": {
+          "line_number": {
+            "type": "string",
+            "title": "Line Number",
+            "description": "The line's phone number, the caller ID its calls show."
+          },
+          "state": {
+            "type": "string",
+            "enum": [
+              "ok",
+              "soft",
+              "hard"
+            ],
+            "title": "State",
+            "description": "`hard`: the next call from this number would be refused; `soft`: one of its limits is 80% used or more; `ok` otherwise."
+          },
+          "calls_last_minute": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/CallAllowanceCounter"
+              }
+            ],
+            "description": "Calls started in the last minute."
+          },
+          "calls_last_hour": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/CallAllowanceCounter"
+              }
+            ],
+            "description": "Calls started in the last 60 minutes."
+          },
+          "calls_today": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/CallAllowanceCounter"
+              }
+            ],
+            "description": "Calls started today (US Eastern time)."
+          },
+          "numbers_today": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/CallAllowanceCounter"
+              }
+            ],
+            "description": "Different contacts called today (US Eastern time); calling one again doesn't count."
+          },
+          "at_once": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/CallAllowanceCounter"
+              }
+            ],
+            "description": "Calls in progress."
+          }
+        },
+        "type": "object",
+        "required": [
+          "line_number",
+          "state",
+          "calls_last_minute",
+          "calls_last_hour",
+          "calls_today",
+          "numbers_today",
+          "at_once"
+        ],
+        "title": "CallAllowanceLine",
+        "description": "One of your calling numbers and its limits."
+      },
+      "CallAllowanceSession": {
+        "properties": {
+          "calls_last_10_min": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/CallAllowanceCounter"
+              }
+            ],
+            "description": "Calls started in the last 10 minutes."
+          },
+          "at_once": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/CallAllowanceCounter"
+              }
+            ],
+            "description": "Calls in progress."
+          }
+        },
+        "type": "object",
+        "required": [
+          "calls_last_10_min",
+          "at_once"
+        ],
+        "title": "CallAllowanceSession",
+        "description": "This dialer session's limits."
+      },
       "CallList": {
         "properties": {
           "data": {
@@ -5120,82 +5290,6 @@
           "marked_count": 2,
           "read_receipt": "queued",
           "read_receipt_skipped_reason": null
-        }
-      },
-      "DialerSession": {
-        "properties": {
-          "id": {
-            "type": "string",
-            "format": "uuid",
-            "title": "Id",
-            "description": "The session's ID (a UUID). Use it to end the session."
-          },
-          "url": {
-            "type": "string",
-            "title": "Url",
-            "description": "The page to load in your `<iframe>`. Its part after `#` is a single-use launch token: load the URL within 5 minutes, once, and don't log or store it."
-          },
-          "expires_at": {
-            "type": "string",
-            "format": "date-time",
-            "title": "Expires At",
-            "description": "When the session ends."
-          },
-          "frame_ancestors": {
-            "items": {
-              "type": "string"
-            },
-            "type": "array",
-            "title": "Frame Ancestors",
-            "description": "The origins the dialer may run in, as iBubbl normalized them."
-          },
-          "play_incoming_ringtone": {
-            "type": "boolean",
-            "title": "Play Incoming Ringtone",
-            "description": "Whether the dialer plays its own ringtone on an incoming call."
-          },
-          "edge": {
-            "anyOf": [
-              {
-                "items": {
-                  "type": "string"
-                },
-                "type": "array"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Edge",
-            "description": "The Twilio edges the dialer tries, in order, or `null` when Twilio picks."
-          },
-          "debug_log": {
-            "type": "boolean",
-            "title": "Debug Log",
-            "description": "Whether the dialer sends its warning and error lines to your page as `ibubbl:log`."
-          }
-        },
-        "type": "object",
-        "required": [
-          "id",
-          "url",
-          "expires_at",
-          "frame_ancestors",
-          "play_incoming_ringtone",
-          "edge",
-          "debug_log"
-        ],
-        "title": "DialerSession",
-        "example": {
-          "id": "3f1c9a2e-5b7d-4c8e-9f0a-1b2c3d4e5f6a",
-          "url": "https://ibubbl-dashboard.vercel.app/embed/dialer/3f1c9a2e-5b7d-4c8e-9f0a-1b2c3d4e5f6a#l=Q2xhdW1kZS1sYXVuY2gtdG9rZW4tZXhhbXBsZTAwMDA",
-          "expires_at": "2026-11-25T23:00:00.000000Z",
-          "frame_ancestors": [
-            "https://crm.example.com"
-          ],
-          "play_incoming_ringtone": true,
-          "edge": null,
-          "debug_log": false
         }
       },
       "DialerSessionCreate": {
@@ -7091,6 +7185,57 @@
           "status": "revoked"
         }
       },
+      "CallAllowance": {
+        "properties": {
+          "mode": {
+            "type": "string",
+            "enum": [
+              "enforce",
+              "shadow"
+            ],
+            "title": "Mode",
+            "description": "`enforce`: calls over a limit are refused. `shadow`: they are counted but placed."
+          },
+          "resets_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Resets At",
+            "description": "When the daily counts start again (midnight US Eastern time)."
+          },
+          "session": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CallAllowanceSession"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "This dialer session's limits."
+          },
+          "customer": {
+            "$ref": "#/components/schemas/CallAllowanceCustomer"
+          },
+          "lines": {
+            "items": {
+              "$ref": "#/components/schemas/CallAllowanceLine"
+            },
+            "type": "array",
+            "title": "Lines",
+            "description": "Your voice-enabled lines, oldest first."
+          }
+        },
+        "type": "object",
+        "required": [
+          "mode",
+          "resets_at",
+          "session",
+          "customer",
+          "lines"
+        ],
+        "title": "CallAllowance",
+        "description": "How much outbound calling is left. Every outbound call is checked against these limits when it starts; a call over a limit is refused and never rings. A call already in progress is never cut."
+      },
       "Contact": {
         "properties": {
           "id": {
@@ -7259,6 +7404,152 @@
           "blocked": false,
           "blocked_at": null,
           "created_at": "2026-05-17T14:23:45.123Z"
+        }
+      },
+      "DialerSession": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id",
+            "description": "The session's ID (a UUID). Use it to end the session."
+          },
+          "url": {
+            "type": "string",
+            "title": "Url",
+            "description": "The page to load in your `<iframe>`. Its part after `#` is a single-use launch token: load the URL within 5 minutes, once, and don't log or store it."
+          },
+          "expires_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Expires At",
+            "description": "When the session ends."
+          },
+          "frame_ancestors": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Frame Ancestors",
+            "description": "The origins the dialer may run in, as iBubbl normalized them."
+          },
+          "play_incoming_ringtone": {
+            "type": "boolean",
+            "title": "Play Incoming Ringtone",
+            "description": "Whether the dialer plays its own ringtone on an incoming call."
+          },
+          "edge": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Edge",
+            "description": "The Twilio edges the dialer tries, in order, or `null` when Twilio picks."
+          },
+          "debug_log": {
+            "type": "boolean",
+            "title": "Debug Log",
+            "description": "Whether the dialer sends its warning and error lines to your page as `ibubbl:log`."
+          },
+          "allowance": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CallAllowance"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Your outbound calling limits and how much of each is used, as this session starts. `null` when it couldn't be read in time; the session works either way."
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "url",
+          "expires_at",
+          "frame_ancestors",
+          "play_incoming_ringtone",
+          "edge",
+          "debug_log",
+          "allowance"
+        ],
+        "title": "DialerSession",
+        "example": {
+          "id": "3f1c9a2e-5b7d-4c8e-9f0a-1b2c3d4e5f6a",
+          "url": "https://ibubbl-dashboard.vercel.app/embed/dialer/3f1c9a2e-5b7d-4c8e-9f0a-1b2c3d4e5f6a#l=Q2xhdW1kZS1sYXVuY2gtdG9rZW4tZXhhbXBsZTAwMDA",
+          "expires_at": "2026-11-25T23:00:00.000000Z",
+          "frame_ancestors": [
+            "https://crm.example.com"
+          ],
+          "play_incoming_ringtone": true,
+          "edge": null,
+          "debug_log": false,
+          "allowance": {
+            "mode": "enforce",
+            "resets_at": "2026-11-26T05:00:00.000000Z",
+            "session": {
+              "calls_last_10_min": {
+                "used": 0,
+                "limit": 10
+              },
+              "at_once": {
+                "used": 0,
+                "limit": 1
+              }
+            },
+            "customer": {
+              "calls_today": {
+                "used": 12,
+                "limit": 300
+              },
+              "numbers_today": {
+                "used": 9,
+                "limit": 150
+              },
+              "at_once": {
+                "used": 0,
+                "limit": 2
+              },
+              "minutes_today": {
+                "used": 31,
+                "limit": null
+              }
+            },
+            "lines": [
+              {
+                "line_number": "+12125550100",
+                "state": "ok",
+                "calls_last_minute": {
+                  "used": 0,
+                  "limit": 4
+                },
+                "calls_last_hour": {
+                  "used": 5,
+                  "limit": 40
+                },
+                "calls_today": {
+                  "used": 12,
+                  "limit": 200
+                },
+                "numbers_today": {
+                  "used": 9,
+                  "limit": 100
+                },
+                "at_once": {
+                  "used": 0,
+                  "limit": null
+                }
+              }
+            ]
+          }
         }
       },
       "ImessageLookup": {

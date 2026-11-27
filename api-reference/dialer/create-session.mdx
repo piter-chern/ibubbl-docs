@@ -113,7 +113,29 @@ print(data["id"], data["expires_at"])  # load data["url"] in the iframe; don't l
   "frame_ancestors": ["https://crm.example.com"],
   "play_incoming_ringtone": true,
   "edge": null,
-  "debug_log": false
+  "debug_log": false,
+  "allowance": {
+    "mode": "enforce",
+    "resets_at": "2026-11-26T05:00:00.000000Z",
+    "session": { "calls_last_10_min": { "used": 0, "limit": 10 }, "at_once": { "used": 0, "limit": 1 } },
+    "customer": {
+      "calls_today": { "used": 12, "limit": 300 },
+      "numbers_today": { "used": 9, "limit": 150 },
+      "at_once": { "used": 0, "limit": 2 },
+      "minutes_today": { "used": 31, "limit": null }
+    },
+    "lines": [
+      {
+        "line_number": "+12125550100",
+        "state": "ok",
+        "calls_last_minute": { "used": 0, "limit": 4 },
+        "calls_last_hour": { "used": 5, "limit": 40 },
+        "calls_today": { "used": 12, "limit": 200 },
+        "numbers_today": { "used": 9, "limit": 100 },
+        "at_once": { "used": 0, "limit": null }
+      }
+    ]
+  }
 }
 ```
 - `id`: the session's ID. Use it to [end the session](/api-reference/dialer/end-session).
@@ -122,6 +144,7 @@ print(data["id"], data["expires_at"])  # load data["url"] in the iframe; don't l
 - `frame_ancestors`: your origins as iBubbl normalized them (lower case, default port dropped, duplicates removed).
 - `play_incoming_ringtone`, `debug_log`: the session's settings, `true` and `false` when you left them out.
 - `edge`: the edges the dialer tries, always as a list (`"ashburn"` comes back as `["ashburn"]`), or `null` when Twilio picks.
+- `allowance`: your outbound [calling limits](/guides/embed-the-dialer#calling-limits) and how much of each is used, as the session starts: `mode`, `resets_at`, the session's, your account's and each calling number's counters (`{ used, limit }`, `limit` `null` when that limit is off). `null` when iBubbl couldn't read them in time; the session works either way.
 
 **401 Unauthorized**
 ```json
@@ -164,8 +187,8 @@ The embeddable dialer isn't turned on for your account: ask [support](mailto:sup
 {
   "detail": {
     "error": "rate_limited",
-    "message": "Too many dialer sessions; wait 12s (limit 60 a minute per account)."
+    "message": "Too many dialer sessions; wait 12s (limit 30 a minute per account)."
   }
 }
 ```
-More than 60 sessions in a minute from your account (all keys count together). Wait `Retry-After` seconds, then send the request again.
+More than 30 sessions in a minute from your account (all keys count together). Wait `Retry-After` seconds, then send the request again.
